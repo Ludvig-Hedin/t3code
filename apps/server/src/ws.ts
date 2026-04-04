@@ -46,6 +46,8 @@ import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
+import { McpService } from "./mcp";
+import { PluginService } from "./plugins";
 
 const WsRpcLayer = WsRpcGroup.toLayer(
   Effect.gen(function* () {
@@ -65,6 +67,8 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const workspaceEntries = yield* WorkspaceEntries;
     const workspaceFileSystem = yield* WorkspaceFileSystem;
     const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
+    const mcpService = yield* McpService;
+    const pluginService = yield* PluginService;
 
     const serverCommandId = (tag: string) =>
       CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -708,6 +712,36 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           }),
           { "rpc.aggregate": "server" },
         ),
+      // ── MCP server handlers ────────────────────────────────────────────────
+      [WS_METHODS.mcpListServers]: ({ provider }) =>
+        observeRpcEffect(WS_METHODS.mcpListServers, mcpService.list(provider), {
+          "rpc.aggregate": "mcp",
+        }),
+      [WS_METHODS.mcpAddServer]: ({ provider, name, server }) =>
+        observeRpcEffect(WS_METHODS.mcpAddServer, mcpService.add(provider, name, server), {
+          "rpc.aggregate": "mcp",
+        }),
+      [WS_METHODS.mcpUpdateServer]: ({ provider, name, patch }) =>
+        observeRpcEffect(WS_METHODS.mcpUpdateServer, mcpService.update(provider, name, patch), {
+          "rpc.aggregate": "mcp",
+        }),
+      [WS_METHODS.mcpDeleteServer]: ({ provider, name }) =>
+        observeRpcEffect(WS_METHODS.mcpDeleteServer, mcpService.delete(provider, name), {
+          "rpc.aggregate": "mcp",
+        }),
+      // ── Plugin handlers ────────────────────────────────────────────────────
+      [WS_METHODS.pluginsList]: (_input) =>
+        observeRpcEffect(WS_METHODS.pluginsList, pluginService.list(), {
+          "rpc.aggregate": "plugins",
+        }),
+      [WS_METHODS.pluginsInstall]: ({ source }) =>
+        observeRpcEffect(WS_METHODS.pluginsInstall, pluginService.install(source), {
+          "rpc.aggregate": "plugins",
+        }),
+      [WS_METHODS.pluginsRemove]: ({ location }) =>
+        observeRpcEffect(WS_METHODS.pluginsRemove, pluginService.remove(location), {
+          "rpc.aggregate": "plugins",
+        }),
     });
   }),
 );

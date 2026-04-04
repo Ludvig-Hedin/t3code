@@ -64,6 +64,8 @@ import {
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
+import { McpServiceLive } from "./mcp/index.ts";
+import { PluginServiceLive } from "./plugins/index.ts";
 
 const defaultProjectId = ProjectId.makeUnsafe("project-default");
 const defaultThreadId = ThreadId.makeUnsafe("thread-default");
@@ -122,6 +124,10 @@ const workspaceAndProjectServicesLayer = Layer.mergeAll(
     Layer.provide(WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive))),
   ),
   ProjectFaviconResolverLive,
+  // McpService and PluginService only require FileSystem and Path, both provided
+  // by NodeServices.layer which is used as the test layer root.
+  McpServiceLive,
+  PluginServiceLive,
 );
 
 const buildAppUnderTest = (options?: {
