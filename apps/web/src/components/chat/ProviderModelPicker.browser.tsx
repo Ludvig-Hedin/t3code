@@ -108,6 +108,89 @@ const TEST_PROVIDERS: ReadonlyArray<ServerProvider> = [
       },
     ],
   },
+  {
+    provider: "gemini",
+    enabled: true,
+    installed: true,
+    version: "0.35.3",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: new Date().toISOString(),
+    models: [
+      {
+        slug: "gemini-2.5-pro",
+        name: "Gemini 2.5 Pro",
+        isCustom: false,
+        capabilities: {
+          reasoningEffortLevels: [],
+          supportsFastMode: false,
+          supportsThinkingToggle: false,
+          contextWindowOptions: [],
+          promptInjectedEffortLevels: [],
+        },
+      },
+      {
+        slug: "gemini-2.5-flash-lite",
+        name: "Gemini 2.5 Flash-Lite",
+        isCustom: false,
+        capabilities: {
+          reasoningEffortLevels: [],
+          supportsFastMode: false,
+          supportsThinkingToggle: false,
+          contextWindowOptions: [],
+          promptInjectedEffortLevels: [],
+        },
+      },
+      {
+        slug: "gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        isCustom: false,
+        capabilities: {
+          reasoningEffortLevels: [],
+          supportsFastMode: false,
+          supportsThinkingToggle: false,
+          contextWindowOptions: [],
+          promptInjectedEffortLevels: [],
+        },
+      },
+      {
+        slug: "gemini-3-pro-preview",
+        name: "Gemini 3 Pro Preview",
+        isCustom: false,
+        capabilities: {
+          reasoningEffortLevels: [],
+          supportsFastMode: false,
+          supportsThinkingToggle: false,
+          contextWindowOptions: [],
+          promptInjectedEffortLevels: [],
+        },
+      },
+      {
+        slug: "gemini-3.1-pro-preview",
+        name: "Gemini 3.1 Pro Preview",
+        isCustom: false,
+        capabilities: {
+          reasoningEffortLevels: [],
+          supportsFastMode: false,
+          supportsThinkingToggle: false,
+          contextWindowOptions: [],
+          promptInjectedEffortLevels: [],
+        },
+      },
+      {
+        slug: "gemini-3-flash-preview",
+        name: "Gemini 3 Flash Preview",
+        isCustom: false,
+        capabilities: {
+          reasoningEffortLevels: [],
+          supportsFastMode: false,
+          supportsThinkingToggle: false,
+          contextWindowOptions: [],
+          promptInjectedEffortLevels: [],
+        },
+      },
+    ],
+  },
 ];
 
 function buildCodexProvider(models: ServerProvider["models"]): ServerProvider {
@@ -355,6 +438,26 @@ describe("ProviderModelPicker", () => {
       expect(mounted.onProviderModelChange).toHaveBeenCalledWith(
         "claudeAgent",
         "claude-sonnet-4-6",
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("dispatches the canonical slug when a Gemini preview model is selected", async () => {
+    const mounted = await mountPicker({
+      provider: "gemini",
+      model: "gemini-3.1-pro-preview",
+      lockedProvider: "gemini",
+    });
+
+    try {
+      await page.getByRole("button").click();
+      await page.getByRole("menuitemradio", { name: "Gemini 3 Flash Preview" }).click();
+
+      expect(mounted.onProviderModelChange).toHaveBeenCalledWith(
+        "gemini",
+        "gemini-3-flash-preview",
       );
     } finally {
       await mounted.cleanup();

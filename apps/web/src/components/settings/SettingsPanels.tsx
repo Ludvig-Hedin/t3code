@@ -12,6 +12,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type CodeReviewFixMode,
   PROVIDER_DISPLAY_NAMES,
   type ProviderKind,
   type ServerProvider,
@@ -21,7 +22,7 @@ import {
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 import { Equal } from "effect";
-import { APP_VERSION } from "../../branding";
+import { APP_BASE_NAME, APP_VERSION } from "../../branding";
 import {
   canCheckForUpdate,
   getDesktopUpdateButtonTooltip,
@@ -112,6 +113,12 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     binaryPlaceholder: "Claude binary path",
     binaryDescription: "Path to the Claude binary",
   },
+  {
+    provider: "gemini",
+    title: "Gemini",
+    binaryPlaceholder: "Gemini binary path",
+    binaryDescription: "Path to the Gemini CLI binary",
+  },
 ] as const;
 
 const PROVIDER_STATUS_STYLES = {
@@ -140,7 +147,8 @@ function getProviderSummary(provider: ServerProvider | undefined) {
     return {
       headline: "Disabled",
       detail:
-        provider.message ?? "This provider is installed but disabled for new sessions in T3 Code.",
+        provider.message ??
+        `This provider is installed but disabled for new sessions in ${APP_BASE_NAME}.`,
     };
   }
   if (!provider.installed) {
@@ -472,6 +480,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
         ? ["New thread mode"]
         : []),
+      ...(settings.enterKeyBehavior !== DEFAULT_UNIFIED_SETTINGS.enterKeyBehavior
+        ? ["Enter key behavior"]
+        : []),
       ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
         ? ["Archive confirmation"]
         : []),
@@ -489,6 +500,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.diffWordWrap,
       settings.enableAssistantStreaming,
+      settings.enterKeyBehavior,
       settings.timestampFormat,
       theme,
     ],
@@ -537,12 +549,18 @@ export function GeneralSettingsPanel() {
         DEFAULT_UNIFIED_SETTINGS.providers.claudeAgent.binaryPath ||
       settings.providers.claudeAgent.customModels.length > 0,
     ),
+    gemini: Boolean(
+      settings.providers.gemini.binaryPath !==
+        DEFAULT_UNIFIED_SETTINGS.providers.gemini.binaryPath ||
+      settings.providers.gemini.customModels.length > 0,
+    ),
   });
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
     codex: "",
     claudeAgent: "",
+    gemini: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -781,7 +799,7 @@ export function GeneralSettingsPanel() {
       <SettingsSection title="General">
         <SettingsRow
           title="Theme"
-          description="Choose how T3 Code looks across the app."
+          description={`Choose how ${APP_BASE_NAME} looks across the app.`}
           resetAction={
             theme !== "system" ? (
               <SettingResetButton label="theme" onClick={() => setTheme("system")} />
@@ -875,6 +893,47 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) => updateSettings({ diffWordWrap: Boolean(checked) })}
               aria-label="Wrap diff lines by default"
             />
+          }
+        />
+
+        <SettingsRow
+          title="Enter key behavior"
+          description="Choose what pressing Enter does in the message composer."
+          resetAction={
+            settings.enterKeyBehavior !== DEFAULT_UNIFIED_SETTINGS.enterKeyBehavior ? (
+              <SettingResetButton
+                label="enter key behavior"
+                onClick={() =>
+                  updateSettings({
+                    enterKeyBehavior: DEFAULT_UNIFIED_SETTINGS.enterKeyBehavior,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.enterKeyBehavior}
+              onValueChange={(value) => {
+                if (value === "send" || value === "newline") {
+                  updateSettings({ enterKeyBehavior: value });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-40" aria-label="Enter key behavior">
+                <SelectValue>
+                  {settings.enterKeyBehavior === "newline" ? "New line" : "Send message"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="newline">
+                  New line
+                </SelectItem>
+                <SelectItem hideIndicator value="send">
+                  Send message
+                </SelectItem>
+              </SelectPopup>
+            </Select>
           }
         />
 
@@ -1385,7 +1444,9 @@ export function GeneralSettingsPanel() {
                           placeholder={
                             providerCard.provider === "codex"
                               ? "gpt-6.7-codex-ultra-preview"
-                              : "claude-sonnet-5-0"
+                              : providerCard.provider === "claudeAgent"
+                                ? "claude-sonnet-5-0"
+                                : "gemini-3.1-pro-preview"
                           }
                           spellCheck={false}
                         />
@@ -1409,6 +1470,93 @@ export function GeneralSettingsPanel() {
             </div>
           );
         })}
+      </SettingsSection>
+
+      <SettingsSection title="Code Review">
+        <SettingsRow
+          title="Auto-review before push"
+          description="Automatically run a code review agent turn before any push, commit+push, or PR action."
+          resetAction={
+            settings.codeReview.autoReviewOnPush !==
+            DEFAULT_UNIFIED_SETTINGS.codeReview.autoReviewOnPush ? (
+              <SettingResetButton
+                label="auto-review before push"
+                onClick={() =>
+                  updateSettings({
+                    codeReview: {
+                      ...settings.codeReview,
+                      autoReviewOnPush: DEFAULT_UNIFIED_SETTINGS.codeReview.autoReviewOnPush,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.codeReview.autoReviewOnPush}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  codeReview: { ...settings.codeReview, autoReviewOnPush: Boolean(checked) },
+                })
+              }
+              aria-label="Auto-review before push"
+            />
+          }
+        />
+        <SettingsRow
+          title="Fix mode"
+          description="Choose how the agent responds when it finds issues during a code review."
+          resetAction={
+            settings.codeReview.fixMode !== DEFAULT_UNIFIED_SETTINGS.codeReview.fixMode ? (
+              <SettingResetButton
+                label="fix mode"
+                onClick={() =>
+                  updateSettings({
+                    codeReview: {
+                      ...settings.codeReview,
+                      fixMode: DEFAULT_UNIFIED_SETTINGS.codeReview.fixMode,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.codeReview.fixMode}
+              onValueChange={(value) => {
+                if (value === "review-only" || value === "auto-fix" || value === "agent-decides") {
+                  updateSettings({
+                    codeReview: {
+                      ...settings.codeReview,
+                      fixMode: value as CodeReviewFixMode,
+                    },
+                  });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-44" aria-label="Code review fix mode">
+                <SelectValue>
+                  {settings.codeReview.fixMode === "review-only" && "Review only"}
+                  {settings.codeReview.fixMode === "auto-fix" && "Auto-fix"}
+                  {settings.codeReview.fixMode === "agent-decides" && "Agent decides"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="review-only">
+                  Review only
+                </SelectItem>
+                <SelectItem hideIndicator value="auto-fix">
+                  Auto-fix
+                </SelectItem>
+                <SelectItem hideIndicator value="agent-decides">
+                  Agent decides
+                </SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
       </SettingsSection>
 
       <SettingsSection title="Advanced">
