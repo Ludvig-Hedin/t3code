@@ -10,8 +10,15 @@
  *
  * @module McpService
  */
-import { type McpServer, type McpServerInput, McpServerError, type ProviderKind } from "@t3tools/contracts";
-import { Effect, FileSystem, Layer, Path, ServiceMap } from "effect";
+import {
+  type McpServer,
+  McpServerInput,
+  McpServerError,
+  type ProviderKind,
+  TrimmedNonEmptyString,
+} from "@t3tools/contracts";
+import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect";
+import * as Semaphore from "effect/Semaphore";
 import * as os from "node:os";
 
 // ── Service interface ────────────────────────────────────────────────────────
@@ -49,9 +56,13 @@ export class McpService extends ServiceMap.Service<McpService, McpServiceShape>(
 /**
  * The on-disk shape of a single MCP server in ~/.claude.json.
  * Claude uses "type" instead of "transport" — we map during read/write.
+ *
+ * The type field is `string` (not a union) because Claude's config may contain
+ * transport types we do not recognize (e.g. "streamableHttp"). Unknown types
+ * are filtered out in claudeEntryToMcpServer rather than causing a parse error.
  */
 interface ClaudeConfigMcpEntry {
-  type: "stdio" | "sse";
+  type: string;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
@@ -109,7 +120,7 @@ const readClaudeConfig = (
     });
 
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      // Return yield* signals a definitive exit point for type narrowing (Effect plugin rule).
+      // yield* on a TaggedError is shorthand for Effect.fail(new Error(...)). Enabled by the Effect TS plugin.
       return yield* new McpServerError({
         detail: `${configPath} does not contain a JSON object at the root`,
       });
@@ -140,8 +151,17 @@ const writeClaudeConfig = (
 /**
  * Convert a raw Claude config entry + name into the canonical McpServer shape.
  * Maps Claude's "type" field to our internal "transport" field.
+ *
+ * Returns null for entries whose "type" is not a transport we support (e.g.
+ * "streamableHttp"). Callers must filter nulls. We skip rather than error so
+ * that an unknown transport in the file does not break listing all other servers.
  */
-function claudeEntryToMcpServer(name: string, entry: ClaudeConfigMcpEntry): McpServer {
+function claudeEntryToMcpServer(name: string, entry: ClaudeConfigMcpEntry): McpServer | null {
+  if (entry.type !== "stdio" && entry.type !== "sse") {
+    // Unknown transport type — skip silently so future Claude transport types
+    // don't break the list operation for all other entries.
+    return null;
+  }
   return {
     name,
     // Map "type" (Claude's on-disk field) → "transport" (T3 Code's canonical field)
@@ -178,6 +198,38 @@ const unsupportedProvider = (provider: ProviderKind): McpServerError =>
     detail: `${provider} MCP config format is not yet supported`,
   });
 
+// ── Input validation helpers ─────────────────────────────────────────────────
+
+/**
+ * Validate that a raw name string is non-empty and trimmed.
+ * Returns McpServerError if validation fails, matching the SkillService.save() pattern.
+ */
+const validateName = (name: string): Effect.Effect<string, McpServerError> =>
+  Schema.decodeEffect(TrimmedNonEmptyString)(name).pipe(
+    Effect.mapError(
+      (cause) =>
+        new McpServerError({
+          detail: `Invalid MCP server name: ${String(cause)}`,
+          cause,
+        }),
+    ),
+  );
+
+/**
+ * Validate a McpServerInput value against the contracts schema.
+ * Returns McpServerError if any field is invalid.
+ */
+const validateServerInput = (server: McpServerInput): Effect.Effect<McpServerInput, McpServerError> =>
+  Schema.decodeEffect(McpServerInput)(server).pipe(
+    Effect.mapError(
+      (cause) =>
+        new McpServerError({
+          detail: `Invalid MCP server input: ${String(cause)}`,
+          cause,
+        }),
+    ),
+  );
+
 // ── Service factory ──────────────────────────────────────────────────────────
 
 export const makeMcpService = Effect.gen(function* () {
@@ -188,6 +240,11 @@ export const makeMcpService = Effect.gen(function* () {
   // os.homedir() is synchronous and stable for the process lifetime.
   const claudeConfigPath = pathService.join(os.homedir(), ".claude.json");
 
+  // Single-permit semaphore to prevent concurrent read-modify-write corruption on
+  // ~/.claude.json. All mutating operations (add, update, delete) acquire this lock
+  // around their R-M-W section before touching disk.
+  const claudeConfigMutex = yield* Semaphore.make(1);
+
   // ── list ───────────────────────────────────────────────────────────────────
 
   const list = (provider: ProviderKind): Effect.Effect<McpServer[], McpServerError> => {
@@ -195,9 +252,9 @@ export const makeMcpService = Effect.gen(function* () {
       return Effect.gen(function* () {
         const config = yield* readClaudeConfig(fs, claudeConfigPath);
         const mcpServers = config.mcpServers ?? {};
-        return Object.entries(mcpServers).map(([name, entry]) =>
-          claudeEntryToMcpServer(name, entry),
-        );
+        return Object.entries(mcpServers)
+          .map(([name, entry]) => claudeEntryToMcpServer(name, entry))
+          .filter((s): s is McpServer => s !== null);
       });
     }
 
@@ -214,26 +271,41 @@ export const makeMcpService = Effect.gen(function* () {
   ): Effect.Effect<McpServer, McpServerError> => {
     if (provider === "claudeAgent") {
       return Effect.gen(function* () {
-        const config = yield* readClaudeConfig(fs, claudeConfigPath);
-        const mcpServers = config.mcpServers ?? {};
+        // Validate inputs at the service boundary before touching disk.
+        const validName = yield* validateName(name);
+        const validServer = yield* validateServerInput(server);
 
-        if (name in mcpServers) {
-          // Return yield* signals a definitive exit point for type narrowing (Effect plugin rule).
-          return yield* new McpServerError({
-            detail: `MCP server "${name}" already exists for provider "${provider}"`,
-          });
-        }
+        // Acquire the mutex only around the R-M-W section to prevent concurrent writes.
+        const result = yield* claudeConfigMutex.withPermits(1)(
+          Effect.gen(function* () {
+            const config = yield* readClaudeConfig(fs, claudeConfigPath);
+            const mcpServers = config.mcpServers ?? {};
 
-        const updated: ClaudeConfig = {
-          ...config,
-          mcpServers: {
-            ...mcpServers,
-            [name]: mcpServerInputToClaudeEntry(server),
-          },
-        };
+            if (validName in mcpServers) {
+              // yield* on a TaggedError is shorthand for Effect.fail(new Error(...)). Enabled by the Effect TS plugin.
+              return yield* new McpServerError({
+                detail: `MCP server "${validName}" already exists for provider "${provider}"`,
+              });
+            }
 
-        yield* writeClaudeConfig(fs, claudeConfigPath, updated);
-        return claudeEntryToMcpServer(name, mcpServerInputToClaudeEntry(server));
+            // Convert once and reuse to avoid double-calling mcpServerInputToClaudeEntry.
+            const claudeEntry = mcpServerInputToClaudeEntry(validServer);
+
+            const updated: ClaudeConfig = {
+              ...config,
+              mcpServers: {
+                ...mcpServers,
+                [validName]: claudeEntry,
+              },
+            };
+
+            yield* writeClaudeConfig(fs, claudeConfigPath, updated);
+            // claudeEntryToMcpServer cannot return null here because we just wrote
+            // a validated entry with a known transport ("stdio" | "sse").
+            return claudeEntryToMcpServer(validName, claudeEntry) as McpServer;
+          }),
+        );
+        return result;
       });
     }
 
@@ -249,26 +321,41 @@ export const makeMcpService = Effect.gen(function* () {
   ): Effect.Effect<McpServer, McpServerError> => {
     if (provider === "claudeAgent") {
       return Effect.gen(function* () {
-        const config = yield* readClaudeConfig(fs, claudeConfigPath);
-        const mcpServers = config.mcpServers ?? {};
+        // Validate inputs at the service boundary before touching disk.
+        const validName = yield* validateName(name);
+        const validPatch = yield* validateServerInput(patch);
 
-        if (!(name in mcpServers)) {
-          // Return yield* signals a definitive exit point for type narrowing (Effect plugin rule).
-          return yield* new McpServerError({
-            detail: `MCP server "${name}" not found for provider "${provider}"`,
-          });
-        }
+        // Acquire the mutex only around the R-M-W section to prevent concurrent writes.
+        const result = yield* claudeConfigMutex.withPermits(1)(
+          Effect.gen(function* () {
+            const config = yield* readClaudeConfig(fs, claudeConfigPath);
+            const mcpServers = config.mcpServers ?? {};
 
-        const updated: ClaudeConfig = {
-          ...config,
-          mcpServers: {
-            ...mcpServers,
-            [name]: mcpServerInputToClaudeEntry(patch),
-          },
-        };
+            if (!(validName in mcpServers)) {
+              // yield* on a TaggedError is shorthand for Effect.fail(new Error(...)). Enabled by the Effect TS plugin.
+              return yield* new McpServerError({
+                detail: `MCP server "${validName}" not found for provider "${provider}"`,
+              });
+            }
 
-        yield* writeClaudeConfig(fs, claudeConfigPath, updated);
-        return claudeEntryToMcpServer(name, mcpServerInputToClaudeEntry(patch));
+            // Convert once and reuse to avoid double-calling mcpServerInputToClaudeEntry.
+            const claudeEntry = mcpServerInputToClaudeEntry(validPatch);
+
+            const updated: ClaudeConfig = {
+              ...config,
+              mcpServers: {
+                ...mcpServers,
+                [validName]: claudeEntry,
+              },
+            };
+
+            yield* writeClaudeConfig(fs, claudeConfigPath, updated);
+            // claudeEntryToMcpServer cannot return null here because we just wrote
+            // a validated entry with a known transport ("stdio" | "sse").
+            return claudeEntryToMcpServer(validName, claudeEntry) as McpServer;
+          }),
+        );
+        return result;
       });
     }
 
@@ -284,24 +371,32 @@ export const makeMcpService = Effect.gen(function* () {
   ): Effect.Effect<void, McpServerError> => {
     if (provider === "claudeAgent") {
       return Effect.gen(function* () {
-        const config = yield* readClaudeConfig(fs, claudeConfigPath);
-        const mcpServers = config.mcpServers ?? {};
+        // Validate name at the service boundary before touching disk.
+        const validName = yield* validateName(name);
 
-        if (!(name in mcpServers)) {
-          // Return yield* signals a definitive exit point for type narrowing (Effect plugin rule).
-          return yield* new McpServerError({
-            detail: `MCP server "${name}" not found for provider "${provider}"`,
-          });
-        }
+        // Acquire the mutex only around the R-M-W section to prevent concurrent writes.
+        yield* claudeConfigMutex.withPermits(1)(
+          Effect.gen(function* () {
+            const config = yield* readClaudeConfig(fs, claudeConfigPath);
+            const mcpServers = config.mcpServers ?? {};
 
-        // Build a new mcpServers object without the deleted entry.
-        const { [name]: _removed, ...remaining } = mcpServers;
-        const updated: ClaudeConfig = {
-          ...config,
-          mcpServers: remaining,
-        };
+            if (!(validName in mcpServers)) {
+              // yield* on a TaggedError is shorthand for Effect.fail(new Error(...)). Enabled by the Effect TS plugin.
+              return yield* new McpServerError({
+                detail: `MCP server "${validName}" not found for provider "${provider}"`,
+              });
+            }
 
-        yield* writeClaudeConfig(fs, claudeConfigPath, updated);
+            // Build a new mcpServers object without the deleted entry.
+            const { [validName]: _removed, ...remaining } = mcpServers;
+            const updated: ClaudeConfig = {
+              ...config,
+              mcpServers: remaining,
+            };
+
+            yield* writeClaudeConfig(fs, claudeConfigPath, updated);
+          }),
+        );
       });
     }
 
