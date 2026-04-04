@@ -8,6 +8,7 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 - Reuses the same orchestration read model and shared contracts as the desktop and web apps.
 - Mirrors the desktop visual language with a card-based, chat-first SwiftUI shell.
 - Supports pairing, session refresh, prompt submission, diff review, approval responses, and device management.
+- Uses a QR-first pairing flow so you can scan the desktop tab or paste a pairing code without hunting for auth tokens.
 
 ## Architecture
 
@@ -28,6 +29,12 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 2. Open `apps/mobile/BirdCode.xcodeproj` in Xcode.
 
 3. Run the desktop/server app first so the mobile app has a session to pair with.
+
+## Pairing flow
+
+- Open the desktop app and go to the `Mobile` settings tab to show a QR code.
+- On iPhone, open Bird Code, tap `Settings`, then use the `Pair` tab to scan the QR or paste the pairing code.
+- The `Advanced` tab keeps manual connection fields available if you need them, but they are no longer part of the default flow.
 
 ## Status
 

@@ -9,13 +9,13 @@ enum MobileAPIClientError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .invalidURL:
-      return "The desktop server URL is invalid."
+      return "Paste a desktop QR or a full server address like http://192.168.0.10:3773."
     case .invalidResponse:
       return "The server returned an unreadable response."
     case .httpStatus(let status, let message):
       return "Server error \(status): \(message)"
     case .missingDeviceToken:
-      return "Pair the app with a desktop server first."
+      return "Pair Bird Code from the settings screen first."
     }
   }
 }

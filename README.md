@@ -12,6 +12,17 @@ It also includes an iOS-first companion app that mirrors the desktop UI and lets
 > - Codex: install [Codex CLI](https://github.com/openai/codex) and run `codex login`
 > - Claude: install Claude Code and run `claude auth login`
 
+## Local development
+
+Install dependencies, then start the app with Bun:
+
+```bash
+bun install
+bun run dev
+```
+
+If you only want the web app, use `bun run dev:web`. For the desktop app, use `bun run dev:desktop`.
+
 ### Run without installing
 
 ```bash
@@ -43,6 +54,12 @@ yay -S t3code-bin
 ## iOS companion
 
 The iPhone companion lives in [`apps/mobile`](./apps/mobile). It is a native SwiftUI app that connects to the desktop session through the server's mobile relay routes and reuses the same orchestration read model and styling language as the desktop app.
+
+Pairing is QR-first:
+
+- Open the desktop app's `Mobile` settings tab to show the QR and pairing code.
+- On iPhone, open Bird Code, go to `Settings`, then use the `Pair` tab to scan or paste the code.
+- The `Advanced` tab keeps the server URL and auth token fields only for edge cases.
 
 To generate the Xcode project locally:
 

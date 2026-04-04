@@ -75,6 +75,25 @@ final class MobileAppStore {
     return url
   }
 
+  func pairingSharePayload() -> BirdCodePairingPayload? {
+    guard let baseURL = normalizeServerURL(serverURLInput) else {
+      return nil
+    }
+    return BirdCodePairingPayload(
+      serverURL: baseURL.absoluteString,
+      deviceToken: deviceToken,
+      deviceName: deviceNameInput,
+    )
+  }
+
+  func pairingShareCode() -> String? {
+    guard let payload = pairingSharePayload() else {
+      return nil
+    }
+    let encoded = BirdCodePairingCodec.encode(payload)
+    return encoded.isEmpty ? nil : encoded
+  }
+
   func restoreSessionIfPossible() async {
     if !serverURLInput.isEmpty, deviceToken != nil {
       await refreshSnapshot()
@@ -118,6 +137,45 @@ final class MobileAppStore {
     } catch {
       errorMessage = error.localizedDescription
     }
+  }
+
+  func importPairingCode(_ rawValue: String) async {
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      errorMessage = "Paste a Bird Code QR or a desktop server URL."
+      return
+    }
+
+    guard let payload = BirdCodePairingCodec.decode(trimmed) else {
+      errorMessage = "That code is not a valid Bird Code pairing link."
+      return
+    }
+
+    if let baseURL = normalizeServerURL(payload.serverURL) {
+      serverURLInput = baseURL.absoluteString
+    } else {
+      errorMessage = MobileAPIClientError.invalidURL.localizedDescription
+      return
+    }
+
+    if let deviceName = payload.deviceName, !deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      deviceNameInput = deviceName
+    }
+
+    saveConnectionPreferences()
+
+    if let deviceToken = payload.deviceToken, !deviceToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      self.deviceToken = deviceToken
+      KeychainStore.writeString(deviceToken, account: StorageKey.deviceToken)
+      lastPairCode = nil
+      await refreshSnapshot()
+      await refreshDevices()
+      startPolling()
+      statusMessage = "Imported pairing code."
+      return
+    }
+
+    await connectAndPair()
   }
 
   func refreshSnapshot() async {
@@ -317,6 +375,7 @@ final class MobileAppStore {
     diffEnvelope = nil
     devices = []
     lastPairCode = nil
+    desktopAuthTokenInput = ""
     stopPolling()
     KeychainStore.deleteString(account: StorageKey.deviceToken)
     KeychainStore.deleteString(account: "\(StorageKey.deviceToken).pairCode")

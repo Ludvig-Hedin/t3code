@@ -256,6 +256,87 @@ struct MobilePairRequestBody: Codable, Hashable {
   let desktopAuthToken: String?
 }
 
+struct BirdCodePairingPayload: Codable, Hashable {
+  static let kindValue = "birdcode-pairing"
+  static let versionValue = 1
+
+  let kind: String
+  let version: Int
+  let serverURL: String
+  let deviceToken: String?
+  let deviceName: String?
+
+  init(serverURL: String, deviceToken: String? = nil, deviceName: String? = nil) {
+    kind = Self.kindValue
+    version = Self.versionValue
+    self.serverURL = serverURL
+    self.deviceToken = deviceToken
+    self.deviceName = deviceName
+  }
+}
+
+enum BirdCodePairingCodec {
+  static func encode(_ payload: BirdCodePairingPayload) -> String {
+    guard
+      let data = try? JSONEncoder.birdCode().encode(payload),
+      let json = String(data: data, encoding: .utf8)
+    else {
+      return ""
+    }
+
+    var components = URLComponents()
+    components.scheme = "birdcode"
+    components.host = "pair"
+    components.queryItems = [URLQueryItem(name: "payload", value: json)]
+    return components.string ?? json
+  }
+
+  static func decode(_ rawValue: String) -> BirdCodePairingPayload? {
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    if let url = URL(string: trimmed), url.scheme?.lowercased() == "birdcode" {
+      return decode(from: url)
+    }
+
+    if trimmed.first == "{", trimmed.last == "}" {
+      return decodeJSON(trimmed)
+    }
+
+    if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+      return BirdCodePairingPayload(serverURL: trimmed)
+    }
+
+    return BirdCodePairingPayload(serverURL: trimmed)
+  }
+
+  static func decode(from url: URL) -> BirdCodePairingPayload? {
+    let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    if let payload = components?.queryItems?.first(where: { $0.name == "payload" })?.value {
+      return decodeJSON(payload)
+    }
+
+    let serverURL = components?.queryItems?.first(where: { $0.name == "serverURL" })?.value
+    let deviceToken = components?.queryItems?.first(where: { $0.name == "deviceToken" })?.value
+    let deviceName = components?.queryItems?.first(where: { $0.name == "deviceName" })?.value
+    guard let serverURL else { return nil }
+    return BirdCodePairingPayload(
+      serverURL: serverURL,
+      deviceToken: deviceToken,
+      deviceName: deviceName,
+    )
+  }
+
+  private static func decodeJSON(_ rawValue: String) -> BirdCodePairingPayload? {
+    guard let data = rawValue.data(using: .utf8) else { return nil }
+    let payload = try? JSONDecoder.birdCode().decode(BirdCodePairingPayload.self, from: data)
+    guard payload?.kind == BirdCodePairingPayload.kindValue, payload?.version == BirdCodePairingPayload.versionValue else {
+      return nil
+    }
+    return payload
+  }
+}
+
 struct MobileRevokeRequestBody: Codable, Hashable {
   let deviceId: String
 }

@@ -3,6 +3,9 @@ import CoreImage.CIFilterBuiltins
 import Observation
 import SwiftUI
 import UIKit
+#if canImport(VisionKit)
+import VisionKit
+#endif
 
 enum MobileTheme {
   static let accent = Color(red: 0.18, green: 0.42, blue: 0.97)
@@ -50,13 +53,15 @@ struct MobileRootView: View {
 @MainActor
 struct MobilePairingView: View {
   @Bindable var store: MobileAppStore
+  @State private var pairingCodeInput = ""
+  @State private var isShowingScanner = false
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 18) {
         MobileBrandHeader(
           title: "Bird Code",
-          subtitle: "Pair your desktop session and keep the same workflow on iPhone.",
+          subtitle: "Scan a QR or paste a pairing code to bring your desktop session onto iPhone.",
         )
 
         if let errorMessage = store.errorMessage {
@@ -78,82 +83,100 @@ struct MobilePairingView: View {
         MobileCard {
           VStack(alignment: .leading, spacing: 14) {
             MobileSectionHeading(
-              title: "Pairing",
-              subtitle: "Enter the server URL from the desktop app, then pair this device.",
+              title: "Pair a device",
+              subtitle: "Use the desktop QR if you have one. Otherwise paste the server URL and pair.",
             )
 
-            MobileField(label: "Desktop server URL") {
-              TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
+            MobileField(label: "Pairing code or desktop URL") {
+              TextField("Scan a QR or paste a Bird Code pairing link", text: $pairingCodeInput, axis: .vertical)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
-                .textContentType(.URL)
+                .lineLimit(2...4)
                 .padding(.vertical, 12)
             }
 
-            MobileField(label: "Desktop auth token") {
-              SecureField("Optional auth token", text: $store.desktopAuthTokenInput)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .padding(.vertical, 12)
-            }
-
-            MobileField(label: "Device name") {
-              TextField("iPhone", text: $store.deviceNameInput)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .padding(.vertical, 12)
-            }
-
-            Button {
-              Task {
-                await store.connectAndPair()
+            HStack(spacing: 10) {
+              Button {
+                isShowingScanner = true
+              } label: {
+                Label("Scan QR", systemImage: "qrcode.viewfinder")
               }
-            } label: {
-              HStack(spacing: 10) {
-                if store.isPairing {
-                  ProgressView()
-                    .tint(.white)
-                } else {
-                  Image(systemName: "link.circle.fill")
-                    .font(.system(size: 16, weight: .semibold))
+              .buttonStyle(MobileSecondaryButtonStyle())
+
+              Button {
+                Task {
+                  if pairingCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    await store.connectAndPair()
+                  } else {
+                    await store.importPairingCode(pairingCodeInput)
+                  }
                 }
-                Text(store.isPairing ? "Pairing…" : "Pair with desktop")
-                  .fontWeight(.semibold)
+              } label: {
+                HStack(spacing: 10) {
+                  if store.isPairing {
+                    ProgressView()
+                      .tint(.white)
+                  } else {
+                    Image(systemName: "link.circle.fill")
+                      .font(.system(size: 16, weight: .semibold))
+                  }
+                  Text(store.isPairing ? "Pairing…" : "Pair device")
+                    .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
               }
-              .frame(maxWidth: .infinity)
+              .buttonStyle(MobilePrimaryButtonStyle())
+              .disabled(store.isPairing)
             }
-            .buttonStyle(MobilePrimaryButtonStyle())
-            .disabled(store.isPairing)
+
+            Text(
+              "This stays simple: scan the desktop QR, or paste the exact server address if that’s easier."
+            )
+            .font(.caption)
+            .foregroundStyle(MobileTheme.muted)
           }
         }
 
         MobileCard {
           VStack(alignment: .leading, spacing: 14) {
             MobileSectionHeading(
-              title: "QR and short code",
-              subtitle: "Scan or share this pairing payload when you want a faster reconnect path.",
+              title: "Share this device",
+              subtitle: store.deviceToken == nil
+                ? "Pair a desktop first to generate a share code for other devices."
+                : "Use this QR or code on another phone or tablet to connect instantly.",
             )
 
-            HStack(alignment: .center, spacing: 16) {
-              QRCodeView(
-                payload: pairingPayload,
-                label: "Bird Code pairing QR",
-              )
-              .frame(width: 144, height: 144)
+            if let shareCode = store.pairingShareCode() {
+              HStack(alignment: .center, spacing: 16) {
+                QRCodeView(
+                  payload: shareCode,
+                  label: "Bird Code pairing QR",
+                )
+                .frame(width: 144, height: 144)
 
-              VStack(alignment: .leading, spacing: 8) {
-                Text("Short code")
-                  .font(.caption)
-                  .foregroundStyle(MobileTheme.muted)
-                  .textCase(.uppercase)
-                  .tracking(0.8)
-                Text(store.lastPairCode ?? "Awaiting pair")
-                  .font(.system(.title2, design: .rounded, weight: .semibold))
-                Text("The desktop keeps execution authority. This phone only sends commands and reads state.")
-                  .font(.callout)
-                  .foregroundStyle(MobileTheme.muted)
+                VStack(alignment: .leading, spacing: 8) {
+                  Text("Pairing link")
+                    .font(.caption)
+                    .foregroundStyle(MobileTheme.muted)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+                  Text(shareCode)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(MobileTheme.foreground)
+                    .textSelection(.enabled)
+                    .lineLimit(5)
+                  Text("The code includes only the server address until the device has paired, then it becomes a quick reconnect link.")
+                    .font(.callout)
+                    .foregroundStyle(MobileTheme.muted)
+                }
               }
+            } else {
+              MobileEmptyStateCard(
+                title: "No pairing link yet",
+                subtitle: "Enter a server address above to generate a QR for another device.",
+                symbol: "qrcode",
+              )
             }
           }
         }
@@ -162,7 +185,7 @@ struct MobilePairingView: View {
           VStack(alignment: .leading, spacing: 12) {
             MobileSectionHeading(
               title: "What this app does",
-              subtitle: "It mirrors the desktop session, review flow, and approval path.",
+              subtitle: "Bird Code mirrors the desktop session, review flow, and approval path.",
             )
             ForEach([
               "Chat with the active thread and send prompts.",
@@ -174,18 +197,69 @@ struct MobilePairingView: View {
             }
           }
         }
+
+        MobileCard {
+          VStack(alignment: .leading, spacing: 12) {
+            MobileSectionHeading(
+              title: "Advanced connection",
+              subtitle: "Only use this if your desktop needs a protected server URL or custom device name.",
+            )
+
+            DisclosureGroup("Show advanced fields") {
+              VStack(alignment: .leading, spacing: 12) {
+                MobileField(label: "Desktop server URL") {
+                  TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .textContentType(.URL)
+                    .padding(.vertical, 12)
+                }
+
+                MobileField(label: "Desktop auth token") {
+                  SecureField("Optional auth token", text: $store.desktopAuthTokenInput)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(.vertical, 12)
+                }
+
+                MobileField(label: "Device name") {
+                  TextField("iPhone", text: $store.deviceNameInput)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .padding(.vertical, 12)
+                }
+
+                HStack(spacing: 10) {
+                  Button("Save") {
+                    store.saveConnectionPreferences()
+                  }
+                  .buttonStyle(MobileSecondaryButtonStyle())
+
+                  Button("Forget device") {
+                    store.clearSession()
+                  }
+                  .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.warning))
+                }
+              }
+              .padding(.top, 8)
+            }
+            .tint(MobileTheme.accent)
+          }
+        }
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 20)
     }
-  }
-
-  private var pairingPayload: String {
-    let server = store.serverURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
-    let device = store.deviceNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-    let token = store.desktopAuthTokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
-    let parts = [server, device, token].filter { !$0.isEmpty }
-    return parts.isEmpty ? "Bird Code" : parts.joined(separator: "\n")
+    .sheet(isPresented: $isShowingScanner) {
+      MobileQRCodeScannerSheet { scannedText in
+        pairingCodeInput = scannedText
+        isShowingScanner = false
+        Task {
+          await store.importPairingCode(scannedText)
+        }
+      }
+    }
   }
 }
 
@@ -564,6 +638,25 @@ struct MobileComposerCard: View {
 struct MobileSettingsSheet: View {
   @Bindable var store: MobileAppStore
   @Environment(\.dismiss) private var dismiss
+  @State private var selectedTab: MobileSettingsTab = .pair
+  @State private var pairingCodeInput = ""
+  @State private var isShowingScanner = false
+
+  private enum MobileSettingsTab: String, CaseIterable, Identifiable {
+    case pair
+    case devices
+    case advanced
+
+    var id: String { rawValue }
+
+    var title: String {
+      switch self {
+      case .pair: return "Pair"
+      case .devices: return "Devices"
+      case .advanced: return "Advanced"
+      }
+    }
+  }
 
   var body: some View {
     NavigationStack {
@@ -571,110 +664,23 @@ struct MobileSettingsSheet: View {
         VStack(alignment: .leading, spacing: 16) {
           MobileBrandHeader(
             title: "Settings",
-            subtitle: "Manage the paired device, connection details, and desktop sync state.",
+            subtitle: "Pair other devices, review connected devices, and manage advanced connection details.",
           )
 
-          MobileCard {
-            VStack(alignment: .leading, spacing: 12) {
-              MobileSectionHeading(
-                title: "Connection",
-                subtitle: "Keep these values aligned with the desktop server.",
-              )
-
-              MobileField(label: "Server URL") {
-                TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
-                  .textInputAutocapitalization(.never)
-                  .autocorrectionDisabled()
-                  .keyboardType(.URL)
-                  .padding(.vertical, 12)
-              }
-
-              MobileField(label: "Device name") {
-                TextField("iPhone", text: $store.deviceNameInput)
-                  .textInputAutocapitalization(.words)
-                  .autocorrectionDisabled()
-                  .padding(.vertical, 12)
-              }
-
-              MobileField(label: "Desktop auth token") {
-                SecureField("Optional auth token", text: $store.desktopAuthTokenInput)
-                  .textInputAutocapitalization(.never)
-                  .autocorrectionDisabled()
-                  .padding(.vertical, 12)
-              }
-
-              HStack(spacing: 10) {
-                Button("Save") {
-                  store.saveConnectionPreferences()
-                }
-                .buttonStyle(MobilePrimaryButtonStyle())
-
-                Button("Refresh") {
-                  Task {
-                    await store.refreshSnapshot()
-                    await store.refreshDevices()
-                  }
-                }
-                .buttonStyle(MobileSecondaryButtonStyle())
-              }
+          Picker("Settings", selection: $selectedTab) {
+            ForEach(MobileSettingsTab.allCases) { tab in
+              Text(tab.title).tag(tab)
             }
           }
+          .pickerStyle(.segmented)
 
-          MobileCard {
-            VStack(alignment: .leading, spacing: 12) {
-              MobileSectionHeading(
-                title: "Paired devices",
-                subtitle: "Revoke stale devices if you need to lock the session down.",
-              )
-
-              if store.devices.isEmpty {
-                Text("No paired devices yet.")
-                  .foregroundStyle(MobileTheme.muted)
-              } else {
-                LazyVStack(spacing: 10) {
-                  ForEach(store.devices) { device in
-                    HStack(alignment: .top, spacing: 12) {
-                      VStack(alignment: .leading, spacing: 4) {
-                        Text(device.deviceName)
-                          .font(.headline)
-                        Text("Code \(device.pairCode)")
-                          .font(.caption)
-                          .foregroundStyle(MobileTheme.muted)
-                        Text("Seen \(device.lastSeenAt, style: .relative)")
-                          .font(.caption2)
-                          .foregroundStyle(MobileTheme.muted)
-                      }
-                      Spacer(minLength: 12)
-                      if device.id == store.pairedDevice?.id {
-                        MobileStatusPill(text: "Current", tint: MobileTheme.success)
-                      } else {
-                        Button("Revoke") {
-                          Task { await store.revokeDevice(device) }
-                        }
-                        .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.danger))
-                      }
-                    }
-                    if device.id != store.devices.last?.id {
-                      Divider()
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          MobileCard {
-            VStack(alignment: .leading, spacing: 12) {
-              MobileSectionHeading(
-                title: "Session actions",
-                subtitle: "Clear local session data if you need to reconnect cleanly.",
-              )
-
-              Button("Forget device") {
-                store.clearSession()
-              }
-              .buttonStyle(MobileSecondaryButtonStyle())
-            }
+          switch selectedTab {
+          case .pair:
+            settingsPairTab
+          case .devices:
+            settingsDevicesTab
+          case .advanced:
+            settingsAdvancedTab
           }
         }
         .padding(.horizontal, 16)
@@ -687,6 +693,239 @@ struct MobileSettingsSheet: View {
           Button("Done") {
             dismiss()
           }
+        }
+      }
+    }
+    .sheet(isPresented: $isShowingScanner) {
+      MobileQRCodeScannerSheet { scannedText in
+        pairingCodeInput = scannedText
+        isShowingScanner = false
+        Task {
+          await store.importPairingCode(scannedText)
+        }
+      }
+    }
+  }
+
+  private var settingsPairTab: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      MobileCard {
+        VStack(alignment: .leading, spacing: 14) {
+          MobileSectionHeading(
+            title: "Pair a device",
+            subtitle: "Scan the desktop QR or paste the code from another device.",
+          )
+
+          MobileField(label: "Pairing code or desktop URL") {
+            TextField("Scan a QR or paste a Bird Code pairing link", text: $pairingCodeInput, axis: .vertical)
+              .textInputAutocapitalization(.never)
+              .autocorrectionDisabled()
+              .keyboardType(.URL)
+              .lineLimit(2...4)
+              .padding(.vertical, 12)
+          }
+
+          HStack(spacing: 10) {
+            Button {
+              isShowingScanner = true
+            } label: {
+              Label("Scan QR", systemImage: "qrcode.viewfinder")
+            }
+            .buttonStyle(MobileSecondaryButtonStyle())
+
+            Button {
+              Task {
+                if pairingCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                  await store.connectAndPair()
+                } else {
+                  await store.importPairingCode(pairingCodeInput)
+                }
+              }
+            } label: {
+              HStack(spacing: 10) {
+                if store.isPairing {
+                  ProgressView()
+                    .tint(.white)
+                } else {
+                  Image(systemName: "link.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                }
+                Text(store.isPairing ? "Pairing…" : "Pair device")
+                  .fontWeight(.semibold)
+              }
+              .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(MobilePrimaryButtonStyle())
+            .disabled(store.isPairing)
+          }
+        }
+      }
+
+      MobileCard {
+        VStack(alignment: .leading, spacing: 14) {
+          MobileSectionHeading(
+            title: "Pairing code",
+            subtitle: store.deviceToken == nil
+              ? "Once you pair the desktop, Bird Code can generate a share code for other devices."
+              : "Scan or paste this code on another device to connect instantly.",
+          )
+
+          if let shareCode = store.pairingShareCode() {
+            HStack(alignment: .center, spacing: 16) {
+              QRCodeView(
+                payload: shareCode,
+                label: "Bird Code pairing QR",
+              )
+              .frame(width: 144, height: 144)
+
+              VStack(alignment: .leading, spacing: 8) {
+                Text("Share code")
+                  .font(.caption)
+                  .foregroundStyle(MobileTheme.muted)
+                  .textCase(.uppercase)
+                  .tracking(0.8)
+                Text(shareCode)
+                  .font(.system(.caption, design: .monospaced))
+                  .foregroundStyle(MobileTheme.foreground)
+                  .textSelection(.enabled)
+                  .lineLimit(5)
+                Text("The QR contains the desktop server address. After pairing, it also carries the device token for quick reconnects.")
+                  .font(.callout)
+                  .foregroundStyle(MobileTheme.muted)
+              }
+            }
+          } else {
+            MobileEmptyStateCard(
+              title: "No pairing code yet",
+              subtitle: "Enter a desktop URL or scan the QR from the desktop settings screen.",
+              symbol: "qrcode",
+            )
+          }
+        }
+      }
+    }
+  }
+
+  private var settingsDevicesTab: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      MobileCard {
+        VStack(alignment: .leading, spacing: 12) {
+          MobileSectionHeading(
+            title: "Connected device",
+            subtitle: store.pairedDevice.map { "Bird Code is paired to \($0.deviceName)." } ?? "No active pairing yet.",
+          )
+
+          MobileConnectionSummaryCard(store: store)
+        }
+      }
+
+      MobileCard {
+        VStack(alignment: .leading, spacing: 12) {
+          MobileSectionHeading(
+            title: "Other devices",
+            subtitle: "Revoke stale devices if you want to lock the session down.",
+          )
+
+          if store.devices.isEmpty {
+            Text("No paired devices yet.")
+              .foregroundStyle(MobileTheme.muted)
+          } else {
+            LazyVStack(spacing: 10) {
+              ForEach(store.devices) { device in
+                HStack(alignment: .top, spacing: 12) {
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text(device.deviceName)
+                      .font(.headline)
+                    Text("Code \(device.pairCode)")
+                      .font(.caption)
+                      .foregroundStyle(MobileTheme.muted)
+                    Text("Seen \(device.lastSeenAt, style: .relative)")
+                      .font(.caption2)
+                      .foregroundStyle(MobileTheme.muted)
+                  }
+                  Spacer(minLength: 12)
+                  if device.id == store.pairedDevice?.id {
+                    MobileStatusPill(text: "Current", tint: MobileTheme.success)
+                  } else {
+                    Button("Revoke") {
+                      Task { await store.revokeDevice(device) }
+                    }
+                    .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.danger))
+                  }
+                }
+                if device.id != store.devices.last?.id {
+                  Divider()
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private var settingsAdvancedTab: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      MobileCard {
+        VStack(alignment: .leading, spacing: 12) {
+          MobileSectionHeading(
+            title: "Connection",
+            subtitle: "Only edit this if you need to repoint Bird Code at a protected desktop.",
+          )
+
+          MobileField(label: "Server URL") {
+            TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
+              .textInputAutocapitalization(.never)
+              .autocorrectionDisabled()
+              .keyboardType(.URL)
+              .padding(.vertical, 12)
+          }
+
+          MobileField(label: "Device name") {
+            TextField("iPhone", text: $store.deviceNameInput)
+              .textInputAutocapitalization(.words)
+              .autocorrectionDisabled()
+              .padding(.vertical, 12)
+          }
+
+          DisclosureGroup("Desktop auth token") {
+            MobileField(label: "Auth token") {
+              SecureField("Only if your desktop asks for one", text: $store.desktopAuthTokenInput)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(.vertical, 12)
+            }
+            .padding(.top, 8)
+          }
+
+          HStack(spacing: 10) {
+            Button("Save") {
+              store.saveConnectionPreferences()
+            }
+            .buttonStyle(MobilePrimaryButtonStyle())
+
+            Button("Refresh") {
+              Task {
+                await store.refreshSnapshot()
+                await store.refreshDevices()
+              }
+            }
+            .buttonStyle(MobileSecondaryButtonStyle())
+          }
+        }
+      }
+
+      MobileCard {
+        VStack(alignment: .leading, spacing: 12) {
+          MobileSectionHeading(
+            title: "Session actions",
+            subtitle: "Clear local session data if you need to reconnect cleanly.",
+          )
+
+          Button("Forget device") {
+            store.clearSession()
+          }
+          .buttonStyle(MobileSecondaryButtonStyle())
         }
       }
     }
@@ -1360,6 +1599,110 @@ private struct QRCodeView: View {
     return Image(decorative: cgImage, scale: 1, orientation: .up)
   }
 }
+
+#if canImport(VisionKit)
+private struct MobileQRCodeScannerSheet: View {
+  let onScan: (String) -> Void
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      Group {
+        if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+          MobileQRCodeScannerView(onScan: onScan)
+            .ignoresSafeArea()
+        } else {
+          VStack(spacing: 16) {
+            MobileEmptyStateCard(
+              title: "Camera scanning isn’t available here",
+              subtitle: "Use the pairing code field on the previous screen or open Bird Code on a device with camera access.",
+              symbol: "qrcode.viewfinder",
+            )
+
+            Button("Close") {
+              dismiss()
+            }
+            .buttonStyle(MobilePrimaryButtonStyle())
+          }
+          .padding(16)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .background(MobileTheme.background)
+        }
+      }
+      .navigationTitle("Scan QR")
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") {
+            dismiss()
+          }
+        }
+      }
+    }
+  }
+}
+
+private struct MobileQRCodeScannerView: UIViewControllerRepresentable {
+  let onScan: (String) -> Void
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(onScan: onScan)
+  }
+
+  func makeUIViewController(context: Context) -> DataScannerViewController {
+    let controller = DataScannerViewController(
+      recognizedDataTypes: [.barcode(symbologies: [.qr])],
+      qualityLevel: .balanced,
+      recognizesMultipleItems: false,
+      isHighFrameRateTrackingEnabled: false,
+      isHighlightingEnabled: true,
+    )
+    controller.delegate = context.coordinator
+    context.coordinator.controller = controller
+    DispatchQueue.main.async {
+      try? controller.startScanning()
+    }
+    return controller
+  }
+
+  func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {}
+
+  static func dismantleUIViewController(
+    _ uiViewController: DataScannerViewController,
+    coordinator: Coordinator,
+  ) {
+    uiViewController.stopScanning()
+    coordinator.controller = nil
+  }
+
+  @MainActor
+  final class Coordinator: NSObject, DataScannerViewControllerDelegate {
+    var controller: DataScannerViewController?
+    private var isResolved = false
+    private let onScan: (String) -> Void
+
+    init(onScan: @escaping (String) -> Void) {
+      self.onScan = onScan
+    }
+
+    func dataScanner(
+      _ dataScanner: DataScannerViewController,
+      didAdd addedItems: [RecognizedItem],
+      allItems: [RecognizedItem],
+    ) {
+      guard !isResolved else { return }
+      for item in addedItems {
+        guard case let .barcode(barcode) = item, let payload = barcode.payloadStringValue, !payload.isEmpty else {
+          continue
+        }
+        isResolved = true
+        dataScanner.stopScanning()
+        onScan(payload)
+        break
+      }
+    }
+  }
+}
+#endif
 
 private func relativeDateString(_ date: Date) -> String {
   let formatter = RelativeDateTimeFormatter()

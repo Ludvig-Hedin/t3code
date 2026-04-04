@@ -13,13 +13,11 @@
 		6A257D3C20509E647495B6D3 /* MobileModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A59017220D382D29BA02754 /* MobileModels.swift */; };
 		8FF7363A43148102A3AC302B /* MobileAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AE0A2966713EDD8BE95F457 /* MobileAPIClient.swift */; };
 		EE4D4868413D2C40B3408E9E /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A0109CE38F9C84156A219C /* KeychainStore.swift */; };
-		F08D11E5B4B2474E8F5F4D8C /* logo-dark.png in Resources */ = {isa = PBXBuildFile; fileRef = 6C35D5A6C3C247D5A2BEE5BF /* logo-dark.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		2AE0A2966713EDD8BE95F457 /* MobileAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAPIClient.swift; sourceTree = "<group>"; };
 		4C7E76FF84BD18E5C091515D /* BirdCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdCodeApp.swift; sourceTree = "<group>"; };
-		6C35D5A6C3C247D5A2BEE5BF /* logo-dark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = logo-dark.png; sourceTree = "<group>"; };
 		60E747A41E154A37A5D7F7BE /* MobileScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileScreens.swift; sourceTree = "<group>"; };
 		7A59017220D382D29BA02754 /* MobileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModels.swift; sourceTree = "<group>"; };
 		B2A0109CE38F9C84156A219C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -28,14 +26,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		1D3FA1EB3A264B82A1F1D979 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				6C35D5A6C3C247D5A2BEE5BF /* logo-dark.png */,
-			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
 		27535503988F27BCAE12FADB /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -78,7 +68,6 @@
 			isa = PBXGroup;
 			children = (
 				72E67A2658635EFEE47091F7 /* BirdCode */,
-				1D3FA1EB3A264B82A1F1D979 /* Resources */,
 				B96375530D21E725F52E0D14 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,7 +95,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 4BA87EB630479FA1CBCDD227 /* Build configuration list for PBXNativeTarget "BirdCode" */;
 			buildPhases = (
-				6D0F724A0F1D43B6A6AB9B48 /* Resources */,
 				604A1EFD60D2F3D57A2927F8 /* Sources */,
 			);
 			buildRules = (
@@ -121,17 +109,6 @@
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
-
-/* Begin PBXResourcesBuildPhase section */
-		6D0F724A0F1D43B6A6AB9B48 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				F08D11E5B4B2474E8F5F4D8C /* logo-dark.png in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXProject section */
 		AD62DCE9F2B2ED6A1B2793BF /* Project object */ = {
@@ -254,6 +231,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_CFBundleDisplayName = "Bird Code";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan Bird Code pairing QR codes from your desktop or other devices.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -274,6 +252,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_CFBundleDisplayName = "Bird Code";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan Bird Code pairing QR codes from your desktop or other devices.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
