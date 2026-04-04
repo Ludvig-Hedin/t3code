@@ -580,6 +580,7 @@ describe("incremental orchestration updates", () => {
 
     expect(next.threads[0]?.turnDiffSummaries).toHaveLength(1);
     expect(next.threads[0]?.latestTurn).toEqual(state.threads[0]?.latestTurn);
+    expect(next.sidebarThreadsById[ThreadId.makeUnsafe("thread-1")]?.latestTurnDiffStat).toBeNull();
   });
 
   it("rebinds live turn diffs to the authoritative assistant message when it arrives later", () => {

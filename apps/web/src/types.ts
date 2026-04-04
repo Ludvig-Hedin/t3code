@@ -124,6 +124,7 @@ export interface SidebarThreadSummary {
   branch: string | null;
   worktreePath: string | null;
   latestUserMessageAt: string | null;
+  latestTurnDiffStat: { additions: number; deletions: number } | null;
   hasPendingApprovals: boolean;
   hasPendingUserInput: boolean;
   hasActionableProposedPlan: boolean;

@@ -19,6 +19,7 @@ import {
   derivePendingApprovals,
   derivePendingUserInputs,
 } from "./session-logic";
+import { summarizeTurnDiffStats } from "./lib/turnDiffTree";
 import { type ChatMessage, type Project, type SidebarThreadSummary, type Thread } from "./types";
 
 // ── State ────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ function updateProject(
   return changed ? next : projects;
 }
 
-function normalizeModelSelection<T extends { provider: "codex" | "claudeAgent"; model: string }>(
+function normalizeModelSelection<T extends { provider: ProviderKind; model: string }>(
   selection: T,
 ): T {
   return {
@@ -210,6 +211,7 @@ function getLatestUserMessageAt(
 }
 
 function buildSidebarThreadSummary(thread: Thread): SidebarThreadSummary {
+  const latestTurnDiffStat = resolveLatestTurnDiffStat(thread);
   return {
     id: thread.id,
     projectId: thread.projectId,
@@ -223,12 +225,30 @@ function buildSidebarThreadSummary(thread: Thread): SidebarThreadSummary {
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     latestUserMessageAt: getLatestUserMessageAt(thread.messages),
+    latestTurnDiffStat,
     hasPendingApprovals: derivePendingApprovals(thread.activities).length > 0,
     hasPendingUserInput: derivePendingUserInputs(thread.activities).length > 0,
     hasActionableProposedPlan: hasActionableProposedPlan(
       findLatestProposedPlan(thread.proposedPlans, thread.latestTurn?.turnId ?? null),
     ),
   };
+}
+
+function resolveLatestTurnDiffStat(
+  thread: Pick<Thread, "latestTurn" | "turnDiffSummaries">,
+): { additions: number; deletions: number } | null {
+  const latestTurnId = thread.latestTurn?.turnId ?? null;
+  const summaries =
+    latestTurnId === null
+      ? thread.turnDiffSummaries
+      : thread.turnDiffSummaries.filter((summary) => summary.turnId === latestTurnId);
+  const latestSummary = summaries.at(-1) ?? null;
+  if (!latestSummary) {
+    return null;
+  }
+
+  const stat = summarizeTurnDiffStats(latestSummary.files);
+  return stat.additions === 0 && stat.deletions === 0 ? null : stat;
 }
 
 function sidebarThreadSummariesEqual(
@@ -249,6 +269,8 @@ function sidebarThreadSummariesEqual(
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
     left.latestUserMessageAt === right.latestUserMessageAt &&
+    left.latestTurnDiffStat?.additions === right.latestTurnDiffStat?.additions &&
+    left.latestTurnDiffStat?.deletions === right.latestTurnDiffStat?.deletions &&
     left.hasPendingApprovals === right.hasPendingApprovals &&
     left.hasPendingUserInput === right.hasPendingUserInput &&
     left.hasActionableProposedPlan === right.hasActionableProposedPlan
@@ -493,7 +515,7 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "claudeAgent") {
+  if (providerName === "codex" || providerName === "claudeAgent" || providerName === "gemini") {
     return providerName;
   }
   return "codex";

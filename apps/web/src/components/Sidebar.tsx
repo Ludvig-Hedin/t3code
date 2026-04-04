@@ -70,6 +70,7 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { gitStatusQueryOptions } from "../lib/gitReactQuery";
+import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -197,6 +198,18 @@ function ThreadStatusLabel({
         }`}
       />
       <span className="hidden md:inline">{status.label}</span>
+    </span>
+  );
+}
+
+function ThreadUnreadCompletionDot() {
+  return (
+    <span
+      aria-hidden="true"
+      title="Unread completion"
+      className="inline-flex w-3.5 shrink-0 items-center justify-center"
+    >
+      <span className="size-2 rounded-full bg-sky-500 dark:bg-sky-300/90" />
     </span>
   );
 }
@@ -363,7 +376,7 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
           }
         }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <div className="flex min-w-0 flex-1 items-center gap-1 text-left">
           {prStatus && (
             <Tooltip>
               <TooltipTrigger
@@ -383,7 +396,17 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
               <TooltipPopup side="top">{prStatus.tooltip}</TooltipPopup>
             </Tooltip>
           )}
-          {threadStatus && <ThreadStatusLabel status={threadStatus} />}
+          {threadStatus?.label === "Completed" ? (
+            <ThreadUnreadCompletionDot />
+          ) : (
+            <span
+              className="inline-flex w-3.5 shrink-0 items-center justify-center"
+              aria-hidden="true"
+            />
+          )}
+          {threadStatus && threadStatus.label !== "Completed" && (
+            <ThreadStatusLabel status={threadStatus} />
+          )}
           {props.renamingThreadId === thread.id ? (
             <input
               ref={(element) => {
@@ -521,15 +544,30 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
                   {props.jumpLabel}
                 </span>
               ) : (
-                <span
-                  className={`text-[10px] ${
-                    isHighlighted
-                      ? "text-foreground/72 dark:text-foreground/82"
-                      : "text-muted-foreground/40"
-                  }`}
-                >
-                  {formatRelativeTimeLabel(thread.updatedAt ?? thread.createdAt)}
-                </span>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  {thread.latestTurnDiffStat &&
+                  (thread.latestTurnDiffStat.additions > 0 ||
+                    thread.latestTurnDiffStat.deletions > 0) ? (
+                    <span
+                      className="inline-flex items-center gap-0.5 tabular-nums"
+                      title={`+${thread.latestTurnDiffStat.additions} / -${thread.latestTurnDiffStat.deletions}`}
+                    >
+                      <DiffStatLabel
+                        additions={thread.latestTurnDiffStat.additions}
+                        deletions={thread.latestTurnDiffStat.deletions}
+                      />
+                    </span>
+                  ) : null}
+                  <span
+                    className={`${
+                      isHighlighted
+                        ? "text-foreground/72 dark:text-foreground/82"
+                        : "text-muted-foreground/40"
+                    }`}
+                  >
+                    {formatRelativeTimeLabel(thread.updatedAt ?? thread.createdAt)}
+                  </span>
+                </div>
               )}
             </span>
           </div>
@@ -886,18 +924,19 @@ export default function Sidebar() {
           projects,
           defaultThreadEnvMode: appSettings.defaultThreadEnvMode,
           handleNewThread: async (projectId, options) => {
-            await handleNewThread(projectId, options).catch(() => undefined);
+            await handleNewThread(ProjectId.makeUnsafe(projectId), options).catch(() => undefined);
           },
           dispatchProjectCreate: async (input) => {
             await api.orchestration.dispatchCommand({
               type: "project.create",
               commandId: newCommandId(),
               ...input,
+              projectId: ProjectId.makeUnsafe(input.projectId),
             });
           },
         });
         if (result.kind === "existing") {
-          focusMostRecentThreadForProject(result.projectId);
+          focusMostRecentThreadForProject(ProjectId.makeUnsafe(result.projectId));
         }
       } catch (error) {
         const description =
