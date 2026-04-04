@@ -4,6 +4,7 @@ import {
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
+  LoaderCircleIcon,
   PlusIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -214,6 +215,18 @@ function ThreadUnreadCompletionDot() {
   );
 }
 
+function ThreadWorkingSpinner() {
+  return (
+    <span
+      aria-hidden="true"
+      title="Working"
+      className="inline-flex w-3.5 shrink-0 items-center justify-center"
+    >
+      <LoaderCircleIcon className="size-3 animate-spin text-sky-500 dark:text-sky-300/90" />
+    </span>
+  );
+}
+
 function terminalStatusFromRunningIds(
   runningTerminalIds: string[],
 ): TerminalStatusIndicator | null {
@@ -398,6 +411,8 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
           )}
           {threadStatus?.label === "Completed" ? (
             <ThreadUnreadCompletionDot />
+          ) : threadStatus?.label === "Working" ? (
+            <ThreadWorkingSpinner />
           ) : (
             <span
               className="inline-flex w-3.5 shrink-0 items-center justify-center"
