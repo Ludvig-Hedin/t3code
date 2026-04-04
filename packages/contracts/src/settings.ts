@@ -34,6 +34,8 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(() => DEFAULT_SIDEBAR_THREAD_SORT_ORDER),
   ),
   timestampFormat: TimestampFormat.pipe(Schema.withDecodingDefault(() => DEFAULT_TIMESTAMP_FORMAT)),
+  // Plugin names the user has explicitly disabled; defaults to empty (all plugins active)
+  disabledPlugins: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
