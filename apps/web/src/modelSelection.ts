@@ -146,6 +146,12 @@ export function resolveAppModelSelection(
   selectedModel: string | null | undefined,
 ): string {
   const resolvedProvider = resolveSelectableProvider(providers, provider);
+  if (resolvedProvider === "gemini") {
+    return (
+      normalizeModelSlug(selectedModel, resolvedProvider) ??
+      getDefaultServerModel(providers, resolvedProvider)
+    );
+  }
   const options = getAppModelOptions(settings, providers, resolvedProvider, selectedModel);
   return (
     resolveSelectableModel(resolvedProvider, selectedModel, options) ??

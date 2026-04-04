@@ -29,6 +29,7 @@ export const PROVIDER_OPTIONS: Array<{
 }> = [
   { value: "codex", label: "Codex", available: true },
   { value: "claudeAgent", label: "Claude", available: true },
+  { value: "gemini", label: "Gemini", available: true },
   { value: "cursor", label: "Cursor", available: false },
 ];
 
@@ -822,6 +823,27 @@ export function hasToolActivityForTurn(
 ): boolean {
   if (!turnId) return false;
   return activities.some((activity) => activity.turnId === turnId && activity.tone === "tool");
+}
+
+export function deriveLatestTurnStartedModel(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): string | null {
+  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    const activity = ordered[index];
+    if (activity?.kind !== "turn.started") {
+      continue;
+    }
+    const payload =
+      activity.payload && typeof activity.payload === "object" && !Array.isArray(activity.payload)
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const model = payload?.model;
+    if (typeof model === "string" && model.trim().length > 0) {
+      return model;
+    }
+  }
+  return null;
 }
 
 export function deriveTimelineEntries(

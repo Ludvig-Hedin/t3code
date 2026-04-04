@@ -210,6 +210,7 @@ async function mountPicker(props: {
   provider: ProviderKind;
   model: string;
   lockedProvider: ProviderKind | null;
+  runtimeModel?: string | null;
   providers?: ReadonlyArray<ServerProvider>;
   triggerVariant?: "ghost" | "outline";
 }) {
@@ -232,6 +233,7 @@ async function mountPicker(props: {
       modelOptionsByProvider={modelOptionsByProvider}
       triggerVariant={props.triggerVariant}
       onProviderModelChange={onProviderModelChange}
+      {...(props.runtimeModel !== undefined ? { runtimeModel: props.runtimeModel } : {})}
     />,
     { container: host },
   );
@@ -459,6 +461,25 @@ describe("ProviderModelPicker", () => {
         "gemini",
         "gemini-3-flash-preview",
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows the runtime Gemini model when the active session falls back", async () => {
+    const mounted = await mountPicker({
+      provider: "gemini",
+      model: "gemini-3.1-pro-preview",
+      runtimeModel: "gemini-2.5-pro",
+      lockedProvider: "gemini",
+    });
+
+    try {
+      const button = document.querySelector("button");
+      if (!(button instanceof HTMLButtonElement)) {
+        throw new Error("Expected picker trigger button to be rendered.");
+      }
+      expect(button.textContent ?? "").toContain("using Gemini 2.5 Pro");
     } finally {
       await mounted.cleanup();
     }

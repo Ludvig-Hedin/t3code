@@ -63,7 +63,7 @@ Source of truth for adding Gemini CLI as a first-class provider in T3 Code.
     - approval requests
     - user-input requests
     - session completion
-  - Current MVP status: the adapter uses a fresh process per turn and keeps lightweight in-memory session history, but tool/approval/user-input loops are still not mapped to Gemini-native interactivity.
+  - Current MVP status: the adapter uses a fresh process per turn and keeps lightweight in-memory session history, Gemini model selection now preserves arbitrary manual slugs, and the picker shows the runtime fallback model when Gemini routes elsewhere. Tool/approval/user-input loops are still not mapped to Gemini-native interactivity.
   - Acceptance criteria: the chosen process model supports restart, interruption, and crash recovery without losing thread ownership.
 
 - [ ] 7. Integrate Gemini authentication and launch configuration
@@ -103,6 +103,7 @@ Source of truth for adding Gemini CLI as a first-class provider in T3 Code.
   - Add adapter tests for session lifecycle, interruption, and error handling.
   - Add UI tests for provider selection and Gemini availability states.
   - Add a regression test for Gemini preview model selection so the picker resolves the selected slug instead of snapping back to the current model.
+  - Add a regression test for runtime-model visibility so the picker shows when Gemini has fallen back to a different slug.
   - Add regression tests for any fallback behavior introduced in server settings.
   - Acceptance criteria: the new provider path is covered by unit tests and the existing test suite still passes.
 

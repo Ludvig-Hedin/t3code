@@ -51,6 +51,7 @@ import {
   findSidebarProposedPlan,
   findLatestProposedPlan,
   deriveWorkLogEntries,
+  deriveLatestTurnStartedModel,
   hasActionableProposedPlan,
   hasToolActivityForTurn,
   isLatestTurnSettled,
@@ -80,6 +81,7 @@ import {
   type ChatMessage,
   type SessionPhase,
   type Thread,
+  type TurnDiffFileChange,
   type TurnDiffSummary,
 } from "../types";
 import { LRUCache } from "../lib/lruCache";
@@ -92,14 +94,13 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
-  BotIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  ListChecksIcon,
   ListTodoIcon,
-  LockIcon,
-  LockOpenIcon,
+  MessageSquareIcon,
   XIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -120,9 +121,13 @@ import { readNativeApi } from "~/nativeApi";
 import {
   getProviderModelCapabilities,
   getProviderModels,
+  getProviderModelsByProvider,
   resolveSelectableProvider,
 } from "../providerModels";
 import { useSettings } from "../hooks/useSettings";
+import { useMessageQueue } from "../hooks/useMessageQueue";
+import { MessageQueue } from "./chat/MessageQueue";
+import { isMacPlatform } from "../lib/utils";
 import { resolveAppModelSelection } from "../modelSelection";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
@@ -581,10 +586,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
     (store) => store.threadLastVisitedAtById[threadId],
   );
   const settings = useSettings();
+  const messageQueue = useMessageQueue();
+  const isMac = useMemo(() => isMacPlatform(navigator.platform), []);
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
   );
   const timestampFormat = settings.timestampFormat;
+  const enterKeyBehavior = settings.enterKeyBehavior;
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
@@ -1031,6 +1039,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedModelForPicker = selectedModel;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
+  const activeRuntimeModel = useMemo(
+    () => deriveLatestTurnStartedModel(threadActivities),
+    [threadActivities],
+  );
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
@@ -1124,6 +1136,32 @@ export default function ChatView({ threadId }: ChatViewProps) {
     threadError: activeThread?.error,
   });
   const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
+
+  // Track phase transitions for auto-sending queued messages
+  const prevPhaseRef = useRef<SessionPhase>(phase);
+  // Flag set when the queue should auto-send on next ready phase
+  const shouldAutoSendQueueRef = useRef(false);
+
+  // Detect phase transition from running → ready
+  useEffect(() => {
+    const prevPhase = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+
+    if (
+      prevPhase === "running" &&
+      phase === "ready" &&
+      messageQueue.queue.length > 0 &&
+      !sendInFlightRef.current &&
+      activePendingApproval === null &&
+      pendingUserInputs.length === 0
+    ) {
+      // Flag for auto-send — the actual send happens in a later effect
+      // after onSend is defined, avoiding stale closure issues
+      shouldAutoSendQueueRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally tracking phase transitions with stable refs
+  }, [phase]);
+
   const nowIso = new Date(nowTick).toISOString();
   const activeWorkStartedAt = deriveActiveWorkStartedAt(
     activeLatestTurn,
@@ -1331,6 +1369,49 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     return byMessageId;
   }, [turnDiffSummaries]);
+
+  // Build a display-only map for the "Changed files" card.
+  // We merge all file changes across every turn of the thread and attach the
+  // result to only the LAST assistant message, so the card appears once at the
+  // end of the chat instead of after every assistant turn.
+  const displayTurnDiffSummaryByAssistantMessageId = useMemo(() => {
+    const byMessageId = new Map<MessageId, TurnDiffSummary>();
+    if (turnDiffSummaries.length === 0) return byMessageId;
+
+    // Merge additions/deletions per file path across all turns.
+    const fileMap = new Map<string, TurnDiffFileChange>();
+    for (const summary of turnDiffSummaries) {
+      for (const file of summary.files) {
+        const existing = fileMap.get(file.path);
+        if (existing) {
+          fileMap.set(file.path, {
+            ...existing,
+            additions: (existing.additions ?? 0) + (file.additions ?? 0),
+            deletions: (existing.deletions ?? 0) + (file.deletions ?? 0),
+          });
+        } else {
+          fileMap.set(file.path, { ...file });
+        }
+      }
+    }
+    const mergedFiles = Array.from(fileMap.values()).toSorted((a, b) =>
+      a.path.localeCompare(b.path),
+    );
+
+    // Attach the merged file list to only the last turn's assistant message.
+    // turnDiffSummaries is sorted by checkpointTurnCount, so the last entry is
+    // the most recent turn.
+    const lastSummary = turnDiffSummaries.at(-1);
+    if (lastSummary?.assistantMessageId && mergedFiles.length > 0) {
+      byMessageId.set(lastSummary.assistantMessageId, {
+        ...lastSummary,
+        files: mergedFiles,
+      });
+    }
+
+    return byMessageId;
+  }, [turnDiffSummaries]);
+
   const revertTurnCountByUserMessageId = useMemo(() => {
     const byUserMessageId = new Map<MessageId, number>();
     for (let index = 0; index < timelineEntries.length; index += 1) {
@@ -1402,11 +1483,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const keybindings = useServerKeybindings();
   const availableEditors = useServerAvailableEditors();
   const modelOptionsByProvider = useMemo(
-    () => ({
-      codex: providerStatuses.find((provider) => provider.provider === "codex")?.models ?? [],
-      claudeAgent:
-        providerStatuses.find((provider) => provider.provider === "claudeAgent")?.models ?? [],
-    }),
+    () => getProviderModelsByProvider(providerStatuses),
     [providerStatuses],
   );
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
@@ -1420,7 +1497,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       AVAILABLE_PROVIDER_OPTIONS.filter(
         (option) => lockedProvider === null || option.value === lockedProvider,
       ).flatMap((option) =>
-        modelOptionsByProvider[option.value].map(({ slug, name }) => ({
+        (modelOptionsByProvider[option.value] ?? []).map(({ slug, name }) => ({
           provider: option.value,
           providerLabel: option.label,
           slug,
@@ -2905,6 +2982,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
       return;
     }
+
+    // Queue the message when the AI is currently working instead of blocking
+    if (phase === "running") {
+      messageQueue.enqueue(trimmed);
+      promptRef.current = "";
+      clearComposerDraftContent(activeThread.id);
+      setComposerHighlightedItemId(null);
+      setComposerCursor(0);
+      setComposerTrigger(null);
+      return;
+    }
+
     if (!activeProject) return;
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
@@ -3123,6 +3212,22 @@ export default function ChatView({ threadId }: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+
+  // Auto-send queued messages when the flag is set (deferred to after onSend is defined)
+  useEffect(() => {
+    if (!shouldAutoSendQueueRef.current) return;
+    shouldAutoSendQueueRef.current = false;
+
+    const nextText = messageQueue.dequeue();
+    if (nextText) {
+      promptRef.current = nextText;
+      setPrompt(nextText);
+      requestAnimationFrame(() => {
+        void onSend();
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when phase changes, onSend is fresh each render
+  }, [phase]);
 
   const onInterrupt = async () => {
     const api = readNativeApi();
@@ -3850,9 +3955,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
     }
 
-    if (key === "Enter" && !event.shiftKey) {
-      void onSend();
-      return true;
+    if (key === "Enter") {
+      if (enterKeyBehavior === "newline") {
+        // In newline mode: Cmd+Enter (Mac) or Ctrl+Enter (Win/Linux) sends
+        if (event.metaKey || event.ctrlKey) {
+          void onSend();
+          return true;
+        }
+        // Plain Enter falls through to Lexical for newline insertion
+        return false;
+      }
+      // In send mode (legacy): Enter sends, Shift+Enter is newline
+      if (!event.shiftKey) {
+        void onSend();
+        return true;
+      }
     }
     return false;
   };
@@ -3928,6 +4045,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           activeThreadId={activeThread.id}
           activeThreadTitle={activeThread.title}
           activeProjectName={activeProject?.name}
+          activeProjectCwd={activeProject?.cwd ?? null}
           isGitRepo={isGitRepo}
           openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
@@ -3990,7 +4108,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 timelineEntries={timelineEntries}
                 completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                 completionSummary={completionSummary}
-                turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
+                turnDiffSummaryByAssistantMessageId={displayTurnDiffSummaryByAssistantMessageId}
                 nowIso={nowIso}
                 expandedWorkGroups={expandedWorkGroups}
                 onToggleWorkGroup={onToggleWorkGroup}
@@ -4021,8 +4139,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
             )}
           </div>
 
+          {/* Queued messages — shown above the composer when AI is working */}
+          {messageQueue.queue.length > 0 && (
+            <div className="px-3 pt-1.5 sm:px-5 sm:pt-2">
+              <MessageQueue
+                queue={messageQueue.queue}
+                onEdit={messageQueue.edit}
+                onRemove={messageQueue.remove}
+                onReorder={messageQueue.reorder}
+              />
+            </div>
+          )}
+
           {/* Input bar */}
-          <div className={cn("px-3 pt-1.5 sm:px-5 sm:pt-2", isGitRepo ? "pb-1" : "pb-3 sm:pb-4")}>
+          {/* BranchToolbar is always shown; the branch selector inside hides when not a git repo */}
+          <div className="px-3 pt-1.5 pb-1 sm:px-5 sm:pt-2">
             <form
               ref={composerFormRef}
               onSubmit={onSend}
@@ -4041,7 +4172,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
               >
                 <div
                   className={cn(
-                    "rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-ring/45",
+                    "rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-border/80",
                     isDragOverComposer ? "border-primary/70 bg-accent/30" : "border-border",
                     composerProviderState.composerSurfaceClassName,
                   )}
@@ -4231,6 +4362,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           compact={isComposerFooterCompact}
                           provider={selectedProvider}
                           model={selectedModelForPickerWithCustomFallback}
+                          runtimeModel={activeRuntimeModel}
                           lockedProvider={lockedProvider}
                           providers={providerStatuses}
                           modelOptionsByProvider={modelOptionsByProvider}
@@ -4285,38 +4417,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   : "Default mode — click to enter plan mode"
                               }
                             >
-                              <BotIcon />
+                              {interactionMode === "plan" ? (
+                                <ListChecksIcon />
+                              ) : (
+                                <MessageSquareIcon />
+                              )}
                               <span className="sr-only sm:not-sr-only">
                                 {interactionMode === "plan" ? "Plan" : "Chat"}
-                              </span>
-                            </Button>
-
-                            <Separator
-                              orientation="vertical"
-                              className="mx-0.5 hidden h-4 sm:block"
-                            />
-
-                            <Button
-                              variant="ghost"
-                              className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
-                              size="sm"
-                              type="button"
-                              onClick={() =>
-                                void handleRuntimeModeChange(
-                                  runtimeMode === "full-access"
-                                    ? "approval-required"
-                                    : "full-access",
-                                )
-                              }
-                              title={
-                                runtimeMode === "full-access"
-                                  ? "Full access — click to require approvals"
-                                  : "Approval required — click for full access"
-                              }
-                            >
-                              {runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
-                              <span className="sr-only sm:not-sr-only">
-                                {runtimeMode === "full-access" ? "Full access" : "Supervised"}
                               </span>
                             </Button>
 
@@ -4389,6 +4496,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           isConnecting={isConnecting}
                           isPreparingWorktree={isPreparingWorktree}
                           hasSendableContent={composerSendState.hasSendableContent}
+                          enterKeyBehavior={enterKeyBehavior}
+                          isMac={isMac}
                           onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                           onInterrupt={() => void onInterrupt()}
                           onImplementPlanInNewThread={() => void onImplementPlanInNewThread()}
@@ -4401,17 +4510,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
             </form>
           </div>
 
-          {isGitRepo && (
-            <BranchToolbar
-              threadId={activeThread.id}
-              onEnvModeChange={onEnvModeChange}
-              envLocked={envLocked}
-              onComposerFocusRequest={scheduleComposerFocus}
-              {...(canCheckoutPullRequestIntoThread
-                ? { onCheckoutPullRequestRequest: openPullRequestDialog }
-                : {})}
-            />
-          )}
+          <BranchToolbar
+            threadId={activeThread.id}
+            isGitRepo={isGitRepo}
+            onEnvModeChange={onEnvModeChange}
+            envLocked={envLocked}
+            runtimeMode={runtimeMode}
+            onToggleRuntimeMode={toggleRuntimeMode}
+            onComposerFocusRequest={scheduleComposerFocus}
+            {...(canCheckoutPullRequestIntoThread
+              ? { onCheckoutPullRequestRequest: openPullRequestDialog }
+              : {})}
+          />
           {pullRequestDialogState ? (
             <PullRequestThreadDialog
               key={pullRequestDialogState.key}
