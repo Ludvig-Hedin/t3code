@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct T3MobileApp: App {
+struct BirdCodeApp: App {
   @State private var store = MobileAppStore()
 
   var body: some Scene {
@@ -10,4 +10,3 @@ struct T3MobileApp: App {
     }
   }
 }
-

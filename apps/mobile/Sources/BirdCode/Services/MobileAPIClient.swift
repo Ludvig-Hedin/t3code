@@ -22,8 +22,8 @@ enum MobileAPIClientError: Error, LocalizedError {
 
 final class MobileAPIClient {
   private let session: URLSession
-  private let encoder = JSONEncoder.t3Mobile()
-  private let decoder = JSONDecoder.t3Mobile()
+  private let encoder = JSONEncoder.birdCode()
+  private let decoder = JSONDecoder.birdCode()
 
   init(session: URLSession = .shared) {
     self.session = session

@@ -1,7 +1,7 @@
-name: T3Mobile
+name: BirdCode
 
 options:
-  bundleIdPrefix: com.t3tools
+  bundleIdPrefix: com.ludvighedin
 
 settings:
   base:
@@ -12,17 +12,17 @@ settings:
     TARGETED_DEVICE_FAMILY: 1
 
 targets:
-  T3Mobile:
+  BirdCode:
     type: application
     platform: iOS
     sources:
-      - path: Sources/T3Mobile
+      - path: Sources/BirdCode
     resources:
       - path: Resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.t3tools.t3mobile
-        INFOPLIST_KEY_CFBundleDisplayName: T3 Code
+        PRODUCT_BUNDLE_IDENTIFIER: com.ludvighedin.birdcodemobile
+        INFOPLIST_KEY_CFBundleDisplayName: Bird Code
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UIRequiresFullScreen: YES

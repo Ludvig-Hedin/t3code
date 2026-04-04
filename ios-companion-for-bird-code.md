@@ -1,14 +1,14 @@
-# iOS Companion for T3 Code
+# Bird Code iOS Companion
 
 ## Summary
 
-Build a native iPhone-first companion app that pairs with the desktop T3 Code session over the internet. The phone is for chat, review, approvals, and command submission. The desktop app stays the machine that actually runs code, terminals, git, and provider sessions.
+Build a native iPhone-first companion app that pairs with the desktop Bird Code session over the internet. The phone is for chat, review, approvals, and command submission. The desktop app stays the machine that actually runs code, terminals, git, and provider sessions.
 
 ## Why this fits the repo
 
 - The app is already split into a server and a client, with shared protocol contracts.
 - The desktop/web stack already has a transport boundary, which is the right seam to reuse.
-- The current Electron-only `desktopBridge.getWsUrl()` path is not enough for a phone, so the mobile path needs its own bootstrap and auth flow.
+- The current desktop-only `desktopBridge.getWsUrl()` path is not enough for a phone, so the mobile path needs its own bootstrap and auth flow.
 
 ## Architecture
 

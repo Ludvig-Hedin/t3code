@@ -1,6 +1,6 @@
 import Foundation
 
-enum T3DateCoding {
+enum BirdCodeDateCoding {
   private static let fractionalFormatter: ISO8601DateFormatter = {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -33,18 +33,18 @@ enum T3DateCoding {
 }
 
 extension JSONDecoder {
-  static func t3Mobile() -> JSONDecoder {
+  static func birdCode() -> JSONDecoder {
     let decoder = JSONDecoder()
-    decoder.dateDecodingStrategy = .custom(T3DateCoding.decodeDate(from:))
+    decoder.dateDecodingStrategy = .custom(BirdCodeDateCoding.decodeDate(from:))
     return decoder
   }
 }
 
 extension JSONEncoder {
-  static func t3Mobile() -> JSONEncoder {
+  static func birdCode() -> JSONEncoder {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.withoutEscapingSlashes]
-    encoder.dateEncodingStrategy = .custom(T3DateCoding.encodeDate(_:to:))
+    encoder.dateEncodingStrategy = .custom(BirdCodeDateCoding.encodeDate(_:to:))
     return encoder
   }
 }

@@ -55,7 +55,7 @@ struct MobilePairingView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 18) {
         MobileBrandHeader(
-          title: "T3 Code",
+          title: "Bird Code",
           subtitle: "Pair your desktop session and keep the same workflow on iPhone.",
         )
 
@@ -138,7 +138,7 @@ struct MobilePairingView: View {
             HStack(alignment: .center, spacing: 16) {
               QRCodeView(
                 payload: pairingPayload,
-                label: "T3 Code pairing QR",
+                label: "Bird Code pairing QR",
               )
               .frame(width: 144, height: 144)
 
@@ -185,7 +185,7 @@ struct MobilePairingView: View {
     let device = store.deviceNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
     let token = store.desktopAuthTokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
     let parts = [server, device, token].filter { !$0.isEmpty }
-    return parts.isEmpty ? "T3 Code" : parts.joined(separator: "\n")
+    return parts.isEmpty ? "Bird Code" : parts.joined(separator: "\n")
   }
 }
 
@@ -797,14 +797,47 @@ private struct MobileBrandHeader: View {
   let subtitle: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title)
-        .font(.system(.largeTitle, design: .rounded, weight: .bold))
-        .foregroundStyle(MobileTheme.foreground)
-      Text(subtitle)
-        .font(.callout)
-        .foregroundStyle(MobileTheme.muted)
+    VStack(alignment: .leading, spacing: 12) {
+      MobileLogoMark()
+      VStack(alignment: .leading, spacing: 8) {
+        Text(title)
+          .font(.system(.largeTitle, design: .rounded, weight: .bold))
+          .foregroundStyle(MobileTheme.foreground)
+        Text(subtitle)
+          .font(.callout)
+          .foregroundStyle(MobileTheme.muted)
+      }
     }
+  }
+}
+
+private struct MobileLogoMark: View {
+  var body: some View {
+    if let image = MobileLogoLoader.image() {
+      Image(uiImage: image)
+        .resizable()
+        .scaledToFit()
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityHidden(true)
+    } else {
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .fill(MobileTheme.accent)
+        .frame(width: 56, height: 56)
+        .overlay(
+          Image(systemName: "bird.fill")
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(.white),
+        )
+        .accessibilityHidden(true)
+    }
+  }
+}
+
+private enum MobileLogoLoader {
+  static func image() -> UIImage? {
+    guard let url = Bundle.main.url(forResource: "logo-dark", withExtension: "png") else { return nil }
+    return UIImage(contentsOfFile: url.path)
   }
 }
 
@@ -926,7 +959,7 @@ private struct MobileConnectionSummaryCard: View {
         HStack(alignment: .center, spacing: 16) {
           QRCodeView(
             payload: store.lastPairCode ?? store.serverURLInput,
-            label: "Current T3 Code connection",
+            label: "Current Bird Code connection",
           )
           .frame(width: 96, height: 96)
 

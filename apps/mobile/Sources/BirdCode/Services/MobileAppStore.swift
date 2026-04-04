@@ -6,9 +6,10 @@ import UIKit
 @Observable
 final class MobileAppStore {
   private enum StorageKey {
-    static let serverURL = "t3.mobile.serverURL"
-    static let deviceToken = "t3.mobile.deviceToken"
-    static let deviceName = "t3.mobile.deviceName"
+    static let serverURL = "birdcode.mobile.serverURL"
+    static let deviceToken = "birdcode.mobile.deviceToken"
+    static let deviceName = "birdcode.mobile.deviceName"
+    static let pairCode = "birdcode.mobile.pairCode"
   }
 
   private let apiClient: MobileAPIClient
@@ -40,7 +41,7 @@ final class MobileAppStore {
       ?? UIDevice.current.name
     self.deviceToken = KeychainStore.readString(account: StorageKey.deviceToken)
     if let token = self.deviceToken, !token.isEmpty {
-      self.lastPairCode = KeychainStore.readString(account: "\(StorageKey.deviceToken).pairCode")
+      self.lastPairCode = KeychainStore.readString(account: StorageKey.pairCode)
     }
   }
 
@@ -107,7 +108,7 @@ final class MobileAppStore {
       if let deviceToken = response.deviceToken {
         self.deviceToken = deviceToken
         KeychainStore.writeString(deviceToken, account: StorageKey.deviceToken)
-        KeychainStore.writeString(response.device.pairCode, account: "\(StorageKey.deviceToken).pairCode")
+        KeychainStore.writeString(response.device.pairCode, account: StorageKey.pairCode)
         lastPairCode = response.device.pairCode
       }
       saveConnectionPreferences()

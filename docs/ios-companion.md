@@ -1,10 +1,10 @@
-# iOS Companion
+# Bird Code Companion
 
 This repo now includes a native iPhone-first companion app under `apps/mobile`.
 
 ## What it does
 
-- Pairs with a desktop T3 Code session through the server's mobile relay routes.
+- Pairs with a desktop Bird Code session through the server's mobile relay routes.
 - Reuses the same orchestration read model and shared contracts as the desktop and web apps.
 - Mirrors the desktop visual language with a card-based, chat-first SwiftUI shell.
 - Supports pairing, session refresh, prompt submission, diff review, approval responses, and device management.
@@ -25,7 +25,7 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
    xcodegen generate
    ```
 
-2. Open `apps/mobile/T3Mobile.xcodeproj` in Xcode.
+2. Open `apps/mobile/BirdCode.xcodeproj` in Xcode.
 
 3. Run the desktop/server app first so the mobile app has a session to pair with.
 
