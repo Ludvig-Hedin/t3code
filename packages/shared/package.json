@@ -51,6 +51,10 @@
     "./projectScripts": {
       "types": "./src/projectScripts.ts",
       "import": "./src/projectScripts.ts"
+    },
+    "./orchestrationMobile": {
+      "types": "./src/orchestrationMobile.ts",
+      "import": "./src/orchestrationMobile.ts"
     }
   },
   "scripts": {

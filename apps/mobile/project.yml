@@ -1,0 +1,29 @@
+name: T3Mobile
+
+options:
+  bundleIdPrefix: com.t3tools
+
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: YES
+    IPHONEOS_DEPLOYMENT_TARGET: 17.0
+    SWIFT_VERSION: 5.10
+    TARGETED_DEVICE_FAMILY: 1
+
+targets:
+  T3Mobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/T3Mobile
+    resources:
+      - path: Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.t3tools.t3mobile
+        INFOPLIST_KEY_CFBundleDisplayName: T3 Code
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES

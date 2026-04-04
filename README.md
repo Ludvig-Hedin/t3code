@@ -1,6 +1,7 @@
 # T3 Code
 
 T3 Code is a minimal web GUI for coding agents (currently Codex and Claude, more coming soon).
+It also includes an iOS-first companion app that mirrors the desktop UI and lets you chat with the desktop session from your phone.
 
 ## Installation
 
@@ -37,6 +38,17 @@ brew install --cask t3-code
 
 ```bash
 yay -S t3code-bin
+```
+
+## iOS companion
+
+The iPhone companion lives in [`apps/mobile`](./apps/mobile). It is a native SwiftUI app that connects to the desktop session through the server's mobile relay routes and reuses the same orchestration read model and styling language as the desktop app.
+
+To generate the Xcode project locally:
+
+```bash
+cd apps/mobile
+xcodegen generate
 ```
 
 ## Some notes
