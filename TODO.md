@@ -1,5 +1,9 @@
 # TODO
 
+## Recently completed
+
+- [x] Empty chat state now shows a centered `Create project` button that launches the project picker and starts the first thread
+
 ## Small things
 
 - [ ] Submitting new messages should scroll to bottom

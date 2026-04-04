@@ -1,9 +1,68 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { FolderPlusIcon } from "lucide-react";
+import { useCallback } from "react";
 
 import { isElectron } from "../env";
 import { SidebarTrigger } from "../components/ui/sidebar";
+import { Button } from "../components/ui/button";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useStore } from "../store";
+import { readNativeApi } from "../nativeApi";
+import { useSettings } from "../hooks/useSettings";
+import { createProjectFromPath } from "../lib/createProject";
+import { toastManager } from "../components/ui/toast";
+import { newCommandId } from "../lib/utils";
 
 function ChatIndexRouteView() {
+  const projects = useStore((store) => store.projects);
+  const { handleNewThread } = useHandleNewThread();
+  const appSettings = useSettings();
+
+  const handleCreateProject = useCallback(async () => {
+    const api = readNativeApi();
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Project creation is unavailable",
+        description: "Open the desktop app to create a project.",
+      });
+      return;
+    }
+
+    const cwd = await api.dialogs.pickFolder().catch(() => null);
+    if (!cwd) return;
+
+    try {
+      const result = await createProjectFromPath({
+        cwd,
+        projects,
+        defaultThreadEnvMode: appSettings.defaultThreadEnvMode,
+        handleNewThread,
+        dispatchProjectCreate: async (input) => {
+          await api.orchestration.dispatchCommand({
+            type: "project.create",
+            commandId: newCommandId(),
+            ...input,
+          });
+        },
+      });
+
+      if (result.kind === "existing") {
+        toastManager.add({
+          type: "success",
+          title: "Project already exists",
+          description: "Opened the existing project.",
+        });
+      }
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to create project",
+        description: error instanceof Error ? error.message : "An unknown error occurred.",
+      });
+    }
+  }, [appSettings.defaultThreadEnvMode, handleNewThread, projects]);
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
       {!isElectron && (
@@ -21,9 +80,23 @@ function ChatIndexRouteView() {
         </div>
       )}
 
-      <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <p className="text-sm">Select a thread or create a new one to get started.</p>
+      <div className="flex flex-1 items-center justify-center px-6">
+        <div className="flex max-w-md flex-col items-center gap-4 text-center">
+          <div className="flex size-14 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm">
+            <FolderPlusIcon className="size-6" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-balance text-xl font-semibold text-foreground">
+              Get started with a project
+            </h1>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Add a workspace to create your first project and start a new thread from the center of
+              the app.
+            </p>
+          </div>
+          <Button onClick={() => void handleCreateProject()} size="lg">
+            Create project
+          </Button>
         </div>
       </div>
     </div>
