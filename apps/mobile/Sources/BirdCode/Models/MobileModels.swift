@@ -265,30 +265,34 @@ struct BirdCodePairingPayload: Codable, Hashable {
   let serverURL: String
   let deviceToken: String?
   let deviceName: String?
+  let desktopAuthToken: String?
 
-  init(serverURL: String, deviceToken: String? = nil, deviceName: String? = nil) {
+  init(
+    serverURL: String,
+    deviceToken: String? = nil,
+    deviceName: String? = nil,
+    desktopAuthToken: String? = nil,
+  ) {
     kind = Self.kindValue
     version = Self.versionValue
     self.serverURL = serverURL
     self.deviceToken = deviceToken
     self.deviceName = deviceName
+    self.desktopAuthToken = desktopAuthToken
   }
 }
 
 enum BirdCodePairingCodec {
   static func encode(_ payload: BirdCodePairingPayload) -> String {
-    guard
-      let data = try? JSONEncoder.birdCode().encode(payload),
-      let json = String(data: data, encoding: .utf8)
-    else {
+    guard let data = try? JSONEncoder.birdCode().encode(payload) else {
       return ""
     }
 
     var components = URLComponents()
     components.scheme = "birdcode"
     components.host = "pair"
-    components.queryItems = [URLQueryItem(name: "payload", value: json)]
-    return components.string ?? json
+    components.queryItems = [URLQueryItem(name: "payload", value: data.base64URLEncodedString())]
+    return components.string ?? String(data: data, encoding: .utf8) ?? ""
   }
 
   static func decode(_ rawValue: String) -> BirdCodePairingPayload? {
@@ -313,18 +317,32 @@ enum BirdCodePairingCodec {
   static func decode(from url: URL) -> BirdCodePairingPayload? {
     let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
     if let payload = components?.queryItems?.first(where: { $0.name == "payload" })?.value {
+      if let decoded = decodeBase64JSON(payload) {
+        return decoded
+      }
       return decodeJSON(payload)
     }
 
     let serverURL = components?.queryItems?.first(where: { $0.name == "serverURL" })?.value
     let deviceToken = components?.queryItems?.first(where: { $0.name == "deviceToken" })?.value
     let deviceName = components?.queryItems?.first(where: { $0.name == "deviceName" })?.value
+    let desktopAuthToken = components?.queryItems?.first(where: { $0.name == "desktopAuthToken" })?.value
     guard let serverURL else { return nil }
     return BirdCodePairingPayload(
       serverURL: serverURL,
       deviceToken: deviceToken,
       deviceName: deviceName,
+      desktopAuthToken: desktopAuthToken,
     )
+  }
+
+  private static func decodeBase64JSON(_ rawValue: String) -> BirdCodePairingPayload? {
+    guard let data = Data(base64URLEncoded: rawValue) else { return nil }
+    let payload = try? JSONDecoder.birdCode().decode(BirdCodePairingPayload.self, from: data)
+    guard payload?.kind == BirdCodePairingPayload.kindValue, payload?.version == BirdCodePairingPayload.versionValue else {
+      return nil
+    }
+    return payload
   }
 
   private static func decodeJSON(_ rawValue: String) -> BirdCodePairingPayload? {
@@ -334,6 +352,26 @@ enum BirdCodePairingCodec {
       return nil
     }
     return payload
+  }
+}
+
+private extension Data {
+  func base64URLEncodedString() -> String {
+    base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+
+  init?(base64URLEncoded rawValue: String) {
+    var value = rawValue
+      .replacingOccurrences(of: "-", with: "+")
+      .replacingOccurrences(of: "_", with: "/")
+    let remainder = value.count % 4
+    if remainder > 0 {
+      value += String(repeating: "=", count: 4 - remainder)
+    }
+    self.init(base64Encoded: value)
   }
 }
 

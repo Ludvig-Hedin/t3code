@@ -13,6 +13,7 @@ type PairingPayload = {
   kind: "birdcode-pairing";
   version: 1;
   serverURL: string;
+  desktopAuthToken?: string;
 };
 
 const APP_PAIRING_KIND = "birdcode-pairing" as const;
@@ -25,16 +26,41 @@ function buildPairingPayload(serverURL: string): PairingPayload {
   };
 }
 
-function buildPairingCode(serverURL: string): string {
-  return JSON.stringify(buildPairingPayload(serverURL));
+function base64UrlEncode(input: string): string {
+  if (typeof btoa === "function") {
+    const bytes = new TextEncoder().encode(input);
+    let binary = "";
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  return input;
+}
+
+function buildPairingCode(payload: PairingPayload): string {
+  const encoded = base64UrlEncode(JSON.stringify(payload));
+  return `birdcode://pair?payload=${encoded}`;
 }
 
 export function BirdCodeMobileCompanionPanel() {
-  const serverURL = useMemo(
-    () => (typeof window === "undefined" ? "" : window.location.origin),
-    [],
-  );
-  const pairingCode = useMemo(() => buildPairingCode(serverURL), [serverURL]);
+  const serverURL = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const desktopPairingUrl = window.desktopBridge?.getPairingUrl?.();
+    if (typeof desktopPairingUrl === "string" && desktopPairingUrl.length > 0) {
+      return desktopPairingUrl;
+    }
+    return window.location.origin;
+  }, []);
+  const pairingCode = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const desktopPairingCode = window.desktopBridge?.getPairingCode?.();
+    if (typeof desktopPairingCode === "string" && desktopPairingCode.length > 0) {
+      return desktopPairingCode;
+    }
+    return buildPairingCode(buildPairingPayload(serverURL));
+  }, [serverURL]);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
 
@@ -112,7 +138,8 @@ export function BirdCodeMobileCompanionPanel() {
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Pair Bird Code</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Open this tab on the desktop, scan the QR from Bird Code on your phone, or copy the
-          pairing code into another device. No auth token is needed for the standard flow.
+          pairing code into another device. The QR now points at the desktop&apos;s pairable server
+          address, not localhost.
         </p>
       </div>
 
@@ -121,7 +148,8 @@ export function BirdCodeMobileCompanionPanel() {
           <CardHeader className="border-b">
             <CardTitle>Desktop pairing QR</CardTitle>
             <CardDescription>
-              This QR points Bird Code at the desktop server running in this window.
+              This QR points Bird Code at the desktop server running in this window and includes the
+              hidden pairing token automatically.
             </CardDescription>
           </CardHeader>
           <CardPanel className="space-y-4">
@@ -132,15 +160,15 @@ export function BirdCodeMobileCompanionPanel() {
                   <span>Scan from another device</span>
                 </div>
                 <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                  Bird Code will read the QR, take the server URL from it, and then pair without
-                  asking you to hunt for a token.
+                  Bird Code will read the QR, take the server URL and hidden desktop auth token from
+                  it, and then pair without asking you to hunt for anything.
                 </p>
                 <div className="rounded-2xl border bg-background/72 p-3">
                   <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    Server URL
+                    Pairing code
                   </div>
                   <div className="mt-1 break-all font-mono text-sm text-foreground">
-                    {serverURL}
+                    {pairingCode}
                   </div>
                 </div>
               </div>
@@ -197,8 +225,8 @@ export function BirdCodeMobileCompanionPanel() {
                 Desktop note
               </div>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                The QR encodes the desktop server URL. If the server is protected by an auth token,
-                keep using the Advanced connection section on the phone only when needed.
+                The QR encodes the desktop server URL and pairing token in one shareable code so you
+                do not need to copy anything manually.
               </p>
             </div>
           </CardPanel>

@@ -59,7 +59,9 @@ Pairing is QR-first:
 
 - Open the desktop app's `Mobile` settings tab to show the QR and pairing code.
 - On iPhone, open Bird Code, go to `Settings`, then use the `Pair` tab to scan or paste the code.
+- The pairing code includes the desktop auth context automatically, so you should not need to look up a token manually.
 - The `Advanced` tab keeps the server URL and auth token fields only for edge cases.
+- The QR should point at a reachable desktop address on your LAN, not `localhost`.
 
 To generate the Xcode project locally:
 

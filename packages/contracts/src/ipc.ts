@@ -105,6 +105,8 @@ export interface DesktopUpdateCheckResult {
 
 export interface DesktopBridge {
   getWsUrl: () => string | null;
+  getPairingUrl?: () => string | null;
+  getPairingCode?: () => string | null;
   pickFolder: () => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
   setTheme: (theme: DesktopTheme) => Promise<void>;

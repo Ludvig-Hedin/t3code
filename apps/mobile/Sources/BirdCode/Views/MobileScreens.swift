@@ -251,6 +251,8 @@ struct MobilePairingView: View {
       .padding(.horizontal, 16)
       .padding(.vertical, 20)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .scrollIndicators(.visible)
     .sheet(isPresented: $isShowingScanner) {
       MobileQRCodeScannerSheet { scannedText in
         pairingCodeInput = scannedText
@@ -260,6 +262,7 @@ struct MobilePairingView: View {
         }
       }
     }
+    .presentationBackground(.clear)
   }
 }
 
@@ -660,20 +663,20 @@ struct MobileSettingsSheet: View {
 
   var body: some View {
     NavigationStack {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-          MobileBrandHeader(
-            title: "Settings",
-            subtitle: "Pair other devices, review connected devices, and manage advanced connection details.",
-          )
+      VStack(alignment: .leading, spacing: 16) {
+        MobileBrandHeader(
+          title: "Settings",
+          subtitle: "Pair other devices, review connected devices, and manage advanced connection details.",
+        )
 
-          Picker("Settings", selection: $selectedTab) {
-            ForEach(MobileSettingsTab.allCases) { tab in
-              Text(tab.title).tag(tab)
-            }
+        Picker("Settings", selection: $selectedTab) {
+          ForEach(MobileSettingsTab.allCases) { tab in
+            Text(tab.title).tag(tab)
           }
-          .pickerStyle(.segmented)
+        }
+        .pickerStyle(.segmented)
 
+        Group {
           switch selectedTab {
           case .pair:
             settingsPairTab
@@ -683,9 +686,11 @@ struct MobileSettingsSheet: View {
             settingsAdvancedTab
           }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 20)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .background(MobileTheme.background)
       .navigationTitle("Settings")
       .toolbar {
@@ -696,6 +701,8 @@ struct MobileSettingsSheet: View {
         }
       }
     }
+    .presentationDetents([.large])
+    .presentationDragIndicator(.visible)
     .sheet(isPresented: $isShowingScanner) {
       MobileQRCodeScannerSheet { scannedText in
         pairingCodeInput = scannedText
@@ -708,13 +715,14 @@ struct MobileSettingsSheet: View {
   }
 
   private var settingsPairTab: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      MobileCard {
-        VStack(alignment: .leading, spacing: 14) {
-          MobileSectionHeading(
-            title: "Pair a device",
-            subtitle: "Scan the desktop QR or paste the code from another device.",
-          )
+    ScrollView {
+      VStack(alignment: .leading, spacing: 16) {
+        MobileCard {
+          VStack(alignment: .leading, spacing: 14) {
+            MobileSectionHeading(
+              title: "Pair a device",
+              subtitle: "Scan the desktop QR or paste the pairing code. No token hunting required.",
+            )
 
           MobileField(label: "Pairing code or desktop URL") {
             TextField("Scan a QR or paste a Bird Code pairing link", text: $pairingCodeInput, axis: .vertical)
@@ -802,16 +810,20 @@ struct MobileSettingsSheet: View {
             )
           }
         }
+        }
       }
+      .frame(maxWidth: .infinity, alignment: .topLeading)
     }
+    .scrollIndicators(.visible)
   }
 
   private var settingsDevicesTab: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      MobileCard {
-        VStack(alignment: .leading, spacing: 12) {
-          MobileSectionHeading(
-            title: "Connected device",
+    ScrollView {
+      VStack(alignment: .leading, spacing: 16) {
+        MobileCard {
+          VStack(alignment: .leading, spacing: 12) {
+            MobileSectionHeading(
+              title: "Connected device",
             subtitle: store.pairedDevice.map { "Bird Code is paired to \($0.deviceName)." } ?? "No active pairing yet.",
           )
 
@@ -860,18 +872,22 @@ struct MobileSettingsSheet: View {
             }
           }
         }
+        }
       }
+      .frame(maxWidth: .infinity, alignment: .topLeading)
     }
+    .scrollIndicators(.visible)
   }
 
   private var settingsAdvancedTab: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      MobileCard {
-        VStack(alignment: .leading, spacing: 12) {
-          MobileSectionHeading(
-            title: "Connection",
-            subtitle: "Only edit this if you need to repoint Bird Code at a protected desktop.",
-          )
+    ScrollView {
+      VStack(alignment: .leading, spacing: 16) {
+        MobileCard {
+          VStack(alignment: .leading, spacing: 12) {
+            MobileSectionHeading(
+              title: "Connection",
+              subtitle: "Only edit this if you need to repoint Bird Code at a protected desktop.",
+            )
 
           MobileField(label: "Server URL") {
             TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
@@ -928,8 +944,11 @@ struct MobileSettingsSheet: View {
           .buttonStyle(MobileSecondaryButtonStyle())
         }
       }
+      .frame(maxWidth: .infinity, alignment: .topLeading)
     }
+    .scrollIndicators(.visible)
   }
+}
 }
 
 @MainActor
@@ -1197,7 +1216,7 @@ private struct MobileConnectionSummaryCard: View {
 
         HStack(alignment: .center, spacing: 16) {
           QRCodeView(
-            payload: store.lastPairCode ?? store.serverURLInput,
+            payload: store.pairingShareCode() ?? store.serverURLInput,
             label: "Current Bird Code connection",
           )
           .frame(width: 96, height: 96)
@@ -1638,6 +1657,8 @@ private struct MobileQRCodeScannerSheet: View {
         }
       }
     }
+    .presentationDetents([.large])
+    .presentationDragIndicator(.visible)
   }
 }
 

@@ -13,10 +13,20 @@ const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
+const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
+const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   getWsUrl: () => {
     const result = ipcRenderer.sendSync(GET_WS_URL_CHANNEL);
+    return typeof result === "string" ? result : null;
+  },
+  getPairingUrl: () => {
+    const result = ipcRenderer.sendSync(GET_PAIRING_URL_CHANNEL);
+    return typeof result === "string" ? result : null;
+  },
+  getPairingCode: () => {
+    const result = ipcRenderer.sendSync(GET_PAIRING_CODE_CHANNEL);
     return typeof result === "string" ? result : null;
   },
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),

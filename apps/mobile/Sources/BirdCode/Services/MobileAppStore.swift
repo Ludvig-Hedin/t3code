@@ -162,6 +162,12 @@ final class MobileAppStore {
       deviceNameInput = deviceName
     }
 
+    if let desktopAuthToken = payload.desktopAuthToken,
+       !desktopAuthToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      desktopAuthTokenInput = desktopAuthToken
+    }
+
     saveConnectionPreferences()
 
     if let deviceToken = payload.deviceToken, !deviceToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

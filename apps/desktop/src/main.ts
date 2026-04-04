@@ -60,12 +60,14 @@ const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
+const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
+const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
 const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
-const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+const APP_DISPLAY_NAME = isDevelopment ? "Bird Code (Dev)" : "Bird Code (Alpha)";
 const APP_USER_MODEL_ID = "com.t3tools.t3code";
 const LINUX_DESKTOP_ENTRY_NAME = isDevelopment ? "t3code-dev.desktop" : "t3code.desktop";
 const LINUX_WM_CLASS = isDevelopment ? "t3code-dev" : "t3code";
@@ -93,6 +95,8 @@ let backendProcess: ChildProcess.ChildProcess | null = null;
 let backendPort = 0;
 let backendAuthToken = "";
 let backendWsUrl = "";
+let backendPairingUrl = "";
+let backendPairingCode = "";
 let restartAttempt = 0;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let isQuitting = false;
@@ -196,6 +200,64 @@ function getSafeTheme(rawTheme: unknown): DesktopTheme | null {
   }
 
   return null;
+}
+
+function isPrivateIpv4Address(address: string): boolean {
+  const octets = address.split(".").map((part) => Number(part));
+  if (
+    octets.length !== 4 ||
+    octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return false;
+  }
+
+  const [first, second = Number.NaN] = octets;
+  return (
+    first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 169 && second === 254)
+  );
+}
+
+function resolvePairingHttpHost(): string | null {
+  const interfaces = OS.networkInterfaces();
+  let fallback: string | null = null;
+
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries ?? []) {
+      const family = (entry as { family: string | number }).family;
+      const isIpv4 = family === "IPv4" || family === 4;
+      if (!isIpv4 || entry.internal) continue;
+      if (fallback === null) {
+        fallback = entry.address;
+      }
+      if (isPrivateIpv4Address(entry.address)) {
+        return entry.address;
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function resolvePairingHttpUrl(): string {
+  const host = resolvePairingHttpHost();
+  if (host) {
+    return `http://${host}:${backendPort}`;
+  }
+  return `http://localhost:${backendPort}`;
+}
+
+function resolvePairingCode(): string {
+  const payload = JSON.stringify({
+    kind: "birdcode-pairing",
+    version: 1,
+    serverURL: backendPairingUrl,
+    desktopAuthToken: backendAuthToken,
+  });
+  const encoded = Buffer.from(payload, "utf8").toString("base64url");
+  return `birdcode://pair?payload=${encoded}`;
 }
 
 function writeDesktopStreamChunk(
@@ -484,7 +546,7 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   console.error(`[desktop] fatal startup error (${stage})`, error);
   if (!isQuitting) {
     isQuitting = true;
-    dialog.showErrorBox("T3 Code failed to start", `Stage: ${stage}\n${message}${detail}`);
+    dialog.showErrorBox("Bird Code failed to start", `Stage: ${stage}\n${message}${detail}`);
   }
   stopBackend();
   restoreStdIoCapture?.();
@@ -1172,6 +1234,16 @@ function registerIpcHandlers(): void {
     event.returnValue = backendWsUrl;
   });
 
+  ipcMain.removeAllListeners(GET_PAIRING_URL_CHANNEL);
+  ipcMain.on(GET_PAIRING_URL_CHANNEL, (event) => {
+    event.returnValue = backendPairingUrl;
+  });
+
+  ipcMain.removeAllListeners(GET_PAIRING_CODE_CHANNEL);
+  ipcMain.on(GET_PAIRING_CODE_CHANNEL, (event) => {
+    event.returnValue = backendPairingCode;
+  });
+
   ipcMain.removeHandler(PICK_FOLDER_CHANNEL);
   ipcMain.handle(PICK_FOLDER_CHANNEL, async () => {
     const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
@@ -1431,7 +1503,7 @@ configureAppIdentity();
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
   backendPort = await Effect.service(NetService).pipe(
-    Effect.flatMap((net) => net.reserveLoopbackPort()),
+    Effect.flatMap((net) => net.reserveLoopbackPort("0.0.0.0")),
     Effect.provide(NetService.layer),
     Effect.runPromise,
   );
@@ -1439,7 +1511,10 @@ async function bootstrap(): Promise<void> {
   backendAuthToken = Crypto.randomBytes(24).toString("hex");
   const baseUrl = `ws://127.0.0.1:${backendPort}`;
   backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`;
+  backendPairingUrl = resolvePairingHttpUrl();
+  backendPairingCode = resolvePairingCode();
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`);
+  writeDesktopLogHeader(`bootstrap resolved pairing endpoint url=${backendPairingUrl}`);
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
