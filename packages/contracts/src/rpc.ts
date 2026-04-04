@@ -375,7 +375,9 @@ export const WsPluginsInstallRpc = Rpc.make(WS_METHODS.pluginsInstall, {
 });
 
 export const WsPluginsRemoveRpc = Rpc.make(WS_METHODS.pluginsRemove, {
-  payload: Schema.Struct({ name: Schema.String }),
+  // Fix 2: changed from `name` to `location` (absolute path from PluginInfo.location).
+  // This makes the contract unambiguous — package.json name ≠ directory name.
+  payload: Schema.Struct({ location: Schema.String }),
   error: PluginError,
 });
 

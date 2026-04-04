@@ -12,6 +12,7 @@
  */
 import { PluginError, type PluginInfo } from "@t3tools/contracts";
 import { Effect, FileSystem, Layer, Path, ServiceMap } from "effect";
+import * as Semaphore from "effect/Semaphore";
 import * as os from "node:os";
 
 import { runProcess } from "../processRunner.ts";
@@ -26,17 +27,20 @@ export interface PluginServiceShape {
    * Install a plugin from a local path or git URL.
    *
    * - Local path (starts with /, ~, or .): copied into the t3code marketplace.
-   * - Git URL (starts with https://, http://, git@, or ends with .git): cloned.
+   * - Git URL (starts with https:// or git@, or ends with .git): cloned.
+   *   Note: http:// URLs are rejected for security reasons.
    *
    * Returns the PluginInfo for the newly installed plugin.
    */
   install(source: string): Effect.Effect<PluginInfo, PluginError>;
 
   /**
-   * Remove an installed plugin by name.
-   * Searches across all marketplaces for a matching plugin directory.
+   * Remove an installed plugin by its absolute directory path (location).
+   *
+   * Only plugins under the managed t3code marketplace directory may be removed.
+   * Pass the `location` field from a `PluginInfo` returned by `list()`.
    */
-  remove(name: string): Effect.Effect<void, PluginError>;
+  remove(location: string): Effect.Effect<void, PluginError>;
 }
 
 // ── Service tag ──────────────────────────────────────────────────────────────
@@ -70,6 +74,11 @@ const readPackageJson = (
 
     // Wrap JSON.parse in Effect.try so malformed JSON falls back to defaults
     // instead of throwing or crashing the list operation.
+    // Fix 6: Effect.try returns Effect<A, {}, never> even when the catch handler
+    // returns a value, because the error channel is typed as the catch return type.
+    // The orElseSucceed is therefore NOT redundant: it widens the error channel from
+    // `{}` to `never` so this function satisfies its return type of Effect<..., never, never>.
+    // The original comment claiming it was unreachable was incorrect.
     const parsed = yield* Effect.try({
       try: () => JSON.parse(raw) as unknown,
       catch: () => ({}),
@@ -91,12 +100,17 @@ const readPackageJson = (
  * Derive a plugin name from a git URL.
  * Strips the trailing ".git" suffix and takes the last path segment.
  * e.g. "https://github.com/foo/my-plugin.git" → "my-plugin"
+ *
+ * Returns null if the URL has no meaningful last segment (malformed URL).
+ * Fix 5: returning null instead of the hardcoded fallback "plugin" so the
+ * caller can surface a descriptive error rather than silently use a bad name.
  */
-function pluginNameFromGitUrl(url: string): string {
+function pluginNameFromGitUrl(url: string): string | null {
   // Remove trailing .git if present, then take the last path segment.
   const withoutDotGit = url.endsWith(".git") ? url.slice(0, -4) : url;
   const segments = withoutDotGit.split("/").filter(Boolean);
-  return segments[segments.length - 1] ?? "plugin";
+  const last = segments[segments.length - 1];
+  return last ?? null;
 }
 
 /**
@@ -119,11 +133,13 @@ function isLocalPath(source: string): boolean {
 
 /**
  * Determine whether the given source string represents a git URL.
+ *
+ * Fix 4: http:// is intentionally excluded here — it is handled separately
+ * below in install() to produce a clear rejection error.
  */
 function isGitUrl(source: string): boolean {
   return (
     source.startsWith("https://") ||
-    source.startsWith("http://") ||
     source.startsWith("git@") ||
     source.endsWith(".git")
   );
@@ -141,6 +157,10 @@ export const makePluginService = Effect.gen(function* () {
   const marketplacesRoot = pathService.join(home, ".claude", "plugins", "marketplaces");
   const managedMarketplace = pathService.join(marketplacesRoot, "t3code");
   const managedPluginsDir = pathService.join(managedMarketplace, "plugins");
+
+  // Fix 3: single permit semaphore guards install() and remove() so that
+  // concurrent calls cannot race on the filesystem — same pattern as McpService.
+  const pluginMutex = yield* Semaphore.make(1);
 
   // ── list ─────────────────────────────────────────────────────────────────
 
@@ -219,159 +239,185 @@ export const makePluginService = Effect.gen(function* () {
   // ── install ───────────────────────────────────────────────────────────────
 
   const install = (source: string): Effect.Effect<PluginInfo, PluginError> =>
-    Effect.gen(function* () {
-      // Ensure the managed marketplace plugins directory exists before installing.
-      yield* fs.makeDirectory(managedPluginsDir, { recursive: true }).pipe(
-        Effect.mapError(
-          (e) =>
-            new PluginError({
-              detail: `Failed to create managed plugins directory: ${String(e)}`,
-              cause: e,
-            }),
-        ),
-      );
-
-      let destDir: string;
-
-      if (isLocalPath(source)) {
-        // ── Local path install ──────────────────────────────────────────────
-        const resolvedSource = resolvePath(source);
-        const dirName = pathService.basename(resolvedSource);
-        destDir = pathService.join(managedPluginsDir, dirName);
-
-        const alreadyExists = yield* fs.exists(destDir).pipe(
-          Effect.mapError(
-            (e) =>
-              new PluginError({
-                detail: `Failed to check if plugin already exists: ${String(e)}`,
-                cause: e,
-              }),
-          ),
-        );
-
-        if (alreadyExists) {
-          // yield* on a TaggedError is shorthand for Effect.fail(new TaggedError(...)). Enabled by the Effect TS plugin.
-          return yield* new PluginError({ detail: "Plugin already installed" });
+    // Fix 3: wrap body in mutex so concurrent install() calls are serialised.
+    pluginMutex.withPermits(1)(
+      Effect.gen(function* () {
+        // Fix 1: validate source before any filesystem access.
+        if (source.length === 0) {
+          return yield* new PluginError({ detail: "Plugin source must not be empty." });
+        }
+        if (source.includes("\0")) {
+          return yield* new PluginError({
+            detail: "Plugin source contains a null byte, which is not permitted.",
+          });
+        }
+        if (source.includes("../")) {
+          return yield* new PluginError({
+            detail: "Plugin source contains path traversal sequence '../', which is not permitted.",
+          });
         }
 
-        // Copy the directory recursively into the managed marketplace.
-        yield* fs.copy(resolvedSource, destDir).pipe(
-          Effect.mapError(
-            (e) =>
-              new PluginError({
-                detail: `Failed to copy plugin from ${resolvedSource}: ${String(e)}`,
-                cause: e,
-              }),
-          ),
-        );
-      } else if (isGitUrl(source)) {
-        // ── Git URL install ─────────────────────────────────────────────────
-        const name = pluginNameFromGitUrl(source);
-        destDir = pathService.join(managedPluginsDir, name);
-
-        const alreadyExists = yield* fs.exists(destDir).pipe(
-          Effect.mapError(
-            (e) =>
-              new PluginError({
-                detail: `Failed to check if plugin already exists: ${String(e)}`,
-                cause: e,
-              }),
-          ),
-        );
-
-        if (alreadyExists) {
-          return yield* new PluginError({ detail: "Plugin already installed" });
+        // Fix 4: explicitly reject http:// before reaching the git-URL branch.
+        if (source.startsWith("http://")) {
+          return yield* new PluginError({
+            detail:
+              "Git clone over HTTP is not supported for security reasons. Use https:// or git@...",
+          });
         }
 
-        // Use the shared runProcess helper (used by git/gh commands throughout the codebase)
-        // to spawn `git clone` without pulling in an external library.
-        yield* Effect.tryPromise({
-          try: () => runProcess("git", ["clone", source, destDir]),
-          catch: (e) =>
-            new PluginError({
-              detail: `Failed to clone plugin from ${source}: ${e instanceof Error ? e.message : String(e)}`,
-              cause: e,
-            }),
-        });
-      } else {
-        // Unrecognized source — not a local path or git URL.
-        return yield* new PluginError({
-          detail: `Unrecognized plugin source "${source}". Provide an absolute/relative path or a git URL.`,
-        });
-      }
-
-      // Read the installed plugin's package.json and return PluginInfo.
-      const pkg = yield* readPackageJson(fs, destDir);
-      const dirName = pathService.basename(destDir);
-
-      // location and marketplace satisfy TrimmedNonEmptyString — both are non-empty
-      // strings (destDir is an absolute path; "t3code" is a literal).
-      return {
-        name: pkg.name.length > 0 ? pkg.name : dirName,
-        version: pkg.version,
-        description: pkg.description,
-        location: destDir,
-        marketplace: "t3code",
-      } satisfies PluginInfo;
-    });
-
-  // ── remove ────────────────────────────────────────────────────────────────
-
-  const remove = (name: string): Effect.Effect<void, PluginError> =>
-    Effect.gen(function* () {
-      // If the marketplaces root doesn't exist, there is nothing to remove.
-      const rootExists = yield* fs.exists(marketplacesRoot).pipe(
-        Effect.mapError(
-          (e) =>
-            new PluginError({
-              detail: `Failed to check plugin directory: ${String(e)}`,
-              cause: e,
-            }),
-        ),
-      );
-
-      if (!rootExists) {
-        return yield* new PluginError({ detail: `Plugin not found: ${name}` });
-      }
-
-      // Enumerate all marketplace directories to find the named plugin.
-      const marketplaceDirs = yield* fs.readDirectory(marketplacesRoot).pipe(
-        Effect.mapError(
-          (e) =>
-            new PluginError({
-              detail: `Failed to list marketplaces directory: ${String(e)}`,
-              cause: e,
-            }),
-        ),
-      );
-
-      for (const marketplaceName of marketplaceDirs) {
-        if (marketplaceName === "cache") continue;
-
-        // Check for a directory named exactly `name` under this marketplace.
-        const candidate = pathService.join(marketplacesRoot, marketplaceName, "plugins", name);
-
-        const exists = yield* fs.exists(candidate).pipe(
-          Effect.orElseSucceed(() => false),
+        // Ensure the managed marketplace plugins directory exists before installing.
+        yield* fs.makeDirectory(managedPluginsDir, { recursive: true }).pipe(
+          Effect.mapError(
+            (e) =>
+              new PluginError({
+                detail: `Failed to create managed plugins directory: ${String(e)}`,
+                cause: e,
+              }),
+          ),
         );
 
-        if (exists) {
-          yield* fs.remove(candidate, { recursive: true }).pipe(
+        let destDir: string;
+
+        if (isLocalPath(source)) {
+          // ── Local path install ──────────────────────────────────────────────
+          const resolvedSource = resolvePath(source);
+          const dirName = pathService.basename(resolvedSource);
+          destDir = pathService.join(managedPluginsDir, dirName);
+
+          const alreadyExists = yield* fs.exists(destDir).pipe(
             Effect.mapError(
               (e) =>
                 new PluginError({
-                  detail: `Failed to remove plugin "${name}": ${String(e)}`,
+                  detail: `Failed to check if plugin already exists: ${String(e)}`,
                   cause: e,
                 }),
             ),
           );
-          return;
-        }
-      }
 
-      // No marketplace contained a plugin with this name.
-      return yield* new PluginError({ detail: `Plugin not found: ${name}` });
-    });
+          if (alreadyExists) {
+            // yield* on a TaggedError is shorthand for Effect.fail(new TaggedError(...)). Enabled by the Effect TS plugin.
+            return yield* new PluginError({ detail: "Plugin already installed" });
+          }
+
+          // Copy the directory recursively into the managed marketplace.
+          yield* fs.copy(resolvedSource, destDir).pipe(
+            Effect.mapError(
+              (e) =>
+                new PluginError({
+                  detail: `Failed to copy plugin from ${resolvedSource}: ${String(e)}`,
+                  cause: e,
+                }),
+            ),
+          );
+        } else if (isGitUrl(source)) {
+          // ── Git URL install ─────────────────────────────────────────────────
+          // Fix 5: pluginNameFromGitUrl now returns null for malformed URLs.
+          const name = pluginNameFromGitUrl(source);
+          if (name === null) {
+            return yield* new PluginError({
+              detail: `Cannot determine plugin name from URL: ${source}`,
+            });
+          }
+          destDir = pathService.join(managedPluginsDir, name);
+
+          const alreadyExists = yield* fs.exists(destDir).pipe(
+            Effect.mapError(
+              (e) =>
+                new PluginError({
+                  detail: `Failed to check if plugin already exists: ${String(e)}`,
+                  cause: e,
+                }),
+            ),
+          );
+
+          if (alreadyExists) {
+            return yield* new PluginError({ detail: "Plugin already installed" });
+          }
+
+          // Use the shared runProcess helper (used by git/gh commands throughout the codebase)
+          // to spawn `git clone` without pulling in an external library.
+          // Note: runProcess does not enforce a timeout by itself; network hangs will
+          // block this permit until the OS terminates the child process or the caller
+          // cancels the Effect fiber.
+          yield* Effect.tryPromise({
+            try: () => runProcess("git", ["clone", source, destDir]),
+            catch: (e) =>
+              new PluginError({
+                detail: `Failed to clone plugin from ${source}: ${e instanceof Error ? e.message : String(e)}`,
+                cause: e,
+              }),
+          });
+        } else {
+          // Unrecognized source — not a local path or git URL.
+          return yield* new PluginError({
+            detail: `Unrecognized plugin source "${source}". Provide an absolute/relative path or a git URL.`,
+          });
+        }
+
+        // Read the installed plugin's package.json and return PluginInfo.
+        const pkg = yield* readPackageJson(fs, destDir);
+        const dirName = pathService.basename(destDir);
+
+        // location and marketplace satisfy TrimmedNonEmptyString — both are non-empty
+        // strings (destDir is an absolute path; "t3code" is a literal).
+        return {
+          name: pkg.name.length > 0 ? pkg.name : dirName,
+          version: pkg.version,
+          description: pkg.description,
+          location: destDir,
+          marketplace: "t3code",
+        } satisfies PluginInfo;
+      }),
+    );
+
+  // ── remove ────────────────────────────────────────────────────────────────
+
+  // Fix 2: accept `location` (absolute path) instead of `name` (directory name).
+  // The caller passes back the `location` field from a PluginInfo returned by list().
+  // This ensures the caller identity is unambiguous — package.json name ≠ dir name.
+  //
+  // Additionally, only plugins under managedPluginsDir (t3code marketplace) may
+  // be removed to prevent accidental deletion of externally managed plugins.
+  const remove = (location: string): Effect.Effect<void, PluginError> =>
+    // Fix 3: wrap body in mutex so concurrent remove() / install() calls are serialised.
+    pluginMutex.withPermits(1)(
+      Effect.gen(function* () {
+        // Reject locations that are not under the managed t3code marketplace directory.
+        // pathService.resolve normalises ".." etc., so the prefix check is safe.
+        const normalised = pathService.resolve(location);
+        const managedPrefix = managedPluginsDir + pathService.sep;
+
+        if (!normalised.startsWith(managedPrefix) && normalised !== managedPluginsDir) {
+          return yield* new PluginError({
+            detail: `Cannot remove plugin at "${location}": only plugins installed in the t3code marketplace may be removed.`,
+          });
+        }
+
+        const exists = yield* fs.exists(normalised).pipe(
+          Effect.mapError(
+            (e) =>
+              new PluginError({
+                detail: `Failed to check plugin directory: ${String(e)}`,
+                cause: e,
+              }),
+          ),
+        );
+
+        if (!exists) {
+          return yield* new PluginError({ detail: `Plugin not found at location: ${location}` });
+        }
+
+        yield* fs.remove(normalised, { recursive: true }).pipe(
+          Effect.mapError(
+            (e) =>
+              new PluginError({
+                detail: `Failed to remove plugin at "${location}": ${String(e)}`,
+                cause: e,
+              }),
+          ),
+        );
+      }),
+    );
 
   return { list, install, remove } satisfies PluginServiceShape;
 });
