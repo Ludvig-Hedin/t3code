@@ -2,8 +2,12 @@ import {
   type GitActionProgressEvent,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
+  type McpServer,
+  type McpServerInput,
   type NativeApi,
   ORCHESTRATION_WS_METHODS,
+  type PluginInfo,
+  type ProviderKind,
   type ServerSettingsPatch,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -92,6 +96,25 @@ export interface WsRpcClient {
     readonly getFullThreadDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getFullThreadDiff>;
     readonly replayEvents: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.replayEvents>;
     readonly onDomainEvent: RpcStreamMethod<typeof WS_METHODS.subscribeOrchestrationDomainEvents>;
+  };
+  readonly mcp: {
+    readonly listServers: (input: { provider: ProviderKind }) => Promise<readonly McpServer[]>;
+    readonly addServer: (input: {
+      provider: ProviderKind;
+      name: string;
+      server: McpServerInput;
+    }) => Promise<McpServer>;
+    readonly updateServer: (input: {
+      provider: ProviderKind;
+      name: string;
+      patch: McpServerInput;
+    }) => Promise<McpServer>;
+    readonly deleteServer: (input: { provider: ProviderKind; name: string }) => Promise<void>;
+  };
+  readonly plugins: {
+    readonly list: () => Promise<readonly PluginInfo[]>;
+    readonly install: (input: { source: string }) => Promise<PluginInfo>;
+    readonly remove: (input: { location: string }) => Promise<void>;
   };
 }
 
@@ -202,6 +225,38 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
           (client) => client[WS_METHODS.subscribeOrchestrationDomainEvents]({}),
           listener,
         ),
+    },
+    mcp: {
+      listServers: (input) =>
+        transport
+          .request((client) => client[WS_METHODS.mcpListServers](input))
+          .then((servers) => [...servers]),
+      addServer: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.mcpAddServer]({
+            provider: input.provider,
+            name: input.name,
+            server: input.server,
+          }),
+        ),
+      updateServer: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.mcpUpdateServer]({
+            provider: input.provider,
+            name: input.name,
+            patch: input.patch,
+          }),
+        ),
+      deleteServer: (input) =>
+        transport.request((client) => client[WS_METHODS.mcpDeleteServer](input)),
+    },
+    plugins: {
+      list: () =>
+        transport
+          .request((client) => client[WS_METHODS.pluginsList]({}))
+          .then((plugins) => [...plugins]),
+      install: (input) => transport.request((client) => client[WS_METHODS.pluginsInstall](input)),
+      remove: (input) => transport.request((client) => client[WS_METHODS.pluginsRemove](input)),
     },
   };
 }
