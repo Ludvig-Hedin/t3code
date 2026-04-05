@@ -7,7 +7,7 @@ import {
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
 import { CodeReviewControl } from "../CodeReviewControl";
-import { DiffIcon, TerminalSquareIcon } from "lucide-react";
+import { DiffIcon, MonitorPlayIcon, TerminalSquareIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -32,6 +32,10 @@ interface ChatHeaderProps {
   diffToggleShortcutLabel: string | null;
   gitCwd: string | null;
   diffOpen: boolean;
+  previewAvailable: boolean;
+  previewOpen: boolean;
+  hasRunningPreviewApp: boolean;
+  onTogglePreview: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
@@ -57,6 +61,10 @@ export const ChatHeader = memo(function ChatHeader({
   diffToggleShortcutLabel,
   gitCwd,
   diffOpen,
+  previewAvailable,
+  previewOpen,
+  hasRunningPreviewApp,
+  onTogglePreview,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -113,6 +121,33 @@ export const ChatHeader = memo(function ChatHeader({
             isGitRepo={isGitRepo}
           />
         )}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="relative shrink-0"
+                pressed={previewOpen}
+                onPressedChange={onTogglePreview}
+                aria-label="Toggle preview panel"
+                variant="outline"
+                size="xs"
+                disabled={!previewAvailable}
+              >
+                <MonitorPlayIcon className="size-3" />
+                {hasRunningPreviewApp && (
+                  <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-green-500" />
+                )}
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">
+            {!previewAvailable
+              ? "Preview is unavailable until this thread has an active project."
+              : previewOpen
+                ? "Close preview panel"
+                : "Open preview panel"}
+          </TooltipPopup>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={

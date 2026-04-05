@@ -69,6 +69,7 @@ import {
 import { useStore } from "../store";
 import { useProjectById, useThreadById } from "../storeSelectors";
 import { useUiStateStore } from "../uiStateStore";
+import { usePreviewStore, selectHasRunningApp } from "../previewStore";
 import {
   buildPlanImplementationThreadTitle,
   buildPlanImplementationPrompt,
@@ -902,6 +903,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [activeThreadId, existingOpenTerminalThreadIds, terminalState.terminalOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProject = useProjectById(activeThread?.projectId);
+  const previewOpen = useUiStateStore((store) => store.previewOpen);
+  const setPreviewOpen = useUiStateStore((store) => store.setPreviewOpen);
+  const previewAvailable = activeProject !== undefined;
+  const hasRunningPreviewApp = usePreviewStore(selectHasRunningApp(activeProject?.id ?? ""));
 
   const openPullRequestDialog = useCallback(
     (reference?: string) => {
@@ -1701,6 +1706,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
       },
     });
   }, [diffOpen, navigate, threadId]);
+
+  const onTogglePreview = useCallback(() => {
+    setPreviewOpen(!previewOpen);
+  }, [previewOpen, setPreviewOpen]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -4224,6 +4233,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
           diffOpen={diffOpen}
+          previewAvailable={previewAvailable}
+          previewOpen={previewOpen}
+          hasRunningPreviewApp={hasRunningPreviewApp}
           onRunProjectScript={(script) => {
             void runProjectScript(script);
           }}
@@ -4232,6 +4244,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onDeleteProjectScript={deleteProjectScript}
           onToggleTerminal={toggleTerminalVisibility}
           onToggleDiff={onToggleDiff}
+          onTogglePreview={onTogglePreview}
         />
       </header>
 
