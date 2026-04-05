@@ -7,12 +7,12 @@
  *    because when it is open those actions are already accessible in the
  *    sidebar panel.
  *
- * Returns null on non-Electron (web) builds.
+ * Returns null on non-Electron, non-mobile-webview builds.
  */
 import { PanelLeftIcon, SearchIcon, SquarePenIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
-import { isElectron } from "../env";
+import { isElectron, isMobileWebView } from "../env";
 import { isMacPlatform } from "../lib/utils";
 import { useSearchModalStore } from "../searchModalStore";
 import { useServerKeybindings } from "../rpc/serverState";
@@ -30,7 +30,8 @@ export function SidebarCollapsedControls() {
   const setSearchOpen = useSearchModalStore((s) => s.setOpen);
   const keybindings = useServerKeybindings();
 
-  if (!isElectron) return null;
+  // Show on Electron desktop and in the iOS WKWebView (both need collapsed-sidebar controls).
+  if (!isElectron && !isMobileWebView) return null;
 
   const isMac = isMacPlatform(navigator.platform);
   const sidebarCollapsed = !open;

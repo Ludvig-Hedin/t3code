@@ -58,7 +58,7 @@ import {
   type SidebarProjectSortOrder,
   type SidebarThreadSortOrder,
 } from "@t3tools/contracts/settings";
-import { isElectron } from "../env";
+import { isElectron, isMobileWebView } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isLinuxPlatform, isMacPlatform, newCommandId } from "../lib/utils";
@@ -798,7 +798,8 @@ export default function Sidebar() {
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
   const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform);
   const platform = navigator.platform;
-  const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop;
+  // On mobile webview there is no native folder picker — use the path text input instead.
+  const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop && !isMobileWebView;
   const shouldShowProjectPathEntry = addingProject && !shouldBrowseForProjectImmediately;
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
@@ -2118,6 +2119,12 @@ export default function Sidebar() {
           {toggleSidebarButton}
           {wordmark}
         </SidebarHeader>
+      ) : isMobileWebView ? (
+        /* Compact non-drag header for the iOS WKWebView — includes sidebar toggle button */
+        <SidebarHeader className="flex-row items-center gap-2 px-3 py-2">
+          {toggleSidebarButton}
+          {wordmark}
+        </SidebarHeader>
       ) : (
         <SidebarHeader className="gap-3 px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-3">
           {wordmark}
@@ -2131,12 +2138,12 @@ export default function Sidebar() {
           {/* New thread + search — styled to match footer buttons (same size/weight) */}
           {projects.length > 0 && defaultProjectId && (
             <div className="px-2 py-1">
-              {/* Navigates to the home/new-chat page so the project picker and prompt
-                  suggestions are shown — rather than jumping straight into a draft thread */}
+              {/* Creates a draft thread in the default project and navigates to it,
+                  where the real composer + prompt cards are shown for empty threads. */}
               <button
                 type="button"
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-                onClick={() => void navigate({ to: "/" })}
+                onClick={() => void handleNewThread(defaultProjectId!)}
               >
                 <SquarePenIcon className="size-3.5" />
                 <span className="flex-1 text-left">New thread</span>

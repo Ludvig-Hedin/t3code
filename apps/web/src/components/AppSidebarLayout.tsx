@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import ThreadSidebar from "./Sidebar";
 import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
-import { isElectron } from "../env";
+import { isElectron, isMobileWebView } from "../env";
 
 const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
 const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
@@ -57,7 +57,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
  */
 function SidebarCollapseEffect() {
   const { open } = useSidebar();
-  const collapsed = isElectron && !open;
+  const collapsed = (isElectron || isMobileWebView) && !open;
 
   useEffect(() => {
     if (collapsed) {
