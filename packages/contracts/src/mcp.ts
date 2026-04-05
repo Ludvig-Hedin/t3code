@@ -38,13 +38,10 @@ export type McpServer = typeof McpServer.Type;
 
 // ── MCP Server Error ────────────────────────────────────────────────────
 
-export class McpServerError extends Schema.TaggedErrorClass<McpServerError>()(
-  "McpServerError",
-  {
-    detail: Schema.String,
-    cause: Schema.optional(Schema.Defect),
-  },
-) {
+export class McpServerError extends Schema.TaggedErrorClass<McpServerError>()("McpServerError", {
+  detail: Schema.String,
+  cause: Schema.optional(Schema.Defect),
+}) {
   override get message(): string {
     return this.detail;
   }

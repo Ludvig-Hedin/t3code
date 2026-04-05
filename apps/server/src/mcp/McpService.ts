@@ -219,7 +219,9 @@ const validateName = (name: string): Effect.Effect<string, McpServerError> =>
  * Validate a McpServerInput value against the contracts schema.
  * Returns McpServerError if any field is invalid.
  */
-const validateServerInput = (server: McpServerInput): Effect.Effect<McpServerInput, McpServerError> =>
+const validateServerInput = (
+  server: McpServerInput,
+): Effect.Effect<McpServerInput, McpServerError> =>
   Schema.decodeEffect(McpServerInput)(server).pipe(
     Effect.mapError(
       (cause) =>

@@ -68,9 +68,7 @@ const readPackageJson = (
       return { name: "", version: "unknown", description: "" };
     }
 
-    const raw = yield* fs.readFileString(pkgPath, "utf8").pipe(
-      Effect.orElseSucceed(() => "{}"),
-    );
+    const raw = yield* fs.readFileString(pkgPath, "utf8").pipe(Effect.orElseSucceed(() => "{}"));
 
     // Wrap JSON.parse in Effect.try so malformed JSON falls back to defaults
     // instead of throwing or crashing the list operation.
@@ -138,11 +136,7 @@ function isLocalPath(source: string): boolean {
  * below in install() to produce a clear rejection error.
  */
 function isGitUrl(source: string): boolean {
-  return (
-    source.startsWith("https://") ||
-    source.startsWith("git@") ||
-    source.endsWith(".git")
-  );
+  return source.startsWith("https://") || source.startsWith("git@") || source.endsWith(".git");
 }
 
 // ── Service factory ──────────────────────────────────────────────────────────
@@ -200,22 +194,20 @@ export const makePluginService = Effect.gen(function* () {
 
         const pluginsDir = pathService.join(marketplacesRoot, marketplaceName, "plugins");
 
-        const pluginsDirExists = yield* fs.exists(pluginsDir).pipe(
-          Effect.orElseSucceed(() => false),
-        );
+        const pluginsDirExists = yield* fs
+          .exists(pluginsDir)
+          .pipe(Effect.orElseSucceed(() => false));
         if (!pluginsDirExists) continue;
 
-        const pluginDirs = yield* fs.readDirectory(pluginsDir).pipe(
-          Effect.orElseSucceed(() => [] as string[]),
-        );
+        const pluginDirs = yield* fs
+          .readDirectory(pluginsDir)
+          .pipe(Effect.orElseSucceed(() => [] as string[]));
 
         for (const pluginDirName of pluginDirs) {
           const pluginPath = pathService.join(pluginsDir, pluginDirName);
 
           // Only include actual directories (not files that may live in plugins/).
-          const stat = yield* fs.stat(pluginPath).pipe(
-            Effect.orElseSucceed(() => null),
-          );
+          const stat = yield* fs.stat(pluginPath).pipe(Effect.orElseSucceed(() => null));
           if (stat === null || stat.type !== "Directory") continue;
 
           const pkg = yield* readPackageJson(fs, pluginPath);
