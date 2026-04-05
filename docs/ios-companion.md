@@ -42,6 +42,8 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 - The pairing code is now a shareable payload, not a raw `localhost` URL, so Bird Code can reconnect without a manual token entry step.
 - The desktop settings panel is scrollable and the QR card is intentionally compact so the pairing controls stay usable on smaller screens.
 - The Bird Code logo is loaded from the bundled artwork derived from `assets/new/logo-dark.svg`.
+- The app icon now comes from `apps/mobile/Resources/Assets.xcassets/AppIcon.appiconset`.
+- If iOS still shows an old icon after reinstalling, delete Bird Code from the device or simulator once and install it again to clear the cached icon.
 
 ## Status
 

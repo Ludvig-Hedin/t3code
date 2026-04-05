@@ -62,6 +62,7 @@ Pairing is QR-first:
 - The pairing code includes the desktop auth context automatically, so you should not need to look up a token manually.
 - The `Advanced` tab keeps the server URL and auth token fields only for edge cases.
 - The QR should point at a reachable desktop address on your LAN, not `localhost`.
+- The iOS app icon is bundled from `apps/mobile/Resources/Assets.xcassets/AppIcon.appiconset`; if the old icon sticks around, delete and reinstall the app once so iOS refreshes its cache.
 
 To generate the Xcode project locally:
 

@@ -17,8 +17,10 @@ targets:
     platform: iOS
     sources:
       - path: Sources/BirdCode
-    resources:
       - path: Resources
+        type: syncedFolder
+        explicitFolders:
+          - Assets.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ludvighedin.birdcodemobile
