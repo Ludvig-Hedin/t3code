@@ -238,22 +238,47 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
         }
 
         const pairedAt = nowIso();
-        const device: DeviceRecord = {
-          deviceId: `mobile-${crypto.randomUUID()}`,
-          deviceName: decoded.deviceName,
-          deviceToken: createDeviceToken(),
-          pairCode: createPairCode(),
-          pairCodeExpiresAt: new Date(Date.now() + MOBILE_DEVICE_STATE_TTL_MS).toISOString(),
-          pairedAt,
-          lastSeenAt: pairedAt,
-          revokedAt: null,
-        };
 
-        yield* replaceDevices((devices) => [...devices, device]);
-        const snapshot = yield* loadSnapshot();
-        return serializeSnapshot(snapshot, toPublicDevice(device), {
+        // Deduplicate: if a non-revoked device with the same name already exists,
+        // rotate its token instead of appending a new record. This prevents duplicate
+        // entries appearing in the desktop settings panel when the user re-pairs after
+        // a failed attempt or reinstalls the iOS app.
+        const existingDevices = yield* Ref.get(devicesRef);
+        const existingDevice = existingDevices.find(
+          (entry) => entry.deviceName === decoded.deviceName && entry.revokedAt === null,
+        );
+
+        const device: DeviceRecord = existingDevice
+          ? {
+              ...existingDevice,
+              deviceToken: createDeviceToken(),
+              lastSeenAt: pairedAt,
+            }
+          : {
+              deviceId: `mobile-${crypto.randomUUID()}`,
+              deviceName: decoded.deviceName,
+              deviceToken: createDeviceToken(),
+              pairCode: createPairCode(),
+              pairCodeExpiresAt: new Date(Date.now() + MOBILE_DEVICE_STATE_TTL_MS).toISOString(),
+              pairedAt,
+              lastSeenAt: pairedAt,
+              revokedAt: null,
+            };
+
+        yield* replaceDevices((devices) =>
+          existingDevice
+            ? devices.map((entry) => (entry.deviceId === device.deviceId ? device : entry))
+            : [...devices, device],
+        );
+
+        // Return only pairing metadata — NOT the full OrchestrationReadModel snapshot.
+        // The iOS WKWebView connects via WebSocket and loads all data in real time.
+        // Returning the full snapshot here caused iOS decode failures whenever any
+        // nested field had a type mismatch, breaking pairing entirely.
+        return HttpServerResponse.jsonUnsafe({
           paired: true,
           deviceToken: device.deviceToken,
+          device: toPublicDevice(device),
         });
       }),
     );
