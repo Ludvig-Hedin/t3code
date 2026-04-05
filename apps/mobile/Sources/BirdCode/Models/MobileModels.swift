@@ -13,7 +13,7 @@ enum BirdCodeDateCoding {
     return formatter
   }()
 
-  static func decodeDate(from decoder: Decoder) throws -> Date {
+  @Sendable static func decodeDate(from decoder: Decoder) throws -> Date {
     let container = try decoder.singleValueContainer()
     let value = try container.decode(String.self)
     if let parsed = fractionalFormatter.date(from: value) ?? basicFormatter.date(from: value) {
@@ -25,7 +25,7 @@ enum BirdCodeDateCoding {
     )
   }
 
-  static func encodeDate(_ date: Date, to encoder: Encoder) throws {
+  @Sendable static func encodeDate(_ date: Date, to encoder: Encoder) throws {
     var container = encoder.singleValueContainer()
     let value = fractionalFormatter.string(from: date)
     try container.encode(value)

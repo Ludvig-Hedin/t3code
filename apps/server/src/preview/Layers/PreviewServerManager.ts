@@ -12,11 +12,7 @@ import {
   PreviewServerManager,
   type PreviewServerManagerShape,
 } from "../Services/PreviewServerManager";
-import {
-  buildDetectionCandidates,
-  detectPortFromLine,
-  type DetectionEntry,
-} from "../appDetection";
+import { buildDetectionCandidates, detectPortFromLine, type DetectionEntry } from "../appDetection";
 
 interface RunningSession {
   session: PreviewSession;
@@ -34,9 +30,9 @@ async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
     // Scan root package.json
     if (rootFiles.includes("package.json")) {
       try {
-        const pkg = JSON.parse(
-          fs.readFileSync(nodePath.join(cwd, "package.json"), "utf-8"),
-        ) as { scripts?: Record<string, string> };
+        const pkg = JSON.parse(fs.readFileSync(nodePath.join(cwd, "package.json"), "utf-8")) as {
+          scripts?: Record<string, string>;
+        };
         entries.push({
           relativePath: "package.json",
           hasDevScript: Boolean(pkg.scripts?.["dev"] || pkg.scripts?.["start"]),
@@ -318,8 +314,7 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         if (!app) {
           return yield* Effect.fail(new Error(`App "${appId}" not found.`));
         }
-        const overrides =
-          manualOverrides.get(projectId) ?? new Map<string, Partial<PreviewApp>>();
+        const overrides = manualOverrides.get(projectId) ?? new Map<string, Partial<PreviewApp>>();
         const existingOverride = overrides.get(appId) ?? {};
         overrides.set(appId, { ...existingOverride, ...patch });
         manualOverrides.set(projectId, overrides);

@@ -12,6 +12,7 @@ import { useCallback, useMemo, type ComponentType } from "react";
 
 import { isElectron } from "../env";
 import { SidebarTrigger } from "../components/ui/sidebar";
+import { AppPageHeader } from "../components/AppPageHeader";
 import { Button } from "../components/ui/button";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useStore } from "../store";
@@ -164,11 +165,9 @@ function ChatIndexRouteView() {
           </header>
         )}
 
-        {isElectron && (
-          <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-            <span className="text-xs text-muted-foreground/50">No active thread</span>
-          </div>
-        )}
+        <AppPageHeader>
+          <span className="text-xs text-muted-foreground/50">No active thread</span>
+        </AppPageHeader>
 
         <div className="flex flex-1 items-center justify-center px-6">
           <div className="flex max-w-md flex-col items-center gap-4 text-center">

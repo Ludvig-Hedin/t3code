@@ -1,9 +1,14 @@
-import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
+import {
+  type CustomApprovalPolicy,
+  ProviderInteractionMode,
+  RuntimeMode,
+} from "@t3tools/contracts";
 import { memo, type ReactNode } from "react";
 import { EllipsisIcon, ListTodoIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   Menu,
+  MenuCheckboxItem,
   MenuItem,
   MenuPopup,
   MenuRadioGroup,
@@ -17,11 +22,17 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   interactionMode: ProviderInteractionMode;
   planSidebarOpen: boolean;
   runtimeMode: RuntimeMode;
+  /** Per-action approval config, used when runtimeMode is "custom" */
+  customApprovalPolicy: CustomApprovalPolicy;
   traitsMenuContent?: ReactNode;
   onToggleInteractionMode: () => void;
   onTogglePlanSidebar: () => void;
-  onToggleRuntimeMode: () => void;
+  /** Called with the newly selected runtime mode */
+  onRuntimeModeChange: (mode: RuntimeMode) => void;
+  onCustomApprovalPolicyChange: (policy: CustomApprovalPolicy) => void;
 }) {
+  const isCustom = props.runtimeMode === "custom";
+
   return (
     <Menu>
       <MenuTrigger
@@ -55,17 +66,70 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
           <MenuRadioItem value="plan">Plan</MenuRadioItem>
         </MenuRadioGroup>
         <MenuDivider />
-        <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
+        <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Permissions</div>
         <MenuRadioGroup
           value={props.runtimeMode}
           onValueChange={(value) => {
             if (!value || value === props.runtimeMode) return;
-            props.onToggleRuntimeMode();
+            props.onRuntimeModeChange(value as RuntimeMode);
           }}
         >
-          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
-          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+          {/* Auto accept edits: AI acts without asking */}
+          <MenuRadioItem value="full-access">Auto accept edits</MenuRadioItem>
+          {/* Ask permission: AI must request approval for each action */}
+          <MenuRadioItem value="approval-required">Ask permission</MenuRadioItem>
+          {/* Custom: granular per-action control */}
+          <MenuRadioItem value="custom">Custom</MenuRadioItem>
         </MenuRadioGroup>
+
+        {/* Per-action toggles, shown only when "Custom" is selected */}
+        {isCustom ? (
+          <>
+            <div className="px-2 pt-2 pb-0.5 text-xs text-muted-foreground/70">
+              Auto-approve actions:
+            </div>
+            {/* commands: command_execution_approval + exec_command_approval */}
+            <MenuCheckboxItem
+              variant="switch"
+              checked={props.customApprovalPolicy.commands}
+              onCheckedChange={(checked) =>
+                props.onCustomApprovalPolicyChange({
+                  ...props.customApprovalPolicy,
+                  commands: !!checked,
+                })
+              }
+            >
+              Run shell commands
+            </MenuCheckboxItem>
+            {/* fileReads: file_read_approval */}
+            <MenuCheckboxItem
+              variant="switch"
+              checked={props.customApprovalPolicy.fileReads}
+              onCheckedChange={(checked) =>
+                props.onCustomApprovalPolicyChange({
+                  ...props.customApprovalPolicy,
+                  fileReads: !!checked,
+                })
+              }
+            >
+              Read files
+            </MenuCheckboxItem>
+            {/* fileChanges: file_change_approval + apply_patch_approval */}
+            <MenuCheckboxItem
+              variant="switch"
+              checked={props.customApprovalPolicy.fileChanges}
+              onCheckedChange={(checked) =>
+                props.onCustomApprovalPolicyChange({
+                  ...props.customApprovalPolicy,
+                  fileChanges: !!checked,
+                })
+              }
+            >
+              Write &amp; modify files
+            </MenuCheckboxItem>
+          </>
+        ) : null}
+
         {props.activePlan ? (
           <>
             <MenuDivider />

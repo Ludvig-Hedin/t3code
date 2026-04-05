@@ -10,6 +10,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SkillsManager } from "../components/SkillsManager";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { isElectron } from "../env";
+import { AppPageHeader } from "../components/AppPageHeader";
 
 function SkillsPageLayout() {
   // Escape key navigates back to the main chat view
@@ -40,13 +41,9 @@ function SkillsPageLayout() {
           </header>
         )}
 
-        {isElectron && (
-          <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-            <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
-              Skills
-            </span>
-          </div>
-        )}
+        <AppPageHeader showBack>
+          <span className="text-xs font-medium tracking-wide text-muted-foreground/70">Skills</span>
+        </AppPageHeader>
 
         <div className="min-h-0 flex flex-1 flex-col">
           <SkillsManager />

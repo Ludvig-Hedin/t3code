@@ -172,9 +172,12 @@ input {
    buttons (close / minimise / full-screen) overlap the main-content drag
    regions.  A SidebarCollapseEffect component toggles this attribute on
    <body> so we can push the content clear of the ~90 px traffic-light zone. */
-/* Pad past: 90px traffic lights + 3 icon buttons (≈26px each) + 2 gaps (2px) + 8px right margin = ~185px */
+/* When the sidebar is collapsed the macOS traffic-light buttons overlay the
+   top-left of the window.  Add left padding to clear the ~90 px traffic-light
+   zone on all drag-region headers.  The inline SidebarCollapsedControls
+   buttons that follow naturally push the page title further right. */
 body[data-sidebar-collapsed] .drag-region {
-  padding-left: 185px;
+  padding-left: 90px;
 }
 
 .drag-region button,

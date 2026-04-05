@@ -2,6 +2,8 @@ import {
   CODEX_REASONING_EFFORT_OPTIONS,
   type ClaudeCodeEffort,
   type CodexReasoningEffort,
+  CustomApprovalPolicy,
+  DEFAULT_CUSTOM_APPROVAL_POLICY,
   DEFAULT_MODEL_BY_PROVIDER,
   ModelSelection,
   ProjectId,
@@ -85,6 +87,7 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   activeProvider: Schema.optionalKey(Schema.NullOr(ProviderKind)),
   runtimeMode: Schema.optionalKey(RuntimeMode),
   interactionMode: Schema.optionalKey(ProviderInteractionMode),
+  customApprovalPolicy: Schema.optionalKey(CustomApprovalPolicy),
 });
 type PersistedComposerThreadDraftState = typeof PersistedComposerThreadDraftState.Type;
 
@@ -165,6 +168,8 @@ export interface ComposerThreadDraftState {
   activeProvider: ProviderKind | null;
   runtimeMode: RuntimeMode | null;
   interactionMode: ProviderInteractionMode | null;
+  /** Per-action approval overrides, only used when runtimeMode is "custom" */
+  customApprovalPolicy: CustomApprovalPolicy | null;
 }
 
 export interface DraftThreadState {
@@ -237,6 +242,7 @@ interface ComposerDraftStoreState {
     },
   ) => void;
   setRuntimeMode: (threadId: ThreadId, runtimeMode: RuntimeMode | null | undefined) => void;
+  setCustomApprovalPolicy: (threadId: ThreadId, policy: CustomApprovalPolicy | null) => void;
   setInteractionMode: (
     threadId: ThreadId,
     interactionMode: ProviderInteractionMode | null | undefined,
@@ -320,6 +326,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   activeProvider: null,
   runtimeMode: null,
   interactionMode: null,
+  customApprovalPolicy: null,
 });
 
 function createEmptyThreadDraft(): ComposerThreadDraftState {
@@ -333,6 +340,7 @@ function createEmptyThreadDraft(): ComposerThreadDraftState {
     activeProvider: null,
     runtimeMode: null,
     interactionMode: null,
+    customApprovalPolicy: null,
   };
 }
 
@@ -402,7 +410,8 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     Object.keys(draft.modelSelectionByProvider).length === 0 &&
     draft.activeProvider === null &&
     draft.runtimeMode === null &&
-    draft.interactionMode === null
+    draft.interactionMode === null &&
+    draft.customApprovalPolicy === null
   );
 }
 
@@ -745,6 +754,19 @@ function normalizePersistedTerminalContextDraft(
   };
 }
 
+function isValidCustomApprovalPolicy(value: unknown): value is CustomApprovalPolicy {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "commands" in value &&
+    "fileReads" in value &&
+    "fileChanges" in value &&
+    typeof (value as Record<string, unknown>).commands === "boolean" &&
+    typeof (value as Record<string, unknown>).fileReads === "boolean" &&
+    typeof (value as Record<string, unknown>).fileChanges === "boolean"
+  );
+}
+
 function normalizeDraftThreadEnvMode(
   value: unknown,
   fallbackWorktreePath: string | null,
@@ -790,7 +812,8 @@ function normalizePersistedDraftThreads(
             : new Date().toISOString(),
         runtimeMode:
           candidateDraftThread.runtimeMode === "approval-required" ||
-          candidateDraftThread.runtimeMode === "full-access"
+          candidateDraftThread.runtimeMode === "full-access" ||
+          candidateDraftThread.runtimeMode === "custom"
             ? candidateDraftThread.runtimeMode
             : DEFAULT_RUNTIME_MODE,
         interactionMode:
@@ -875,9 +898,15 @@ function normalizePersistedDraftsByThreadId(
       : [];
     const runtimeMode =
       draftCandidate.runtimeMode === "approval-required" ||
-      draftCandidate.runtimeMode === "full-access"
+      draftCandidate.runtimeMode === "full-access" ||
+      draftCandidate.runtimeMode === "custom"
         ? draftCandidate.runtimeMode
         : null;
+    const rawCustomPolicy = (draftCandidate as { customApprovalPolicy?: unknown })
+      .customApprovalPolicy;
+    const customApprovalPolicy = isValidCustomApprovalPolicy(rawCustomPolicy)
+      ? rawCustomPolicy
+      : null;
     const interactionMode =
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
@@ -940,7 +969,8 @@ function normalizePersistedDraftsByThreadId(
       terminalContexts.length === 0 &&
       !hasModelData &&
       !runtimeMode &&
-      !interactionMode
+      !interactionMode &&
+      !customApprovalPolicy
     ) {
       continue;
     }
@@ -951,6 +981,7 @@ function normalizePersistedDraftsByThreadId(
       ...(hasModelData ? { modelSelectionByProvider, activeProvider } : {}),
       ...(runtimeMode ? { runtimeMode } : {}),
       ...(interactionMode ? { interactionMode } : {}),
+      ...(customApprovalPolicy ? { customApprovalPolicy } : {}),
     };
   }
 
@@ -1019,7 +1050,8 @@ function partializeComposerDraftStoreState(
       draft.terminalContexts.length === 0 &&
       !hasModelData &&
       draft.runtimeMode === null &&
-      draft.interactionMode === null
+      draft.interactionMode === null &&
+      draft.customApprovalPolicy === null
     ) {
       continue;
     }
@@ -1047,6 +1079,7 @@ function partializeComposerDraftStoreState(
         : {}),
       ...(draft.runtimeMode ? { runtimeMode: draft.runtimeMode } : {}),
       ...(draft.interactionMode ? { interactionMode: draft.interactionMode } : {}),
+      ...(draft.customApprovalPolicy ? { customApprovalPolicy: draft.customApprovalPolicy } : {}),
     };
     persistedDraftsByThreadId[threadId as ThreadId] = persistedDraft;
   }
@@ -1262,6 +1295,7 @@ function toHydratedThreadDraft(
     activeProvider,
     runtimeMode: persistedDraft.runtimeMode ?? null,
     interactionMode: persistedDraft.interactionMode ?? null,
+    customApprovalPolicy: persistedDraft.customApprovalPolicy ?? null,
   };
 }
 
@@ -1809,7 +1843,11 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           return;
         }
         const nextRuntimeMode =
-          runtimeMode === "approval-required" || runtimeMode === "full-access" ? runtimeMode : null;
+          runtimeMode === "approval-required" ||
+          runtimeMode === "full-access" ||
+          runtimeMode === "custom"
+            ? runtimeMode
+            : null;
         set((state) => {
           const existing = state.draftsByThreadId[threadId];
           if (!existing && nextRuntimeMode === null) {
@@ -1823,6 +1861,22 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
             ...base,
             runtimeMode: nextRuntimeMode,
           };
+          const nextDraftsByThreadId = { ...state.draftsByThreadId };
+          if (shouldRemoveDraft(nextDraft)) {
+            delete nextDraftsByThreadId[threadId];
+          } else {
+            nextDraftsByThreadId[threadId] = nextDraft;
+          }
+          return { draftsByThreadId: nextDraftsByThreadId };
+        });
+      },
+      setCustomApprovalPolicy: (threadId, policy) => {
+        if (threadId.length === 0) return;
+        set((state) => {
+          const existing = state.draftsByThreadId[threadId];
+          const base = existing ?? createEmptyThreadDraft();
+          if (base.customApprovalPolicy === policy) return state;
+          const nextDraft: ComposerThreadDraftState = { ...base, customApprovalPolicy: policy };
           const nextDraftsByThreadId = { ...state.draftsByThreadId };
           if (shouldRemoveDraft(nextDraft)) {
             delete nextDraftsByThreadId[threadId];

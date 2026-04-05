@@ -6,6 +6,7 @@ import { useSettingsRestore } from "../components/settings/SettingsPanels";
 import { Button } from "../components/ui/button";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { isElectron } from "../env";
+import { AppPageHeader } from "../components/AppPageHeader";
 
 function SettingsContentLayout() {
   const [restoreSignal, setRestoreSignal] = useState(0);
@@ -51,24 +52,22 @@ function SettingsContentLayout() {
           </header>
         )}
 
-        {isElectron && (
-          <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-            <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
-              Settings
-            </span>
-            <div className="ms-auto flex items-center gap-2">
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={changedSettingLabels.length === 0}
-                onClick={() => void restoreDefaults()}
-              >
-                <RotateCcwIcon className="size-3.5" />
-                Restore defaults
-              </Button>
-            </div>
+        <AppPageHeader showBack>
+          <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
+            Settings
+          </span>
+          <div className="ms-auto flex items-center gap-2">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={changedSettingLabels.length === 0}
+              onClick={() => void restoreDefaults()}
+            >
+              <RotateCcwIcon className="size-3.5" />
+              Restore defaults
+            </Button>
           </div>
-        )}
+        </AppPageHeader>
 
         <div key={restoreSignal} className="min-h-0 flex flex-1 flex-col">
           <Outlet />

@@ -30,7 +30,6 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import {
   DndContext,
@@ -86,6 +85,7 @@ import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { createProjectFromPath } from "../lib/createProject";
 import { SearchModal } from "./search/SearchModal";
+import { useSearchModalStore } from "../searchModalStore";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -785,10 +785,11 @@ export default function Sidebar() {
   const suppressProjectClickAfterDragRef = useRef(false);
   const suppressProjectClickForContextMenuRef = useRef(false);
   const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
-  // Search modal open state — toggled by search button and Cmd+K shortcut
-  const [searchOpen, setSearchOpen] = useState(false);
+  // Search modal open state — shared via global store so SidebarCollapsedControls can also open it
+  const searchOpen = useSearchModalStore((s) => s.open);
+  const setSearchOpen = useSearchModalStore((s) => s.setOpen);
   // Sidebar collapse state — toggled by button and Cmd+B shortcut
-  const { open: sidebarOpen, toggleSidebar } = useSidebar();
+  const { toggleSidebar } = useSidebar();
   const selectedThreadIds = useThreadSelectionStore((s) => s.selectedThreadIds);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
@@ -1581,7 +1582,7 @@ export default function Sidebar() {
       if (isSearchShortcut && !isTerminalFocused()) {
         event.preventDefault();
         event.stopPropagation();
-        setSearchOpen((prev) => !prev);
+        setSearchOpen(!searchOpen);
         return;
       }
 
@@ -1662,6 +1663,8 @@ export default function Sidebar() {
     platform,
     routeTerminalOpen,
     routeThreadId,
+    searchOpen,
+    setSearchOpen,
     threadJumpThreadIds,
     toggleSidebar,
     updateThreadJumpHintsVisibility,
@@ -2108,63 +2111,8 @@ export default function Sidebar() {
     </div>
   );
 
-  // When the sidebar is collapsed (Electron desktop), render a fixed overlay in the
-  // top-left corner so the toggle button (and quick-action icons) remain accessible.
-  const collapsedSidebarBar =
-    isElectron && !sidebarOpen
-      ? createPortal(
-          <div
-            className="drag-region fixed top-0 left-0 z-50 flex h-[52px] items-center gap-0.5 pl-[90px] pr-2"
-            data-testid="sidebar-collapsed-bar"
-          >
-            {toggleSidebarButton}
-            {projects.length > 0 && defaultProjectId && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-label="New thread"
-                        className={sidebarIconButtonClass}
-                        onClick={() => void navigate({ to: "/" })}
-                      >
-                        <SquarePenIcon className="size-3.5" />
-                      </button>
-                    }
-                  />
-                  <TooltipPopup side="bottom" sideOffset={4}>
-                    New thread
-                    {newThreadShortcutLabel && ` (${newThreadShortcutLabel})`}
-                  </TooltipPopup>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-label="Search"
-                        className={sidebarIconButtonClass}
-                        onClick={() => setSearchOpen(true)}
-                      >
-                        <SearchIcon className="size-3.5" />
-                      </button>
-                    }
-                  />
-                  <TooltipPopup side="bottom" sideOffset={4}>
-                    Search ({isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"})
-                  </TooltipPopup>
-                </Tooltip>
-              </>
-            )}
-          </div>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {collapsedSidebarBar}
       {isElectron ? (
         <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-1 px-2 py-0 pl-[90px]">
           {toggleSidebarButton}

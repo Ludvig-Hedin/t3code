@@ -293,7 +293,8 @@ function mapCodexRuntimeMode(runtimeMode: RuntimeMode): {
   readonly approvalPolicy: "on-request" | "never";
   readonly sandbox: "workspace-write" | "danger-full-access";
 } {
-  if (runtimeMode === "approval-required") {
+  if (runtimeMode === "approval-required" || runtimeMode === "custom") {
+    // "custom" mode: server requests approval for everything; client auto-approves selectively
     return {
       approvalPolicy: "on-request",
       sandbox: "workspace-write",

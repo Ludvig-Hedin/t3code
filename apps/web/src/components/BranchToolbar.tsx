@@ -29,7 +29,7 @@ interface BranchToolbarProps {
   onEnvModeChange: (mode: EnvMode) => void;
   envLocked: boolean;
   runtimeMode: RuntimeMode;
-  onToggleRuntimeMode: () => void;
+  onRuntimeModeChange: (mode: RuntimeMode) => void;
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest?: () => void;
 }
@@ -40,7 +40,7 @@ export default function BranchToolbar({
   onEnvModeChange,
   envLocked,
   runtimeMode,
-  onToggleRuntimeMode,
+  onRuntimeModeChange,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
 }: BranchToolbarProps) {
@@ -181,7 +181,13 @@ export default function BranchToolbar({
                 size="sm"
                 className="h-auto shrink-0 gap-1 px-2 py-0.5 text-xs font-medium text-muted-foreground/70 hover:text-foreground/80"
                 type="button"
-                onClick={onToggleRuntimeMode}
+                onClick={() =>
+                  // Toolbar button toggles between full-access and approval-required;
+                  // for "custom" mode, clicking goes back to full-access
+                  onRuntimeModeChange(
+                    runtimeMode === "full-access" ? "approval-required" : "full-access",
+                  )
+                }
               />
             }
           >
@@ -190,12 +196,20 @@ export default function BranchToolbar({
             ) : (
               <LockIcon className="size-3" />
             )}
-            <span>{runtimeMode === "full-access" ? "Full access" : "Supervised"}</span>
+            <span>
+              {runtimeMode === "full-access"
+                ? "Auto accept edits"
+                : runtimeMode === "custom"
+                  ? "Custom"
+                  : "Ask permission"}
+            </span>
           </TooltipTrigger>
           <TooltipPopup side="bottom">
             {runtimeMode === "full-access"
-              ? "Full access — click to require approvals"
-              : "Approval required — click for full access"}
+              ? "Auto accept edits — click to require approvals"
+              : runtimeMode === "custom"
+                ? "Custom permissions — click for full access"
+                : "Ask permission — click for full access"}
           </TooltipPopup>
         </Tooltip>
       </div>

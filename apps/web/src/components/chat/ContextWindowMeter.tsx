@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { cn } from "~/lib/utils";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Button } from "../ui/button";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -12,16 +14,40 @@ function formatPercentage(value: number | null): string | null {
   return `${Math.round(value)}%`;
 }
 
-export function ContextWindowMeter(props: { usage: ContextWindowSnapshot }) {
-  const { usage } = props;
+export function ContextWindowMeter(props: {
+  usage: ContextWindowSnapshot;
+  /** Called when the user confirms a manual compact request. May be async. */
+  onCompact?: () => void | Promise<void>;
+}) {
+  const { usage, onCompact } = props;
+  const [confirming, setConfirming] = useState(false);
+
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (normalizedPercentage / 100) * circumference;
 
+  function handleCompactClick() {
+    setConfirming(true);
+  }
+
+  function handleConfirm() {
+    setConfirming(false);
+    void onCompact?.();
+  }
+
+  function handleCancel() {
+    setConfirming(false);
+  }
+
   return (
-    <Popover>
+    <Popover
+      // Reset confirm state whenever the popover closes so it never lingers.
+      onOpenChange={(open) => {
+        if (!open) setConfirming(false);
+      }}
+    >
       <PopoverTrigger
         openOnHover
         delay={150}
@@ -105,6 +131,47 @@ export function ContextWindowMeter(props: { usage: ContextWindowSnapshot }) {
           {usage.compactsAutomatically ? (
             <div className="text-xs text-muted-foreground">
               Automatically compacts its context when needed.
+            </div>
+          ) : null}
+
+          {/* Manual compact section — only shown when a handler is wired up */}
+          {onCompact ? (
+            <div className="border-t border-border/60 pt-1.5 mt-1">
+              {confirming ? (
+                // Confirm state: ask the user to confirm before sending /compact
+                <div className="space-y-2">
+                  <p className="text-xs text-foreground">
+                    Summarize &amp; compress conversation history?
+                  </p>
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={handleConfirm}
+                    >
+                      Compact
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={handleCancel}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                // Default state: single "Compact context" button
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  onClick={handleCompactClick}
+                >
+                  Compact context
+                </button>
+              )}
             </div>
           ) : null}
         </div>

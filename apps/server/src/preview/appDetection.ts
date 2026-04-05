@@ -155,8 +155,8 @@ export function buildDetectionCandidates(
     const absCwd = dir === "." ? projectRoot : path.join(projectRoot, dir);
 
     // Check for known sub-directory patterns
-    const known = KNOWN_SUBDIRS.find(
-      (k) => (k.pathFragment ? rel.startsWith(k.pathFragment) : false),
+    const known = KNOWN_SUBDIRS.find((k) =>
+      k.pathFragment ? rel.startsWith(k.pathFragment) : false,
     );
 
     // Skip packages/ dirs

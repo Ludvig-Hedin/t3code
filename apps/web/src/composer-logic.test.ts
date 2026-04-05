@@ -60,6 +60,20 @@ describe("detectComposerTrigger", () => {
     });
   });
 
+  it("detects slash-command trigger for any /word including provider-native commands", () => {
+    // The trigger fires for any /word — the menu handles filtering and shows
+    // provider-native commands alongside T3Code-owned ones.
+    const text = "/diff";
+    const trigger = detectComposerTrigger(text, text.length);
+
+    expect(trigger).toEqual({
+      kind: "slash-command",
+      query: "diff",
+      rangeStart: 0,
+      rangeEnd: text.length,
+    });
+  });
+
   it("detects @path trigger in the middle of existing text", () => {
     // User typed @ between "inspect " and "in this sentence"
     const text = "Please inspect @in this sentence";

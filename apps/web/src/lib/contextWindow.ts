@@ -28,10 +28,29 @@ export type ContextWindowSnapshot = NullableContextWindowUsage & {
 export function deriveLatestContextWindowSnapshot(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ContextWindowSnapshot | null {
+  // Scan backward to find the most recent context-window.updated activity.
+  // If a context-compaction activity occurred *after* that usage snapshot,
+  // the context has been reset and the old percentage is stale — return null
+  // so the meter hides until fresh usage arrives after the next turn.
+  let latestCompactionIndex = -1;
+  for (let index = activities.length - 1; index >= 0; index -= 1) {
+    const activity = activities[index];
+    if (activity?.kind === "context-compaction") {
+      latestCompactionIndex = index;
+      break;
+    }
+  }
+
   for (let index = activities.length - 1; index >= 0; index -= 1) {
     const activity = activities[index];
     if (!activity || activity.kind !== "context-window.updated") {
       continue;
+    }
+
+    // If this usage snapshot is older than the latest compaction, it is stale.
+    // Hide the meter until a fresh usage event arrives post-compaction.
+    if (latestCompactionIndex > index) {
+      return null;
     }
 
     const payload = asRecord(activity.payload);

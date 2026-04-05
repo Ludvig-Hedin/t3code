@@ -33,6 +33,7 @@ async function mountMenu(props?: { modelSelection?: ModelSelection; prompt?: str
     activeProvider: provider,
     runtimeMode: null,
     interactionMode: null,
+    customApprovalPolicy: null,
   };
   useComposerDraftStore.setState({
     draftsByThreadId,
@@ -117,6 +118,7 @@ async function mountMenu(props?: { modelSelection?: ModelSelection; prompt?: str
       interactionMode="default"
       planSidebarOpen={false}
       runtimeMode="approval-required"
+      customApprovalPolicy={{ commands: false, fileReads: true, fileChanges: false }}
       traitsMenuContent={
         <TraitsMenuContent
           provider={provider}
@@ -130,7 +132,8 @@ async function mountMenu(props?: { modelSelection?: ModelSelection; prompt?: str
       }
       onToggleInteractionMode={vi.fn()}
       onTogglePlanSidebar={vi.fn()}
-      onToggleRuntimeMode={vi.fn()}
+      onRuntimeModeChange={vi.fn()}
+      onCustomApprovalPolicyChange={vi.fn()}
     />,
     { container: host },
   );

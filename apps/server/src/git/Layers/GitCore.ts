@@ -1813,13 +1813,28 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       .split("\n")
       .map(parseBranchLine)
       .filter((branch): branch is { name: string; current: boolean } => branch !== null)
-      .map((branch) => ({
-        name: branch.name,
-        current: branch.current,
-        isRemote: false,
-        isDefault: branch.name === defaultBranch,
-        worktreePath: worktreeMap.get(branch.name) ?? null,
-      }))
+      .map((branch) => {
+        const localBranch: {
+          name: string;
+          current: boolean;
+          isRemote: false;
+          isDefault: boolean;
+          worktreePath: string | null;
+          lastCommitAt?: number;
+        } = {
+          name: branch.name,
+          current: branch.current,
+          isRemote: false,
+          isDefault: branch.name === defaultBranch,
+          worktreePath: worktreeMap.get(branch.name) ?? null,
+        };
+        // Already computed by readBranchRecency — attach at zero extra cost
+        const lastCommitAt = branchLastCommit.get(branch.name);
+        if (lastCommitAt !== undefined) {
+          localBranch.lastCommitAt = lastCommitAt;
+        }
+        return localBranch;
+      })
       .toSorted((a, b) => {
         const aPriority = a.current ? 0 : a.isDefault ? 1 : 2;
         const bPriority = b.current ? 0 : b.isDefault ? 1 : 2;
@@ -1846,6 +1861,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
                 remoteName?: string;
                 isDefault: boolean;
                 worktreePath: string | null;
+                lastCommitAt?: number;
               } = {
                 name: branch.name,
                 current: false,
@@ -1855,6 +1871,11 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
               };
               if (parsedRemoteRef) {
                 remoteBranch.remoteName = parsedRemoteRef.remoteName;
+              }
+              // refs/remotes short name matches branch.name (e.g. "origin/main")
+              const remoteLastCommitAt = branchLastCommit.get(branch.name);
+              if (remoteLastCommitAt !== undefined) {
+                remoteBranch.lastCommitAt = remoteLastCommitAt;
               }
               return remoteBranch;
             })

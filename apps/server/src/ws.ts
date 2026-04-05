@@ -43,6 +43,7 @@ import {
 } from "./observability/RpcInstrumentation";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry";
 import { ProviderService } from "./provider/Services/ProviderService";
+import { fetchAllRateLimits } from "./provider/RateLimitFetcher";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup";
 import { ServerSettingsService } from "./serverSettings";
@@ -851,19 +852,20 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           { "rpc.aggregate": "server" },
         ),
       // Rate-limit subscription:
-      //  1. Emit currently cached snapshot so the client sees stale-but-present data instantly.
-      //  2. Fork a background refresh (Codex calls account/rateLimits/read; others are no-ops).
-      //     Forking — not awaiting — ensures the PubSub subscription is established before
-      //     refresh events are published, avoiding a race where events fire before the consumer
-      //     is ready.
-      //  3. Stream live updates indefinitely.
+      //  1. Emit cached snapshot (populated by session-start eager fetch, may be empty).
+      //  2. Make a direct fetch from provider credential files / keychain — no active session
+      //     needed. This is the primary path (same approach as codexbar).
+      //  3. Fork session-based refresh for any active in-app sessions.
+      //  4. Stream live push updates indefinitely.
       [WS_METHODS.subscribeProviderRateLimits]: (_input) =>
         observeRpcStreamEffect(
           WS_METHODS.subscribeProviderRateLimits,
           Effect.gen(function* () {
             const providerService = yield* ProviderService;
-            const cached = yield* providerService.getRateLimits();
-            const initialStream = Stream.fromIterable(cached);
+
+            // Live updates from session push events (Codex: account/rateLimits/updated,
+            // Claude: rate_limit_event). This subscription must be set up BEFORE the
+            // direct fetch fires so no events are missed.
             const liveStream = providerService.streamEvents.pipe(
               Stream.filter((e) => e.type === "account.rate-limits.updated"),
               Stream.map((e) => ({
@@ -872,11 +874,24 @@ const WsRpcLayer = WsRpcGroup.toLayer(
                 updatedAt: e.createdAt,
               })),
             );
-            // Fork refresh so the live stream subscription is already active when events arrive.
+
+            // Direct fetch from credential files/keychain — session-independent.
+            // Errors are swallowed (catch returns empty array).
+            const directFetchStream = Stream.fromIterableEffect(
+              Effect.promise(() => fetchAllRateLimits().catch(() => [])),
+            );
+
+            // Session-based refresh for any active in-app Codex sessions (best-effort).
             yield* Effect.forkScoped(
               providerService.refreshRateLimits().pipe(Effect.orElseSucceed(() => {})),
             );
-            return Stream.merge(initialStream, liveStream);
+
+            // Cached entries first, then direct fetch results, then live push updates.
+            const cached = yield* providerService.getRateLimits();
+            return Stream.merge(
+              Stream.concat(Stream.fromIterable(cached), directFetchStream),
+              liveStream,
+            );
           }),
           { "rpc.aggregate": "provider" },
         ),

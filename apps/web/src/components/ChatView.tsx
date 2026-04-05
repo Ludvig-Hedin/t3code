@@ -2,6 +2,8 @@ import {
   type ApprovalRequestId,
   DEFAULT_MODEL_BY_PROVIDER,
   type ClaudeCodeEffort,
+  type CustomApprovalPolicy,
+  DEFAULT_CUSTOM_APPROVAL_POLICY,
   type MessageId,
   type ModelSelection,
   type ProjectScript,
@@ -101,6 +103,7 @@ import {
   ListChecksIcon,
   ListTodoIcon,
   MessageSquareIcon,
+  PaperclipIcon,
   XIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -158,10 +161,12 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./Compose
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import { AppPageHeader, AppPageHeaderLeading } from "./AppPageHeader";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
+import { getProviderSlashCommands } from "../providerSlashCommands";
 import { ComposerPendingApprovalActions } from "./chat/ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./chat/CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./chat/ComposerPrimaryActions";
@@ -616,6 +621,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const setComposerDraftModelSelection = useComposerDraftStore((store) => store.setModelSelection);
   const setComposerDraftRuntimeMode = useComposerDraftStore((store) => store.setRuntimeMode);
+  const setComposerDraftCustomApprovalPolicy = useComposerDraftStore(
+    (store) => store.setCustomApprovalPolicy,
+  );
   const setComposerDraftInteractionMode = useComposerDraftStore(
     (store) => store.setInteractionMode,
   );
@@ -725,6 +733,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const composerFooterRef = useRef<HTMLDivElement>(null);
   const composerFooterLeadingRef = useRef<HTMLDivElement>(null);
   const composerFooterActionsRef = useRef<HTMLDivElement>(null);
+  // Ref for hidden file input used by the paperclip attachment button
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const composerSelectLockRef = useRef(false);
   const composerMenuOpenRef = useRef(false);
@@ -845,6 +855,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const activeThread = serverThread ?? localDraftThread;
   const runtimeMode =
     composerDraft.runtimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
+  const customApprovalPolicy = composerDraft.customApprovalPolicy ?? DEFAULT_CUSTOM_APPROVAL_POLICY;
   const interactionMode =
     composerDraft.interactionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
   const isServerThread = serverThread !== undefined;
@@ -1532,6 +1543,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
 
     if (composerTrigger.kind === "slash-command") {
+      // T3Code-owned commands always appear first in the list.
       const slashCommandItems = [
         {
           id: "slash:model",
@@ -1554,14 +1566,46 @@ export default function ChatView({ threadId }: ChatViewProps) {
           label: "/default",
           description: "Switch this thread back to normal chat mode",
         },
+        {
+          id: "slash:compact",
+          type: "slash-command",
+          command: "compact",
+          label: "/compact",
+          description: "Summarize and compress conversation history",
+        },
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
+
+      // Provider-native pass-through commands follow T3Code-owned ones.
+      // Selecting inserts "/name" (or "/name " when the command takes args)
+      // into the composer; the text is sent to the provider agent unchanged.
+      const providerCommandItems = getProviderSlashCommands(selectedProvider).map(
+        (providerCmd): Extract<ComposerCommandItem, { type: "provider-command" }> => ({
+          id: `provider-cmd:${providerCmd.name}`,
+          type: "provider-command",
+          name: providerCmd.name,
+          label: `/${providerCmd.name}`,
+          description: providerCmd.description,
+          hasArgs: providerCmd.hasArgs,
+        }),
+      );
+
+      // Narrow to only the two types we put in this array so that the filter
+      // below can safely access both `.command` (slash-command) and `.name`
+      // (provider-command) without a union type error.
+      type SlashOrProviderItem = Extract<
+        ComposerCommandItem,
+        { type: "slash-command" | "provider-command" }
+      >;
+      const allItems: SlashOrProviderItem[] = [...slashCommandItems, ...providerCommandItems];
       const query = composerTrigger.query.trim().toLowerCase();
       if (!query) {
-        return [...slashCommandItems];
+        return allItems;
       }
-      return slashCommandItems.filter(
-        (item) => item.command.includes(query) || item.label.slice(1).includes(query),
-      );
+      return allItems.filter((item) => {
+        // Match against the command name (without leading slash) or the full label
+        const name = item.type === "slash-command" ? item.command : item.name;
+        return name.includes(query) || item.label.slice(1).includes(query);
+      });
     }
 
     return searchableModelOptions
@@ -1580,7 +1624,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         label: name,
         description: `${providerLabel} · ${slug}`,
       }));
-  }, [composerTrigger, searchableModelOptions, workspaceEntries]);
+  }, [composerTrigger, searchableModelOptions, selectedProvider, workspaceEntries]);
   const composerMenuOpen = Boolean(composerTrigger);
   const activeComposerMenuItem = useMemo(
     () =>
@@ -2070,6 +2114,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
       runtimeMode === "full-access" ? "approval-required" : "full-access",
     );
   }, [handleRuntimeModeChange, runtimeMode]);
+  const handleCustomApprovalPolicyChange = useCallback(
+    (policy: CustomApprovalPolicy) => {
+      setComposerDraftCustomApprovalPolicy(threadId, policy);
+    },
+    [setComposerDraftCustomApprovalPolicy, threadId],
+  );
+
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
       if (open) {
@@ -2206,6 +2257,71 @@ export default function ChatView({ threadId }: ChatViewProps) {
     scrollMessagesToBottom();
     scheduleStickToBottom();
   }, [cancelPendingStickToBottom, scheduleStickToBottom, scrollMessagesToBottom]);
+
+  // Send /compact as a turn so the provider summarises and resets the context window.
+  // This mirrors how Claude CLI and Gemini CLI handle their /compact / /compress commands.
+  // Declared after forceStickToBottom to satisfy hook dependency ordering.
+  const handleCompactContext = useCallback(async () => {
+    const api = readNativeApi();
+    if (!api || !activeThread || !isServerThread || isSendBusy || isConnecting) return;
+
+    const messageIdForSend = newMessageId();
+    const messageCreatedAt = new Date().toISOString();
+    const threadIdForSend = activeThread.id;
+
+    // Optimistically show the /compact user message in the timeline
+    setOptimisticUserMessages((existing) => [
+      ...existing,
+      {
+        id: messageIdForSend,
+        role: "user",
+        text: "/compact",
+        createdAt: messageCreatedAt,
+        streaming: false,
+      },
+    ]);
+    shouldAutoScrollRef.current = true;
+    forceStickToBottom();
+    setThreadError(threadIdForSend, null);
+
+    try {
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.start",
+        commandId: newCommandId(),
+        threadId: threadIdForSend,
+        message: {
+          messageId: messageIdForSend,
+          role: "user",
+          text: "/compact",
+          attachments: [],
+        },
+        modelSelection: selectedModelSelection,
+        titleSeed: "/compact",
+        runtimeMode,
+        interactionMode,
+        createdAt: messageCreatedAt,
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Could not compact context",
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+      });
+      setOptimisticUserMessages((existing) => existing.filter((m) => m.id !== messageIdForSend));
+    }
+  }, [
+    activeThread,
+    forceStickToBottom,
+    interactionMode,
+    isConnecting,
+    isServerThread,
+    isSendBusy,
+    runtimeMode,
+    selectedModelSelection,
+    setThreadError,
+    toastManager,
+  ]);
+
   const onMessagesScroll = useCallback(() => {
     const scrollContainer = messagesScrollRef.current;
     if (!scrollContainer) return;
@@ -2960,12 +3076,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
         ? parseStandaloneComposerSlashCommand(trimmed)
         : null;
     if (standaloneSlashCommand) {
-      handleInteractionModeChange(standaloneSlashCommand);
       promptRef.current = "";
       clearComposerDraftContent(activeThread.id);
       setComposerHighlightedItemId(null);
       setComposerCursor(0);
       setComposerTrigger(null);
+      if (standaloneSlashCommand === "compact") {
+        // Dispatch /compact as a real turn so the provider compresses history
+        void handleCompactContext();
+      } else {
+        handleInteractionModeChange(standaloneSlashCommand);
+      }
       return;
     }
     if (!hasSendableContent) {
@@ -3267,6 +3388,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [activeThreadId, setStoreThreadError],
   );
+
+  // Auto-approve approvals for action types that are enabled in custom mode.
+  // When runtimeMode is "custom", the server still requests approval for everything
+  // but we silently allow the permitted kinds here, client-side.
+  useEffect(() => {
+    if (runtimeMode !== "custom" || !activePendingApproval) return;
+    const { requestKind, requestId } = activePendingApproval;
+    const shouldAutoApprove =
+      (requestKind === "command" && customApprovalPolicy.commands) ||
+      (requestKind === "file-read" && customApprovalPolicy.fileReads) ||
+      (requestKind === "file-change" && customApprovalPolicy.fileChanges);
+    if (shouldAutoApprove) {
+      void onRespondToApproval(requestId, "accept");
+    }
+  }, [activePendingApproval, customApprovalPolicy, onRespondToApproval, runtimeMode]);
 
   const onRespondToUserInput = useCallback(
     async (requestId: ApprovalRequestId, answers: Record<string, unknown>) => {
@@ -3831,10 +3967,37 @@ export default function ChatView({ threadId }: ChatViewProps) {
           }
           return;
         }
+        if (item.command === "compact") {
+          // /compact: clear composer then dispatch the compact turn
+          applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+          });
+          setComposerHighlightedItemId(null);
+          void handleCompactContext();
+          return;
+        }
         void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
         });
+        if (applied) {
+          setComposerHighlightedItemId(null);
+        }
+        return;
+      }
+      if (item.type === "provider-command") {
+        // Pass-through: insert "/name" or "/name " (with trailing space when
+        // the command accepts arguments so the user can type them immediately).
+        const replacement = item.hasArgs ? `/${item.name} ` : `/${item.name}`;
+        const replacementRangeEnd = item.hasArgs
+          ? extendReplacementRangeForTrailingSpace(snapshot.value, trigger.rangeEnd, replacement)
+          : trigger.rangeEnd;
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          replacementRangeEnd,
+          replacement,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+        );
         if (applied) {
           setComposerHighlightedItemId(null);
         }
@@ -3850,6 +4013,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [
       applyPromptReplacement,
+      handleCompactContext,
       handleInteractionModeChange,
       onProviderModelSelect,
       resolveActiveComposerTrigger,
@@ -4018,11 +4182,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
             </div>
           </header>
         )}
-        {isElectron && (
-          <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-            <span className="text-xs text-muted-foreground/50">No active thread</span>
-          </div>
-        )}
+        <AppPageHeader>
+          <span className="text-xs text-muted-foreground/50">No active thread</span>
+        </AppPageHeader>
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <p className="text-sm">Select a thread or create a new one to get started.</p>
@@ -4041,6 +4203,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
           isElectron ? "drag-region flex h-[52px] items-center" : "py-2 sm:py-3",
         )}
       >
+        {/* Collapsed-sidebar controls (toggle + new-thread + search, Electron only) */}
+        <AppPageHeaderLeading />
         <ChatHeader
           activeThreadId={activeThread.id}
           activeThreadTitle={activeThread.title}
@@ -4357,6 +4521,40 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             : "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible",
                         )}
                       >
+                        {/* Hidden file input for image/file attachments via paperclip button */}
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files ?? []);
+                            if (files.length > 0) addComposerImages(files);
+                            // Reset so the same file can be re-selected if needed
+                            e.target.value = "";
+                          }}
+                        />
+
+                        {/* Paperclip button — opens file picker to attach images */}
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="shrink-0 text-muted-foreground/70 hover:text-foreground/80"
+                                aria-label="Attach file"
+                                onClick={() => fileInputRef.current?.click()}
+                              />
+                            }
+                          >
+                            <PaperclipIcon className="size-4" />
+                          </TooltipTrigger>
+                          <TooltipPopup side="top">Attach image</TooltipPopup>
+                        </Tooltip>
+
                         {/* Provider/model picker */}
                         <ProviderModelPicker
                           compact={isComposerFooterCompact}
@@ -4383,10 +4581,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             interactionMode={interactionMode}
                             planSidebarOpen={planSidebarOpen}
                             runtimeMode={runtimeMode}
+                            customApprovalPolicy={customApprovalPolicy}
                             traitsMenuContent={providerTraitsMenuContent}
                             onToggleInteractionMode={toggleInteractionMode}
                             onTogglePlanSidebar={togglePlanSidebar}
-                            onToggleRuntimeMode={toggleRuntimeMode}
+                            onRuntimeModeChange={handleRuntimeModeChange}
+                            onCustomApprovalPolicyChange={handleCustomApprovalPolicyChange}
                           />
                         ) : (
                           <>
@@ -4467,7 +4667,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                       >
                         {activeContextWindow ? (
-                          <ContextWindowMeter usage={activeContextWindow} />
+                          <ContextWindowMeter
+                            usage={activeContextWindow}
+                            {...(isServerThread ? { onCompact: handleCompactContext } : {})}
+                          />
                         ) : null}
                         {isPreparingWorktree ? (
                           <span className="text-muted-foreground/70 text-xs">
@@ -4516,7 +4719,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             onEnvModeChange={onEnvModeChange}
             envLocked={envLocked}
             runtimeMode={runtimeMode}
-            onToggleRuntimeMode={toggleRuntimeMode}
+            onRuntimeModeChange={handleRuntimeModeChange}
             onComposerFocusRequest={scheduleComposerFocus}
             {...(canCheckoutPullRequestIntoThread
               ? { onCheckoutPullRequestRequest: openPullRequestDialog }

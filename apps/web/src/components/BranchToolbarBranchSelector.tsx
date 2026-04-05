@@ -68,6 +68,21 @@ function toBranchActionErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "An error occurred.";
 }
 
+/**
+ * Returns a compact human-readable relative time string from a Unix timestamp
+ * in seconds (as provided by git for-each-ref %(committerdate:unix)).
+ */
+function formatRelativeTime(unixSeconds: number): string {
+  const diffSec = Math.floor(Date.now() / 1000 - unixSeconds);
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3_600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86_400) return `${Math.floor(diffSec / 3_600)}h ago`;
+  if (diffSec < 86_400 * 7) return `${Math.floor(diffSec / 86_400)}d ago`;
+  if (diffSec < 86_400 * 30) return `${Math.floor(diffSec / (86_400 * 7))}w ago`;
+  if (diffSec < 86_400 * 365) return `${Math.floor(diffSec / (86_400 * 30))}mo ago`;
+  return `${Math.floor(diffSec / (86_400 * 365))}y ago`;
+}
+
 function getBranchTriggerLabel(input: {
   activeWorktreePath: string | null;
   effectiveEnvMode: EnvMode;
@@ -505,6 +520,15 @@ export function BranchToolbarBranchSelector({
           : branch.isDefault
             ? "default"
             : null;
+
+    // Live status for the current branch only (ahead/behind upstream, uncommitted files)
+    const currentBranchStatus = branch.current ? branchStatusQuery.data : null;
+    const aheadCount = currentBranchStatus?.aheadCount ?? 0;
+    const behindCount = currentBranchStatus?.behindCount ?? 0;
+    const uncommittedCount = currentBranchStatus?.workingTree.files.length ?? 0;
+    const hasStatusIndicators =
+      branch.current && (aheadCount > 0 || behindCount > 0 || uncommittedCount > 0);
+
     return (
       <ComboboxItem
         hideIndicator
@@ -514,9 +538,20 @@ export function BranchToolbarBranchSelector({
         style={style}
         onClick={() => selectBranch(branch)}
       >
-        <div className="flex w-full items-center justify-between gap-2">
-          <span className="truncate">{itemValue}</span>
-          {badge && <span className="shrink-0 text-[10px] text-muted-foreground/45">{badge}</span>}
+        <div className="flex w-full min-w-0 items-center justify-between gap-2">
+          <span className="truncate">{branch.name}</span>
+          <div className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground/45">
+            {/* Ahead/behind upstream and uncommitted changes — current branch only */}
+            {hasStatusIndicators && (
+              <>
+                {aheadCount > 0 && <span>↑{aheadCount}</span>}
+                {behindCount > 0 && <span>↓{behindCount}</span>}
+                {uncommittedCount > 0 && <span>~{uncommittedCount}</span>}
+              </>
+            )}
+            {badge && <span>{badge}</span>}
+            {branch.lastCommitAt ? <span>{formatRelativeTime(branch.lastCommitAt)}</span> : null}
+          </div>
         </div>
       </ComboboxItem>
     );
@@ -549,7 +584,9 @@ export function BranchToolbarBranchSelector({
           <div className="border-b p-1">
             <ComboboxInput
               className="[&_input]:font-sans rounded-md"
-              inputClassName="ring-0"
+              // Strip the Input wrapper's border, bg, shadow, and all focus rings so the
+              // search field sits flush and clean inside the popup header
+              inputClassName="border-0 bg-transparent shadow-none ring-0 before:hidden has-focus-visible:ring-0 has-focus-visible:border-transparent"
               placeholder="Search branches..."
               showTrigger={false}
               size="sm"
@@ -557,7 +594,9 @@ export function BranchToolbarBranchSelector({
               onChange={(event) => setBranchQuery(event.target.value)}
             />
           </div>
-          <ComboboxEmpty>No branches found.</ComboboxEmpty>
+          {/* Only show the empty state once the initial fetch has resolved — avoids
+              showing "No branches found" while branches are still loading */}
+          {!isBranchesSearchPending && <ComboboxEmpty>No branches found.</ComboboxEmpty>}
 
           <ComboboxList ref={setBranchListRef} className="max-h-56">
             {shouldVirtualizeBranchList ? (

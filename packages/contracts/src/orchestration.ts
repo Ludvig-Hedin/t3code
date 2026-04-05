@@ -69,9 +69,25 @@ export const ModelSelection = Schema.Union([
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
 
-export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
+export const RuntimeMode = Schema.Literals(["approval-required", "full-access", "custom"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
+
+/**
+ * Per-action approval policy used when runtimeMode is "custom".
+ * Each field maps to a requestKind: true = auto-approve, false = ask permission.
+ */
+export const CustomApprovalPolicy = Schema.Struct({
+  commands: Schema.Boolean, // command_execution_approval, exec_command_approval
+  fileReads: Schema.Boolean, // file_read_approval
+  fileChanges: Schema.Boolean, // file_change_approval, apply_patch_approval
+});
+export type CustomApprovalPolicy = typeof CustomApprovalPolicy.Type;
+export const DEFAULT_CUSTOM_APPROVAL_POLICY: CustomApprovalPolicy = {
+  commands: false,
+  fileReads: true, // reading files is generally safe to auto-approve
+  fileChanges: false,
+};
 export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
 export type ProviderInteractionMode = typeof ProviderInteractionMode.Type;
 export const DEFAULT_PROVIDER_INTERACTION_MODE: ProviderInteractionMode = "default";

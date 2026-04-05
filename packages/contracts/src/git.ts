@@ -78,6 +78,8 @@ export const GitBranch = Schema.Struct({
   current: Schema.Boolean,
   isDefault: Schema.Boolean,
   worktreePath: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),
+  /** Unix timestamp (seconds) of the last commit on this branch, from git for-each-ref. */
+  lastCommitAt: Schema.optional(Schema.Number),
 });
 export type GitBranch = typeof GitBranch.Type;
 
