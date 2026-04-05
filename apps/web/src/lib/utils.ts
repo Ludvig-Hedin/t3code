@@ -68,8 +68,23 @@ export const resolveServerUrl = (options?: {
   } else {
     parsedUrl.pathname = "/";
   }
-  if (options?.searchParams) {
-    parsedUrl.search = new URLSearchParams(options.searchParams).toString();
+  const merged: Record<string, string> = { ...(options?.searchParams ?? {}) };
+
+  // When running inside the Bird Code iOS WKWebView, the Swift shell injects
+  // window.__BC_WS_TOKEN__ with the desktop auth token before page load.
+  // Append it as the ?token query param so the server's WS auth middleware accepts
+  // the connection — identical to how the Electron desktop bridge embeds it in the URL.
+  const mobileToken =
+    typeof (window as unknown as Record<string, unknown>).__BC_WS_TOKEN__ === "string"
+      ? ((window as unknown as Record<string, unknown>).__BC_WS_TOKEN__ as string)
+      : null;
+  if (mobileToken && mobileToken.length > 0 && !merged["token"]) {
+    merged["token"] = mobileToken;
   }
+
+  if (Object.keys(merged).length > 0) {
+    parsedUrl.search = new URLSearchParams(merged).toString();
+  }
+
   return parsedUrl.toString();
 };
