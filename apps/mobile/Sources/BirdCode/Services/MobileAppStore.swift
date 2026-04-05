@@ -123,13 +123,13 @@ final class MobileAppStore {
         deviceName: deviceNameInput,
         desktopAuthToken: desktopAuthTokenInput.isEmpty ? nil : desktopAuthTokenInput,
       )
-      applySnapshotEnvelope(response)
       if let deviceToken = response.deviceToken {
         self.deviceToken = deviceToken
         KeychainStore.writeString(deviceToken, account: StorageKey.deviceToken)
         KeychainStore.writeString(response.device.pairCode, account: StorageKey.pairCode)
         lastPairCode = response.device.pairCode
       }
+      applySnapshotEnvelope(response)
       saveConnectionPreferences()
       statusMessage = "Paired with \(response.device.deviceName)"
       await refreshDevices()

@@ -1574,20 +1574,36 @@ private struct MobileSmallButtonStyle: ButtonStyle {
 private struct QRCodeView: View {
   let payload: String
   let label: String
+  @State private var renderedImage: Image?
+  @State private var renderedPayload: String = ""
 
   var body: some View {
     VStack(spacing: 8) {
-      qrImage
-        .resizable()
-        .interpolation(.none)
-        .scaledToFit()
-        .padding(12)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .stroke(MobileTheme.border, lineWidth: 1),
-        )
+      if let renderedImage {
+        renderedImage
+          .resizable()
+          .interpolation(.none)
+          .scaledToFit()
+          .padding(12)
+          .background(Color.white)
+          .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+          .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+              .stroke(MobileTheme.border, lineWidth: 1),
+          )
+      } else {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+          .fill(Color.white)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .overlay(
+            ProgressView()
+              .tint(MobileTheme.accent),
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+              .stroke(MobileTheme.border, lineWidth: 1),
+          )
+      }
       Text(label)
         .font(.caption2)
         .foregroundStyle(MobileTheme.muted)
@@ -1595,11 +1611,18 @@ private struct QRCodeView: View {
     }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(label)
+    .task(id: payload) {
+      guard renderedPayload != payload else {
+        return
+      }
+      renderedPayload = payload
+      renderedImage = Self.makeQRCodeImage(from: payload)
+    }
   }
 
-  private var qrImage: Image {
+  private static func makeQRCodeImage(from payload: String) -> Image? {
     guard let data = payload.data(using: .utf8) else {
-      return Image(systemName: "qrcode")
+      return nil
     }
 
     let filter = CIFilter.qrCodeGenerator()
@@ -1607,13 +1630,13 @@ private struct QRCodeView: View {
     filter.correctionLevel = "M"
 
     guard let output = filter.outputImage else {
-      return Image(systemName: "qrcode")
+      return nil
     }
 
     let transformed = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
     let context = CIContext(options: nil)
     guard let cgImage = context.createCGImage(transformed, from: transformed.extent) else {
-      return Image(systemName: "qrcode")
+      return nil
     }
     return Image(decorative: cgImage, scale: 1, orientation: .up)
   }

@@ -102,6 +102,20 @@ export interface DesktopUpdateActionResult {
   state: DesktopUpdateState;
 }
 
+export interface DesktopMobileDevice {
+  deviceId: string;
+  deviceName: string;
+  pairCode: string;
+  pairCodeExpiresAt: string;
+  pairedAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+}
+
+export interface DesktopMobileDevicesResult {
+  devices: DesktopMobileDevice[];
+}
+
 export interface DesktopUpdateCheckResult {
   checked: boolean;
   state: DesktopUpdateState;
@@ -111,6 +125,7 @@ export interface DesktopBridge {
   getWsUrl: () => string | null;
   getPairingUrl?: () => string | null;
   getPairingCode?: () => string | null;
+  getMobileDevices?: () => DesktopMobileDevicesResult | null;
   pickFolder: () => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
   setTheme: (theme: DesktopTheme) => Promise<void>;

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopBridge } from "@t3tools/contracts";
+import type { DesktopBridge, DesktopMobileDevicesResult } from "@t3tools/contracts";
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONFIRM_CHANNEL = "desktop:confirm";
@@ -15,6 +15,7 @@ const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
 const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
+const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   getWsUrl: () => {
@@ -28,6 +29,11 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getPairingCode: () => {
     const result = ipcRenderer.sendSync(GET_PAIRING_CODE_CHANNEL);
     return typeof result === "string" ? result : null;
+  },
+  getMobileDevices: () => {
+    const result = ipcRenderer.sendSync(GET_MOBILE_DEVICES_CHANNEL);
+    if (typeof result !== "object" || result === null) return null;
+    return result as DesktopMobileDevicesResult;
   },
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),

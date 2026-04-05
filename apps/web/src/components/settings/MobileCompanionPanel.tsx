@@ -16,6 +16,16 @@ type PairingPayload = {
   desktopAuthToken?: string;
 };
 
+type DesktopMobileDevice = {
+  deviceId: string;
+  deviceName: string;
+  pairCode: string;
+  pairCodeExpiresAt: string;
+  pairedAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+};
+
 const APP_PAIRING_KIND = "birdcode-pairing" as const;
 
 function buildPairingPayload(serverURL: string): PairingPayload {
@@ -63,6 +73,7 @@ export function BirdCodeMobileCompanionPanel() {
   }, [serverURL]);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
+  const [pairedDevices, setPairedDevices] = useState<DesktopMobileDevice[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +113,26 @@ export function BirdCodeMobileCompanionPanel() {
       cancelled = true;
     };
   }, [pairingCode, serverURL]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDevices = () => {
+      const result = window.desktopBridge?.getMobileDevices?.();
+      if (cancelled || result == null) {
+        return;
+      }
+      setPairedDevices(result.devices ?? []);
+    };
+
+    loadDevices();
+    const interval = window.setInterval(loadDevices, 4_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const handleCopy = async () => {
     if (typeof navigator === "undefined" || navigator.clipboard == null) {
@@ -197,6 +228,62 @@ export function BirdCodeMobileCompanionPanel() {
               Copy pairing code
             </Button>
           </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle>Paired devices</CardTitle>
+            <CardDescription>
+              Bird Code updates this list automatically when a phone pairs with the desktop.
+            </CardDescription>
+          </CardHeader>
+          <CardPanel className="space-y-4">
+            {pairedDevices.length > 0 ? (
+              <div className="space-y-3">
+                {pairedDevices.map((device) => (
+                  <div
+                    key={device.deviceId}
+                    className="rounded-2xl border bg-background/72 p-4 shadow-xs/5"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
+                        {device.deviceName.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="truncate text-sm font-medium text-foreground">
+                            {device.deviceName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Code {device.pairCode}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          Last seen{" "}
+                          {new Date(device.lastSeenAt).toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </div>
+                        {device.revokedAt ? (
+                          <div className="mt-1 text-xs text-destructive">Revoked</div>
+                        ) : (
+                          <div className="mt-1 text-xs text-success">Paired</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border bg-muted/30 p-4">
+                <div className="text-sm font-medium text-foreground">No paired devices yet</div>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  Pair Bird Code on iPhone, then come back here to see it listed.
+                </p>
+              </div>
+            )}
+          </CardPanel>
         </Card>
 
         <Card>

@@ -35,11 +35,13 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 ## Pairing flow
 
 - Open the desktop app and go to the `Mobile` settings tab to show a QR code.
+- Once a phone pairs, the desktop tab now shows the paired device list so you can confirm the connection immediately.
 - On iPhone, open Bird Code, tap `Settings`, then use the `Pair` tab to scan the QR or paste the pairing code.
 - The `Advanced` tab keeps manual connection fields available if you need them, but they are no longer part of the default flow.
 - If you manually type a server URL, only then do you need the `Advanced` fields.
 - The pairing code is now a shareable payload, not a raw `localhost` URL, so Bird Code can reconnect without a manual token entry step.
 - The desktop settings panel is scrollable and the QR card is intentionally compact so the pairing controls stay usable on smaller screens.
+- The Bird Code logo is loaded from the bundled artwork derived from `assets/new/logo-dark.svg`.
 
 ## Status
 

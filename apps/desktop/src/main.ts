@@ -62,6 +62,7 @@ const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
 const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
+const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
 const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "t3";
@@ -258,6 +259,36 @@ function resolvePairingCode(): string {
   });
   const encoded = Buffer.from(payload, "utf8").toString("base64url");
   return `birdcode://pair?payload=${encoded}`;
+}
+
+type DesktopMobileDevice = {
+  deviceId: string;
+  deviceName: string;
+  pairCode: string;
+  pairCodeExpiresAt: string;
+  pairedAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+};
+
+type DesktopMobileDevicesResult = {
+  devices: DesktopMobileDevice[];
+};
+
+function readDesktopMobileDevices(): DesktopMobileDevicesResult | null {
+  try {
+    const registryPath = Path.join(STATE_DIR, "mobile-devices.json");
+    if (!FS.existsSync(registryPath)) {
+      return { devices: [] };
+    }
+    const raw = FS.readFileSync(registryPath, "utf8");
+    const parsed = JSON.parse(raw) as { devices?: DesktopMobileDevice[] };
+    return {
+      devices: Array.isArray(parsed.devices) ? parsed.devices : [],
+    };
+  } catch {
+    return null;
+  }
 }
 
 function writeDesktopStreamChunk(
@@ -1242,6 +1273,11 @@ function registerIpcHandlers(): void {
   ipcMain.removeAllListeners(GET_PAIRING_CODE_CHANNEL);
   ipcMain.on(GET_PAIRING_CODE_CHANNEL, (event) => {
     event.returnValue = backendPairingCode;
+  });
+
+  ipcMain.removeAllListeners(GET_MOBILE_DEVICES_CHANNEL);
+  ipcMain.on(GET_MOBILE_DEVICES_CHANNEL, (event) => {
+    event.returnValue = readDesktopMobileDevices();
   });
 
   ipcMain.removeHandler(PICK_FOLDER_CHANNEL);
