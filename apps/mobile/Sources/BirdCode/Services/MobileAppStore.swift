@@ -10,6 +10,7 @@ final class MobileAppStore {
     static let deviceToken = "birdcode.mobile.deviceToken"
     static let deviceName = "birdcode.mobile.deviceName"
     static let pairCode = "birdcode.mobile.pairCode"
+    static let lastSnapshot = "birdcode.mobile.lastSnapshot"
   }
 
   private let apiClient: MobileAPIClient
@@ -42,6 +43,9 @@ final class MobileAppStore {
     self.deviceToken = KeychainStore.readString(account: StorageKey.deviceToken)
     if let token = self.deviceToken, !token.isEmpty {
       self.lastPairCode = KeychainStore.readString(account: StorageKey.pairCode)
+    }
+    if let cachedEnvelope = Self.readCachedSnapshotEnvelope() {
+      applySnapshotEnvelope(cachedEnvelope)
     }
   }
 
@@ -411,6 +415,7 @@ final class MobileAppStore {
     stopPolling()
     KeychainStore.deleteString(account: StorageKey.deviceToken)
     KeychainStore.deleteString(account: StorageKey.pairCode)
+    UserDefaults.standard.removeObject(forKey: StorageKey.lastSnapshot)
   }
 
   func clearError() {
@@ -422,6 +427,7 @@ final class MobileAppStore {
     threadSummaries = envelope.threadSummaries
     pairedDevice = envelope.device
     lastPairCode = envelope.device.pairCode
+    Self.writeCachedSnapshotEnvelope(envelope)
     if selectedThreadID == nil {
       selectedThreadID = envelope.threadSummaries.first?.id
     } else if let currentSelectedThreadID = selectedThreadID,
@@ -538,5 +544,19 @@ final class MobileAppStore {
       detail.contains("unknown pending approval request") ||
       detail.contains("unknown pending permission request") ||
       detail.contains("unknown pending user-input request")
+  }
+
+  private static func readCachedSnapshotEnvelope() -> MobileSnapshotEnvelope? {
+    guard let data = UserDefaults.standard.data(forKey: StorageKey.lastSnapshot) else {
+      return nil
+    }
+    return try? JSONDecoder.birdCode().decode(MobileSnapshotEnvelope.self, from: data)
+  }
+
+  private static func writeCachedSnapshotEnvelope(_ envelope: MobileSnapshotEnvelope) {
+    guard let data = try? JSONEncoder.birdCode().encode(envelope) else {
+      return
+    }
+    UserDefaults.standard.set(data, forKey: StorageKey.lastSnapshot)
   }
 }

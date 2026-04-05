@@ -36,12 +36,14 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 
 - Open the desktop app and go to the `Mobile` settings tab to show a QR code.
 - Once a phone pairs, the desktop tab now shows the paired device list so you can confirm the connection immediately.
+- In dev mode, the paired-device registry lives under `~/.t3/dev/mobile-devices.json`; the desktop shell now reads the same registry path as the server.
 - On iPhone, open Bird Code, tap `Settings`, then use the `Pair` tab to scan the QR or paste the pairing code.
 - The `Advanced` tab keeps manual connection fields available if you need them, but they are no longer part of the default flow.
 - If you manually type a server URL, only then do you need the `Advanced` fields.
 - The pairing code is now a shareable payload, not a raw `localhost` URL, so Bird Code can reconnect without a manual token entry step.
 - On the first connection, iPhone will still prompt for Local Network access. Allow it so Bird Code can reach the desktop over your LAN.
 - Bird Code suppresses stale local-network warnings after a successful pair so the UI does not show a green connection state and a red connection failure at the same time.
+- Bird Code caches the last successful snapshot locally so it can show the last synced threads after a restart even before the next refresh succeeds.
 - The desktop settings panel is scrollable and the QR card is intentionally compact so the pairing controls stay usable on smaller screens.
 - The Bird Code logo is loaded from the bundled artwork derived from `assets/new/logo-dark.svg`.
 - The app icon now comes from `apps/mobile/Resources/Assets.xcassets/AppIcon.appiconset`.

@@ -276,20 +276,35 @@ type DesktopMobileDevicesResult = {
   devices: DesktopMobileDevice[];
 };
 
+function resolveDesktopMobileRegistryPaths(): string[] {
+  const primaryStateDir = Path.join(BASE_DIR, isDevelopment ? "dev" : "userdata");
+  const fallbackStateDir = Path.join(BASE_DIR, isDevelopment ? "userdata" : "dev");
+  return [primaryStateDir, fallbackStateDir].map((stateDir) =>
+    Path.join(stateDir, "mobile-devices.json"),
+  );
+}
+
 function readDesktopMobileDevices(): DesktopMobileDevicesResult | null {
-  try {
-    const registryPath = Path.join(STATE_DIR, "mobile-devices.json");
-    if (!FS.existsSync(registryPath)) {
-      return { devices: [] };
+  let fallback: DesktopMobileDevicesResult | null = null;
+  for (const registryPath of resolveDesktopMobileRegistryPaths()) {
+    try {
+      if (!FS.existsSync(registryPath)) {
+        continue;
+      }
+      const raw = FS.readFileSync(registryPath, "utf8");
+      const parsed = JSON.parse(raw) as { devices?: DesktopMobileDevice[] };
+      const result: DesktopMobileDevicesResult = {
+        devices: Array.isArray(parsed.devices) ? parsed.devices : [],
+      };
+      if (result.devices.length > 0) {
+        return result;
+      }
+      fallback ??= result;
+    } catch {
+      continue;
     }
-    const raw = FS.readFileSync(registryPath, "utf8");
-    const parsed = JSON.parse(raw) as { devices?: DesktopMobileDevice[] };
-    return {
-      devices: Array.isArray(parsed.devices) ? parsed.devices : [],
-    };
-  } catch {
-    return null;
   }
+  return fallback ?? { devices: [] };
 }
 
 function writeDesktopStreamChunk(

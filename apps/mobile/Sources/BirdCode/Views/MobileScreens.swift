@@ -216,7 +216,9 @@ struct MobileSidebarView: View {
         if store.threadSummaries.isEmpty {
           MobileEmptyStateCard(
             title: "No active threads",
-            subtitle: "Start a turn from the desktop or pair with a server that already has threads.",
+            subtitle: store.pairedDevice == nil
+              ? "Bird Code is still syncing with the desktop session. If it stays empty, check Local Network access and confirm the desktop app is running."
+              : "Start a turn from the desktop or pair with a server that already has threads.",
             symbol: "bubble.left.and.bubble.right",
           )
         } else {
@@ -1056,9 +1058,11 @@ private struct MobileConnectionSummaryCard: View {
           }
           Spacer(minLength: 12)
           MobileStatusPill(
-            text: store.pairedDevice == nil ? "Not paired" : (store.isRefreshing ? "Syncing" : "Connected"),
+            text: store.pairedDevice == nil
+              ? (store.isRefreshing ? "Syncing" : "Connecting")
+              : (store.isRefreshing ? "Syncing" : "Connected"),
             tint: store.pairedDevice == nil
-              ? MobileTheme.muted
+              ? MobileTheme.warning
               : (store.isRefreshing ? MobileTheme.warning : MobileTheme.success),
           )
         }
