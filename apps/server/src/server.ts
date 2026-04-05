@@ -48,6 +48,8 @@ import { ObservabilityLive } from "./observability/Layers/Observability";
 import { SkillServiceLive } from "./skills";
 import { Mem0ServiceLive } from "./memory/Layers/Mem0Service";
 import { MemoryReactorLive } from "./memory/Layers/MemoryReactor";
+import { PreviewServerManagerLive } from "./preview/Layers/PreviewServerManager";
+import { previewProxyRouteLayer } from "./preview/previewProxyRoute";
 
 const PtyAdapterLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -202,6 +204,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProjectFaviconResolverLive),
   Layer.provideMerge(SkillServiceLive),
   Layer.provideMerge(Mem0ServiceLive),
+  Layer.provideMerge(PreviewServerManagerLive),
 
   // Misc.
   Layer.provideMerge(AnalyticsServiceLayerLive),
@@ -216,6 +219,7 @@ const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(
 export const makeRoutesLayer = Layer.mergeAll(
   attachmentsRouteLayer,
   mobileCompanionRouteLayer,
+  previewProxyRouteLayer,
   projectFaviconRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,

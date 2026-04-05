@@ -19,6 +19,7 @@ import {
   type TerminalEvent,
   WS_METHODS,
   WsRpcGroup,
+  PreviewError,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
@@ -54,6 +55,7 @@ import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePat
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
 import { SkillService } from "./skills";
 import { Mem0Service, type Mem0Memory, type Mem0ServiceShape } from "./memory/Services/Mem0Service";
+import { PreviewServerManager } from "./preview/Services/PreviewServerManager";
 
 // ---------------------------------------------------------------------------
 // Memory helpers — used in the dispatchCommand handler to enrich user messages
@@ -169,6 +171,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
     const skillService = yield* SkillService;
     const mem0 = yield* Mem0Service;
+    const previewManager = yield* PreviewServerManager;
 
     const serverCommandId = (tag: string) =>
       CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -917,6 +920,85 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         observeRpcEffect(WS_METHODS.skillsGenerate, skillService.generate(description), {
           "rpc.aggregate": "skills",
         }),
+
+      // --- Preview ---
+      [WS_METHODS.previewDetectApps]: ({ projectId }) =>
+        observeRpcEffect(
+          WS_METHODS.previewDetectApps,
+          Effect.gen(function* () {
+            const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+            // OrchestrationProject uses `workspaceRoot` for the project's filesystem path
+            const project = snapshot.projects?.find(
+              (p: { id: string; workspaceRoot?: string }) => p.id === projectId,
+            );
+            const cwd = project?.workspaceRoot ?? "";
+            return yield* previewManager.detectApps(projectId, cwd);
+          }).pipe(
+            Effect.mapError(
+              (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+            ),
+          ),
+          { "rpc.aggregate": "preview" },
+        ),
+
+      [WS_METHODS.previewStart]: ({ projectId, appId }) =>
+        observeRpcEffect(
+          WS_METHODS.previewStart,
+          previewManager.startApp(projectId, appId).pipe(
+            Effect.mapError(
+              (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+            ),
+          ),
+          { "rpc.aggregate": "preview" },
+        ),
+
+      [WS_METHODS.previewStop]: ({ projectId, appId }) =>
+        observeRpcEffect(
+          WS_METHODS.previewStop,
+          // stopApp declares Effect<void, Error> in the interface; map to PreviewError for the RPC contract
+          previewManager.stopApp(projectId, appId).pipe(
+            Effect.mapError(
+              (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+            ),
+            Effect.asVoid,
+          ),
+          { "rpc.aggregate": "preview" },
+        ),
+
+      [WS_METHODS.previewGetSessions]: ({ projectId }) =>
+        observeRpcEffect(
+          WS_METHODS.previewGetSessions,
+          Effect.succeed(previewManager.getSessions(projectId)),
+          { "rpc.aggregate": "preview" },
+        ),
+
+      [WS_METHODS.previewUpdateApp]: ({ projectId, appId, patch }) =>
+        observeRpcEffect(
+          WS_METHODS.previewUpdateApp,
+          // Strip undefined values from the patch to bridge Schema.optional (adds |undefined)
+          // and the service interface's plain optional fields (exactOptionalPropertyTypes compat)
+          previewManager
+            .updateApp(projectId, appId, {
+              ...(patch.label !== undefined ? { label: patch.label } : {}),
+              ...(patch.command !== undefined ? { command: patch.command } : {}),
+              ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
+              ...(patch.type !== undefined ? { type: patch.type } : {}),
+            })
+            .pipe(
+              Effect.mapError(
+                (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+              ),
+            ),
+          { "rpc.aggregate": "preview" },
+        ),
+
+      [WS_METHODS.subscribePreviewEvents]: ({ projectId }) =>
+        observeRpcStream(
+          WS_METHODS.subscribePreviewEvents,
+          // streamEvents returns a Stream directly (not Effect<Stream>)
+          previewManager.streamEvents(projectId),
+          { "rpc.aggregate": "preview" },
+        ),
     });
   }),
 );

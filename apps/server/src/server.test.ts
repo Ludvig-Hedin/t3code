@@ -67,6 +67,7 @@ import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { SkillService } from "./skills/SkillService.ts";
 import { Mem0Service } from "./memory/Services/Mem0Service.ts";
+import { PreviewServerManager } from "./preview/Services/PreviewServerManager.ts";
 
 const defaultProjectId = ProjectId.makeUnsafe("project-default");
 const defaultThreadId = ThreadId.makeUnsafe("thread-default");
@@ -314,6 +315,19 @@ const buildAppUnderTest = (options?: {
           defaultUserId: "test-user",
           search: () => Effect.succeed([]),
           add: () => Effect.void,
+        }),
+      ),
+      Layer.provide(
+        // PreviewServerManager is a no-op stub in tests — no dev servers are spawned
+        Layer.mock(PreviewServerManager)({
+          detectApps: () => Effect.succeed([]),
+          startApp: () => Effect.die(new Error("not implemented in test")),
+          stopApp: () => Effect.void,
+          getSession: () => null,
+          getSessions: () => [],
+          updateApp: () => Effect.die(new Error("not implemented in test")),
+          getApps: () => [],
+          streamEvents: () => Stream.empty,
         }),
       ),
       Layer.provide(workspaceAndProjectServicesLayer),
