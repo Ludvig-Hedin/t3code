@@ -48,6 +48,12 @@ import {
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
+import { ReasoningBlock } from "./ReasoningBlock";
+import { WorkEntryRow } from "./WorkEntryRow";
+import {
+  groupWorkEntriesIntoSections,
+  computeWorkLogHeaderStats,
+} from "./workLogHelpers";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -322,32 +328,74 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
               : groupedEntries;
           const hiddenCount = groupedEntries.length - visibleEntries.length;
-          const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
-          const showHeader = hasOverflow || !onlyToolEntries;
-          const groupLabel = onlyToolEntries ? "Tool calls" : "Work log";
+
+          // Compute header stats and sections for sectioned rendering
+          const headerStats = computeWorkLogHeaderStats(groupedEntries);
+          const sections = groupWorkEntriesIntoSections(visibleEntries);
+
+          // Determine if this is the last work group row (for auto-open reasoning)
+          const isLastWorkGroup =
+            isWorking &&
+            (() => {
+              for (let i = rows.length - 1; i >= 0; i--) {
+                if (rows[i]?.kind === "work") {
+                  return rows[i] === row;
+                }
+              }
+              return false;
+            })();
 
           return (
             <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
-              {showHeader && (
-                <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
-                    {groupLabel} ({groupedEntries.length})
-                  </p>
-                  {hasOverflow && (
-                    <button
-                      type="button"
-                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
-                      onClick={() => onToggleWorkGroup(groupId)}
-                    >
-                      {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
-                    </button>
+              {/* Header: always shown */}
+              <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+                <div className="flex items-center gap-2">
+                  {isLastWorkGroup && (
+                    <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400/60" />
+                  )}
+                  {headerStats.length > 0 ? (
+                    <p className="text-[9px] tracking-wide text-muted-foreground/50">
+                      {headerStats.map((s) => s.label).join(" · ")}
+                    </p>
+                  ) : (
+                    <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/50">
+                      Work log ({groupedEntries.length})
+                    </p>
                   )}
                 </div>
-              )}
+                {hasOverflow && (
+                  <button
+                    type="button"
+                    className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/75"
+                    onClick={() => onToggleWorkGroup(groupId)}
+                  >
+                    {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                  </button>
+                )}
+              </div>
+
+              {/* Sectioned content */}
               <div className="space-y-0.5">
-                {visibleEntries.map((workEntry) => (
-                  <SimpleWorkEntryRow key={`work-row:${workEntry.id}`} workEntry={workEntry} />
-                ))}
+                {sections.map((section, sectionIndex) => {
+                  if (section.kind === "reasoning") {
+                    return (
+                      <ReasoningBlock
+                        key={`reasoning:${section.entries[0]!.id}`}
+                        entries={section.entries}
+                        isActivelyWorking={!!isLastWorkGroup}
+                        isLastSection={sectionIndex === sections.length - 1}
+                      />
+                    );
+                  }
+
+                  // Tool section: render each entry with per-type styling
+                  return section.entries.map((workEntry) => (
+                    <WorkEntryRow
+                      key={`work-row:${workEntry.id}`}
+                      entry={workEntry}
+                    />
+                  ));
+                })}
               </div>
             </div>
           );

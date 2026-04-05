@@ -138,6 +138,8 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("Context compacted");
-    expect(markup).toContain("Work log");
+    // After the sectioned layout refactor, the header shows computed stats
+    // (e.g. "1 tool call") instead of the generic "Work log" fallback.
+    expect(markup).toContain("1 tool call");
   });
 });
