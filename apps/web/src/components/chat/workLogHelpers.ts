@@ -193,6 +193,24 @@ export function computeWorkLogHeaderStats(entries: WorkLogEntry[]): WorkLogStat[
 // parseSubAgentDescription
 // ---------------------------------------------------------------------------
 
+/** Attempt to extract "description" from a JSON string. */
+function extractDescriptionFromJson(text: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "description" in parsed) {
+      const desc = (parsed as Record<string, unknown>)["description"];
+      if (typeof desc === "string" && desc.trim().length > 0) {
+        return desc.trim();
+      }
+    }
+  } catch {
+    // Not valid JSON — try extracting via regex as a fallback
+    const match = /"description"\s*:\s*"([^"]+)"/.exec(text);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
 /**
  * Extracts a clean description from a sub-agent label or its detail string.
  *
@@ -203,29 +221,11 @@ export function computeWorkLogHeaderStats(entries: WorkLogEntry[]): WorkLogStat[
  * 4. Ultimate fallback: "Running sub-agent".
  */
 export function parseSubAgentDescription(label: string, detail?: string): string {
-  // Helper: attempt to extract "description" from a JSON string
-  const extractFromJson = (text: string): string | null => {
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (parsed && typeof parsed === "object" && "description" in parsed) {
-        const desc = (parsed as Record<string, unknown>)["description"];
-        if (typeof desc === "string" && desc.trim().length > 0) {
-          return desc.trim();
-        }
-      }
-    } catch {
-      // Not valid JSON — try extracting via regex as a fallback
-      const match = /"description"\s*:\s*"([^"]+)"/.exec(text);
-      if (match?.[1]) return match[1];
-    }
-    return null;
-  };
-
-  const fromLabel = extractFromJson(label);
+  const fromLabel = extractDescriptionFromJson(label);
   if (fromLabel) return fromLabel;
 
   if (detail) {
-    const fromDetail = extractFromJson(detail);
+    const fromDetail = extractDescriptionFromJson(detail);
     if (fromDetail) return fromDetail;
   }
 
