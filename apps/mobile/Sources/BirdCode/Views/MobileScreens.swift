@@ -9,26 +9,15 @@ import VisionKit
 
 enum MobileTheme {
   static let accent = Color(red: 0.18, green: 0.42, blue: 0.97)
-  static let accentSoft = Color(red: 0.18, green: 0.42, blue: 0.97).opacity(0.12)
-  static let background = Color(uiColor: .systemGroupedBackground)
-  static let backgroundAlt = Color(uiColor: .secondarySystemGroupedBackground)
+  static let background = Color(uiColor: .systemBackground)
+  static let backgroundAlt = Color(uiColor: .secondarySystemBackground)
   static let card = Color(uiColor: .systemBackground)
-  static let border = Color.black.opacity(0.08)
+  static let border = Color(uiColor: .separator).opacity(0.18)
   static let foreground = Color.primary
   static let muted = Color.secondary
   static let success = Color.green
   static let warning = Color.orange
   static let danger = Color.red
-
-  static let backgroundGradient = LinearGradient(
-    colors: [
-      background,
-      accentSoft,
-      background,
-    ],
-    startPoint: .topLeading,
-    endPoint: .bottomTrailing,
-  )
 }
 
 @MainActor
@@ -37,13 +26,14 @@ struct MobileRootView: View {
 
   var body: some View {
     ZStack {
-      MobileTheme.backgroundGradient.ignoresSafeArea()
-      if store.isConnected {
+      MobileTheme.background.ignoresSafeArea()
+      if store.hasPairedSession {
         MobileShellView(store: store)
       } else {
         MobilePairingView(store: store)
       }
     }
+    .fontDesign(.default)
     .task {
       await store.restoreSessionIfPossible()
     }
@@ -61,7 +51,7 @@ struct MobilePairingView: View {
       VStack(alignment: .leading, spacing: 18) {
         MobileBrandHeader(
           title: "Bird Code",
-          subtitle: "Scan a QR or paste a pairing code to bring your desktop session onto iPhone.",
+          subtitle: "Pair to your desktop and keep the same workflow on iPhone.",
         )
 
         if let errorMessage = store.errorMessage {
@@ -83,16 +73,17 @@ struct MobilePairingView: View {
         MobileCard {
           VStack(alignment: .leading, spacing: 14) {
             MobileSectionHeading(
-              title: "Pair a device",
-              subtitle: "Use the desktop QR if you have one. Otherwise paste the server URL and pair.",
+              title: "Pair with desktop",
+              subtitle: "Scan the desktop QR or paste the pairing code from the desktop settings tab.",
             )
 
             MobileField(label: "Pairing code or desktop URL") {
-              TextField("Scan a QR or paste a Bird Code pairing link", text: $pairingCodeInput, axis: .vertical)
+              TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
-                .lineLimit(2...4)
+                .textContentType(.URL)
+                .font(.body)
                 .padding(.vertical, 12)
             }
 
@@ -131,120 +122,10 @@ struct MobilePairingView: View {
             }
 
             Text(
-              "This stays simple: scan the desktop QR, or paste the exact server address if that’s easier."
+              "No token hunting. The desktop pairing QR already carries the hidden auth token."
             )
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(MobileTheme.muted)
-          }
-        }
-
-        MobileCard {
-          VStack(alignment: .leading, spacing: 14) {
-            MobileSectionHeading(
-              title: "Share this device",
-              subtitle: store.deviceToken == nil
-                ? "Pair a desktop first to generate a share code for other devices."
-                : "Use this QR or code on another phone or tablet to connect instantly.",
-            )
-
-            if let shareCode = store.pairingShareCode() {
-              HStack(alignment: .center, spacing: 16) {
-                QRCodeView(
-                  payload: shareCode,
-                  label: "Bird Code pairing QR",
-                )
-                .frame(width: 144, height: 144)
-
-                VStack(alignment: .leading, spacing: 8) {
-                  Text("Pairing link")
-                    .font(.caption)
-                    .foregroundStyle(MobileTheme.muted)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-                  Text(shareCode)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(MobileTheme.foreground)
-                    .textSelection(.enabled)
-                    .lineLimit(5)
-                  Text("The code includes only the server address until the device has paired, then it becomes a quick reconnect link.")
-                    .font(.callout)
-                    .foregroundStyle(MobileTheme.muted)
-                }
-              }
-            } else {
-              MobileEmptyStateCard(
-                title: "No pairing link yet",
-                subtitle: "Enter a server address above to generate a QR for another device.",
-                symbol: "qrcode",
-              )
-            }
-          }
-        }
-
-        MobileCard {
-          VStack(alignment: .leading, spacing: 12) {
-            MobileSectionHeading(
-              title: "What this app does",
-              subtitle: "Bird Code mirrors the desktop session, review flow, and approval path.",
-            )
-            ForEach([
-              "Chat with the active thread and send prompts.",
-              "Review diffs, approvals, and turn activity.",
-              "Keep the desktop as the only execution host.",
-              "Reconnect cleanly after app restart or network loss.",
-            ], id: \.self) { item in
-              MobileBulletRow(text: item)
-            }
-          }
-        }
-
-        MobileCard {
-          VStack(alignment: .leading, spacing: 12) {
-            MobileSectionHeading(
-              title: "Advanced connection",
-              subtitle: "Only use this if your desktop needs a protected server URL or custom device name.",
-            )
-
-            DisclosureGroup("Show advanced fields") {
-              VStack(alignment: .leading, spacing: 12) {
-                MobileField(label: "Desktop server URL") {
-                  TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .textContentType(.URL)
-                    .padding(.vertical, 12)
-                }
-
-                MobileField(label: "Desktop auth token") {
-                  SecureField("Optional auth token", text: $store.desktopAuthTokenInput)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(.vertical, 12)
-                }
-
-                MobileField(label: "Device name") {
-                  TextField("iPhone", text: $store.deviceNameInput)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled()
-                    .padding(.vertical, 12)
-                }
-
-                HStack(spacing: 10) {
-                  Button("Save") {
-                    store.saveConnectionPreferences()
-                  }
-                  .buttonStyle(MobileSecondaryButtonStyle())
-
-                  Button("Forget device") {
-                    store.clearSession()
-                  }
-                  .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.warning))
-                }
-              }
-              .padding(.top, 8)
-            }
-            .tint(MobileTheme.accent)
           }
         }
       }
@@ -263,6 +144,7 @@ struct MobilePairingView: View {
       }
     }
     .presentationBackground(.clear)
+    .fontDesign(.default)
   }
 }
 
@@ -1012,7 +894,7 @@ private struct MobileThreadHeader: View {
         HStack(alignment: .top) {
           VStack(alignment: .leading, spacing: 6) {
             Text(thread.title)
-              .font(.system(.title2, design: .rounded, weight: .semibold))
+              .font(.system(.title2, weight: .semibold))
             Text(summary?.subtitle ?? thread.projectId)
               .font(.callout)
               .foregroundStyle(MobileTheme.muted)
@@ -1059,7 +941,7 @@ private struct MobileBrandHeader: View {
       MobileLogoMark()
       VStack(alignment: .leading, spacing: 8) {
         Text(title)
-          .font(.system(.largeTitle, design: .rounded, weight: .bold))
+          .font(.system(.largeTitle, weight: .bold))
           .foregroundStyle(MobileTheme.foreground)
         Text(subtitle)
           .font(.callout)
@@ -1219,7 +1101,7 @@ private struct MobileConnectionSummaryCard: View {
             payload: store.pairingShareCode() ?? store.serverURLInput,
             label: "Current Bird Code connection",
           )
-          .frame(width: 96, height: 96)
+          .frame(width: 88, height: 88)
 
           VStack(alignment: .leading, spacing: 8) {
             MobileMetaRow(
@@ -1586,13 +1468,13 @@ private struct QRCodeView: View {
           .scaledToFit()
           .padding(12)
           .background(Color.white)
-          .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
               .stroke(MobileTheme.border, lineWidth: 1),
           )
       } else {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
           .fill(Color.white)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .overlay(
@@ -1600,7 +1482,7 @@ private struct QRCodeView: View {
               .tint(MobileTheme.accent),
           )
           .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
               .stroke(MobileTheme.border, lineWidth: 1),
           )
       }

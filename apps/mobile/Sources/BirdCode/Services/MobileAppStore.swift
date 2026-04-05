@@ -45,8 +45,12 @@ final class MobileAppStore {
     }
   }
 
+  var hasPairedSession: Bool {
+    deviceToken != nil
+  }
+
   var isConnected: Bool {
-    deviceToken != nil && snapshot != nil
+    hasPairedSession
   }
 
   var selectedThread: MobileThread? {
@@ -173,7 +177,9 @@ final class MobileAppStore {
     if let deviceToken = payload.deviceToken, !deviceToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       self.deviceToken = deviceToken
       KeychainStore.writeString(deviceToken, account: StorageKey.deviceToken)
-      lastPairCode = nil
+      if let deviceName = payload.deviceName, !deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        KeychainStore.writeString(deviceName, account: StorageKey.deviceName)
+      }
       await refreshSnapshot()
       await refreshDevices()
       startPolling()
@@ -357,7 +363,7 @@ final class MobileAppStore {
       if device.id == response.device.id {
         self.deviceToken = nil
         KeychainStore.deleteString(account: StorageKey.deviceToken)
-        KeychainStore.deleteString(account: "\(StorageKey.deviceToken).pairCode")
+        KeychainStore.deleteString(account: StorageKey.pairCode)
         snapshot = nil
         threadSummaries = []
         selectedThreadID = nil
@@ -384,7 +390,7 @@ final class MobileAppStore {
     desktopAuthTokenInput = ""
     stopPolling()
     KeychainStore.deleteString(account: StorageKey.deviceToken)
-    KeychainStore.deleteString(account: "\(StorageKey.deviceToken).pairCode")
+    KeychainStore.deleteString(account: StorageKey.pairCode)
   }
 
   func clearError() {

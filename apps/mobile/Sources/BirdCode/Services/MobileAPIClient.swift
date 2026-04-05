@@ -3,8 +3,10 @@ import Foundation
 enum MobileAPIClientError: Error, LocalizedError {
   case invalidURL
   case invalidResponse
+  case invalidResponseBody(String)
   case httpStatus(Int, String)
   case missingDeviceToken
+  case localNetworkUnavailable(String)
 
   var errorDescription: String? {
     switch self {
@@ -12,10 +14,14 @@ enum MobileAPIClientError: Error, LocalizedError {
       return "Paste a desktop QR or a full server address like http://192.168.0.10:3773."
     case .invalidResponse:
       return "The server returned an unreadable response."
+    case .invalidResponseBody(let body):
+      return "The server returned an unexpected response: \(body)"
     case .httpStatus(let status, let message):
       return "Server error \(status): \(message)"
     case .missingDeviceToken:
       return "Pair Bird Code from the settings screen first."
+    case .localNetworkUnavailable:
+      return "Bird Code can't reach the desktop on your local network. Allow Local Network access for Bird Code in iPhone Settings, then pair again."
     }
   }
 }
@@ -117,15 +123,29 @@ final class MobileAPIClient {
       request.setValue("Bearer \(deviceToken)", forHTTPHeaderField: "Authorization")
     }
 
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-      throw MobileAPIClientError.invalidResponse
+    do {
+      let (data, response) = try await session.data(for: request)
+      guard let httpResponse = response as? HTTPURLResponse else {
+        throw MobileAPIClientError.invalidResponse
+      }
+      guard (200...299).contains(httpResponse.statusCode) else {
+        let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+        throw MobileAPIClientError.httpStatus(httpResponse.statusCode, message)
+      }
+      do {
+        return try decoder.decode(Response.self, from: data)
+      } catch {
+        let snippet = decodeBodySnippet(from: data)
+        throw MobileAPIClientError.invalidResponseBody(snippet)
+      }
+    } catch let urlError as URLError {
+      switch urlError.code {
+      case .notConnectedToInternet, .cannotConnectToHost, .dnsLookupFailed, .networkConnectionLost:
+        throw MobileAPIClientError.localNetworkUnavailable(urlError.localizedDescription)
+      default:
+        throw urlError
+      }
     }
-    guard (200...299).contains(httpResponse.statusCode) else {
-      let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-      throw MobileAPIClientError.httpStatus(httpResponse.statusCode, message)
-    }
-    return try decoder.decode(Response.self, from: data)
   }
 
   private func perform<Body: Encodable, Response: Decodable>(
@@ -144,15 +164,44 @@ final class MobileAPIClient {
 
     request.httpBody = try encoder.encode(AnyEncodable(body))
 
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-      throw MobileAPIClientError.invalidResponse
+    do {
+      let (data, response) = try await session.data(for: request)
+      guard let httpResponse = response as? HTTPURLResponse else {
+        throw MobileAPIClientError.invalidResponse
+      }
+      guard (200...299).contains(httpResponse.statusCode) else {
+        let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+        throw MobileAPIClientError.httpStatus(httpResponse.statusCode, message)
+      }
+      do {
+        return try decoder.decode(Response.self, from: data)
+      } catch {
+        let snippet = decodeBodySnippet(from: data)
+        throw MobileAPIClientError.invalidResponseBody(snippet)
+      }
+    } catch let urlError as URLError {
+      switch urlError.code {
+      case .notConnectedToInternet, .cannotConnectToHost, .dnsLookupFailed, .networkConnectionLost:
+        throw MobileAPIClientError.localNetworkUnavailable(urlError.localizedDescription)
+      default:
+        throw urlError
+      }
     }
-    guard (200...299).contains(httpResponse.statusCode) else {
-      let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-      throw MobileAPIClientError.httpStatus(httpResponse.statusCode, message)
+  }
+
+  private func decodeBodySnippet(from data: Data) -> String {
+    guard let text = String(data: data, encoding: .utf8) else {
+      return "response body could not be decoded as UTF-8"
     }
-    return try decoder.decode(Response.self, from: data)
+    let collapsed = text
+      .replacingOccurrences(of: "\n", with: " ")
+      .replacingOccurrences(of: "\t", with: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if collapsed.count <= 240 {
+      return collapsed.isEmpty ? "empty response body" : collapsed
+    }
+    let prefix = collapsed.prefix(240)
+    return "\(prefix)…"
   }
 }
 
