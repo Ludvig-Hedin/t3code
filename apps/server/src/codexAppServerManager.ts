@@ -518,6 +518,13 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       } catch (error) {
         console.log("codex account/read failed", error);
       }
+      // Eagerly fetch rate limits so the UI has data immediately on session start,
+      // without waiting for the first API call to trigger the push notification.
+      try {
+        await this.readRateLimits(threadId);
+      } catch {
+        // Rate limits read is optional — failure is non-fatal.
+      }
 
       const normalizedModel = resolveCodexModelForAccount(
         normalizeCodexModelSlug(input.model),
@@ -1204,6 +1211,31 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     pending.resolve(response.result);
+  }
+
+  /**
+   * Calls `account/rateLimits/read` on the Codex app-server for a given session
+   * and re-emits the response as a synthetic `account/rateLimits/updated`
+   * notification so the existing downstream handler picks it up automatically.
+   *
+   * Call this on session start (eagerly) and on-demand when a client subscribes
+   * to the rate-limits stream.
+   */
+  public async readRateLimits(threadId: ThreadId): Promise<void> {
+    const context = this.sessions.get(threadId);
+    if (!context) return;
+    const response = await this.sendRequest<unknown>(context, "account/rateLimits/read", {});
+    // Emit as a synthetic notification so CodexAdapter's existing handler
+    // processes it exactly like a real push notification.
+    this.emitEvent({
+      id: EventId.makeUnsafe(randomUUID()),
+      kind: "notification",
+      provider: "codex",
+      threadId: context.session.threadId,
+      createdAt: new Date().toISOString(),
+      method: "account/rateLimits/updated",
+      payload: response,
+    });
   }
 
   private async sendRequest<TResponse>(

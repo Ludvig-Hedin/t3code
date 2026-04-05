@@ -191,6 +191,7 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
     readThread,
     rollbackThread,
     stopAll,
+    refreshRateLimits: () => Effect.void,
     streamEvents: Stream.fromPubSub(runtimeEventPubSub),
   };
 

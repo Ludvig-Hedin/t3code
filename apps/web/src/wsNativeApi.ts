@@ -43,6 +43,7 @@ export function createWsNativeApi(): NativeApi {
     },
     projects: {
       searchEntries: rpcClient.projects.searchEntries,
+      readFile: rpcClient.projects.readFile,
       writeFile: rpcClient.projects.writeFile,
     },
     shell: {
@@ -70,6 +71,7 @@ export function createWsNativeApi(): NativeApi {
       init: rpcClient.git.init,
       resolvePullRequest: rpcClient.git.resolvePullRequest,
       preparePullRequestThread: rpcClient.git.preparePullRequestThread,
+      prepareReviewContext: rpcClient.git.prepareReviewContext,
     },
     contextMenu: {
       show: async <T extends string>(

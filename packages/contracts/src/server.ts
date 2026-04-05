@@ -204,3 +204,12 @@ export const ServerProviderUpdatedPayload = Schema.Struct({
   providers: ServerProviders,
 });
 export type ServerProviderUpdatedPayload = typeof ServerProviderUpdatedPayload.Type;
+
+// Rate limit snapshot emitted by providers (Codex: account/rateLimits/updated, Claude: rate_limit_event).
+// The `rateLimits` field is provider-specific and parsed client-side via type guards.
+export const ProviderRateLimitEntry = Schema.Struct({
+  provider: ProviderKind,
+  rateLimits: Schema.Unknown,
+  updatedAt: IsoDateTime,
+});
+export type ProviderRateLimitEntry = typeof ProviderRateLimitEntry.Type;

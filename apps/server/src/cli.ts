@@ -288,7 +288,7 @@ export const resolveServerConfig = (
         Option.fromUndefinedOr(env.host),
         Option.flatMap(bootstrapEnvelope, (bootstrap) => Option.fromUndefinedOr(bootstrap.host)),
       ),
-      () => (mode === "desktop" ? "127.0.0.1" : undefined),
+      () => (mode === "desktop" ? "0.0.0.0" : undefined),
     );
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 

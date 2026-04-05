@@ -10,6 +10,8 @@ import {
   GitActionProgressEvent,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
+  GitPrepareReviewContextInput,
+  GitPrepareReviewContextResult,
   GitPullRequestRefInput,
   GitResolvePullRequestResult,
   GitRunStackedActionInput,
@@ -63,6 +65,14 @@ export interface GitManagerShape {
     input: GitRunStackedActionInput,
     options?: GitRunStackedActionOptions,
   ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
+
+  /**
+   * Fetch the git diff context (commits, stat, patch) for use in a code review prompt.
+   * When baseBranch is omitted, the server resolves the default branch automatically.
+   */
+  readonly prepareReviewContext: (
+    input: GitPrepareReviewContextInput,
+  ) => Effect.Effect<GitPrepareReviewContextResult, GitManagerServiceError>;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectSearchEntriesError,
+  ProjectReadFileError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
   ThreadId,
@@ -30,7 +31,10 @@ import { GitManager } from "./git/Services/GitManager";
 import { Keybindings } from "./keybindings";
 import { Open, resolveAvailableEditors } from "./open";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer";
-import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
+import {
+  OrchestrationEngineService,
+  type OrchestrationEngineShape,
+} from "./orchestration/Services/OrchestrationEngine";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import {
   observeRpcEffect,
@@ -38,6 +42,7 @@ import {
   observeRpcStreamEffect,
 } from "./observability/RpcInstrumentation";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry";
+import { ProviderService } from "./provider/Services/ProviderService";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup";
 import { ServerSettingsService } from "./serverSettings";
@@ -46,6 +51,102 @@ import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
+import { SkillService } from "./skills";
+import { Mem0Service, type Mem0Memory, type Mem0ServiceShape } from "./memory/Services/Mem0Service";
+
+// ---------------------------------------------------------------------------
+// Memory helpers — used in the dispatchCommand handler to enrich user messages
+// with relevant past context from Mem0 before they reach the orchestration engine.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the ProjectId for a thread.turn.start command.
+ * For new threads the projectId is on the bootstrap object; for existing
+ * threads it is looked up from the orchestration read model.
+ */
+const resolveProjectIdForTurnStart = (
+  command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
+  orchestrationEngine: OrchestrationEngineShape,
+): Effect.Effect<string | undefined> => {
+  const bootstrapProjectId = command.bootstrap?.createThread?.projectId;
+  if (bootstrapProjectId !== undefined) {
+    return Effect.succeed(bootstrapProjectId);
+  }
+  return orchestrationEngine
+    .getReadModel()
+    .pipe(Effect.map((rm) => rm.threads.find((t) => t.id === command.threadId)?.projectId));
+};
+
+/**
+ * Format a list of memories as an XML-like prefix block that AI providers
+ * understand as injected context separate from the user's actual query.
+ */
+const formatMemoryBlock = (memories: ReadonlyArray<Mem0Memory>): string => {
+  const lines = memories.map((m) => `- ${m.memory}`).join("\n");
+  return `<memory>\nRelevant context from past interactions:\n${lines}\n</memory>`;
+};
+
+/**
+ * Deduplicate memory entries by their Mem0 id.
+ * Global and project-scoped searches can return the same memory.
+ */
+const deduplicateMemories = (items: ReadonlyArray<Mem0Memory>): ReadonlyArray<Mem0Memory> => {
+  const seen = new Set<string>();
+  return items.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+};
+
+/**
+ * Enrich a thread.turn.start command with relevant memories retrieved from Mem0.
+ *
+ * Searches both global and project-scoped memory in parallel (2-second cap).
+ * If Mem0 is unavailable, times out, or returns no results the original command
+ * is returned unchanged. This operation never fails.
+ */
+const enrichTurnStartWithMemories = (
+  command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
+  mem0: Mem0ServiceShape,
+  orchestrationEngine: OrchestrationEngineShape,
+): Effect.Effect<Extract<OrchestrationCommand, { type: "thread.turn.start" }>> =>
+  Effect.gen(function* () {
+    const query = command.message.text.trim();
+    // Skip empty messages — nothing meaningful to search for
+    if (!query) return command;
+
+    const projectId = yield* resolveProjectIdForTurnStart(command, orchestrationEngine);
+    const userId = mem0.defaultUserId;
+
+    // Run global and project-scoped searches in parallel
+    const resultOpt = yield* Effect.all(
+      [
+        mem0.search(query, { userId }),
+        projectId
+          ? mem0.search(query, { userId, projectId })
+          : Effect.succeed([] as ReadonlyArray<Mem0Memory>),
+      ],
+      { concurrency: 2 },
+    ).pipe(Effect.timeoutOption(2000));
+
+    if (Option.isNone(resultOpt)) {
+      // Timed out overall — proceed without memories
+      return command;
+    }
+
+    const [globalMemories, projectMemories] = resultOpt.value;
+    const allMemories = deduplicateMemories([...globalMemories, ...projectMemories]);
+    if (allMemories.length === 0) return command;
+
+    const memoryPrefix = formatMemoryBlock(allMemories);
+    return {
+      ...command,
+      message: {
+        ...command.message,
+        text: `${memoryPrefix}\n\n${command.message.text}`,
+      },
+    };
+  }).pipe(
+    // Never let memory errors surface to the caller
+    Effect.orElseSucceed(() => command),
+  );
 
 const WsRpcLayer = WsRpcGroup.toLayer(
   Effect.gen(function* () {
@@ -65,6 +166,8 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const workspaceEntries = yield* WorkspaceEntries;
     const workspaceFileSystem = yield* WorkspaceFileSystem;
     const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
+    const skillService = yield* SkillService;
+    const mem0 = yield* Mem0Service;
 
     const serverCommandId = (tag: string) =>
       CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -368,7 +471,16 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           ORCHESTRATION_WS_METHODS.dispatchCommand,
           Effect.gen(function* () {
             const normalizedCommand = yield* normalizeDispatchCommand(command);
-            const result = yield* dispatchNormalizedCommand(normalizedCommand);
+
+            // Enrich thread.turn.start commands with relevant memories from Mem0.
+            // This prepends a <memory> block to the user message so the AI provider
+            // sees past context. The enrichment is best-effort and never blocks the turn.
+            const commandToDispatch =
+              normalizedCommand.type === "thread.turn.start"
+                ? yield* enrichTurnStartWithMemories(normalizedCommand, mem0, orchestrationEngine)
+                : normalizedCommand;
+
+            const result = yield* dispatchNormalizedCommand(commandToDispatch);
             if (normalizedCommand.type === "thread.archive") {
               yield* terminalManager.close({ threadId: normalizedCommand.threadId }).pipe(
                 Effect.catch((error) =>
@@ -539,6 +651,30 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           ),
           { "rpc.aggregate": "workspace" },
         ),
+      [WS_METHODS.projectsReadFile]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.projectsReadFile,
+          workspaceFileSystem.readFile(input).pipe(
+            Effect.map((contents) =>
+              contents === null
+                ? null
+                : {
+                    relativePath: input.relativePath,
+                    contents,
+                  },
+            ),
+            Effect.mapError(
+              (cause) =>
+                new ProjectReadFileError({
+                  message: `Failed to read workspace file: ${
+                    cause instanceof Error ? cause.message : String(cause)
+                  }`,
+                  cause,
+                }),
+            ),
+          ),
+          { "rpc.aggregate": "workspace" },
+        ),
       [WS_METHODS.projectsWriteFile]: (input) =>
         observeRpcEffect(
           WS_METHODS.projectsWriteFile,
@@ -595,6 +731,12 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         observeRpcEffect(
           WS_METHODS.gitPreparePullRequestThread,
           gitManager.preparePullRequestThread(input),
+          { "rpc.aggregate": "git" },
+        ),
+      [WS_METHODS.gitPrepareReviewContext]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.gitPrepareReviewContext,
+          gitManager.prepareReviewContext(input),
           { "rpc.aggregate": "git" },
         ),
       [WS_METHODS.gitListBranches]: (input) =>
@@ -708,6 +850,53 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           }),
           { "rpc.aggregate": "server" },
         ),
+      // Rate-limit subscription: proactively fetches fresh data from adapters
+      // that support on-demand reads (Codex), emits the updated cache as an
+      // initial snapshot, then streams live updates as they arrive.
+      [WS_METHODS.subscribeProviderRateLimits]: (_input) =>
+        observeRpcStreamEffect(
+          WS_METHODS.subscribeProviderRateLimits,
+          Effect.gen(function* () {
+            const providerService = yield* ProviderService;
+            // Trigger eager refresh so the client gets up-to-date data even if
+            // no turn has been dispatched since server start. Errors are ignored.
+            yield* providerService.refreshRateLimits().pipe(Effect.orElseSucceed(() => {}));
+            const cached = yield* providerService.getRateLimits();
+            const initialStream = Stream.fromIterable(cached);
+            const liveStream = providerService.streamEvents.pipe(
+              Stream.filter((e) => e.type === "account.rate-limits.updated"),
+              Stream.map((e) => ({
+                provider: e.provider,
+                rateLimits: (e.payload as { rateLimits: unknown }).rateLimits,
+                updatedAt: e.createdAt,
+              })),
+            );
+            return Stream.merge(initialStream, liveStream);
+          }),
+          { "rpc.aggregate": "provider" },
+        ),
+
+      // --- Skills ---
+      [WS_METHODS.skillsList]: (_input: {}) =>
+        observeRpcEffect(WS_METHODS.skillsList, skillService.list, {
+          "rpc.aggregate": "skills",
+        }),
+      [WS_METHODS.skillsSave]: (input: {
+        readonly name: string;
+        readonly description: string;
+        readonly content: string;
+      }) =>
+        observeRpcEffect(WS_METHODS.skillsSave, skillService.save(input), {
+          "rpc.aggregate": "skills",
+        }),
+      [WS_METHODS.skillsDelete]: ({ name }: { readonly name: string }) =>
+        observeRpcEffect(WS_METHODS.skillsDelete, skillService.remove(name), {
+          "rpc.aggregate": "skills",
+        }),
+      [WS_METHODS.skillsGenerate]: ({ description }: { readonly description: string }) =>
+        observeRpcEffect(WS_METHODS.skillsGenerate, skillService.generate(description), {
+          "rpc.aggregate": "skills",
+        }),
     });
   }),
 );

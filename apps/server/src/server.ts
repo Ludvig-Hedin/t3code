@@ -15,6 +15,7 @@ import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionD
 import { ProviderSessionRuntimeRepositoryLive } from "./persistence/Layers/ProviderSessionRuntime";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
+import { GeminiAdapterLive } from "./provider/Layers/GeminiAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { OrchestrationEngineLive } from "./orchestration/Layers/OrchestrationEngine";
@@ -44,6 +45,9 @@ import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem"
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths";
 import { ProjectSetupScriptRunnerLive } from "./project/Layers/ProjectSetupScriptRunner";
 import { ObservabilityLive } from "./observability/Layers/Observability";
+import { SkillServiceLive } from "./skills";
+import { Mem0ServiceLive } from "./memory/Layers/Mem0Service";
+import { MemoryReactorLive } from "./memory/Layers/MemoryReactor";
 
 const PtyAdapterLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -98,6 +102,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderRuntimeIngestionLive),
   Layer.provideMerge(ProviderCommandReactorLive),
   Layer.provideMerge(CheckpointReactorLive),
+  Layer.provideMerge(MemoryReactorLive),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
 
@@ -144,9 +149,11 @@ const ProviderLayerLive = Layer.unwrap(
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
+    const geminiAdapterLayer = GeminiAdapterLive;
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
+      Layer.provide(geminiAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(
@@ -193,6 +200,8 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ServerSettingsLive),
   Layer.provideMerge(WorkspaceLayerLive),
   Layer.provideMerge(ProjectFaviconResolverLive),
+  Layer.provideMerge(SkillServiceLive),
+  Layer.provideMerge(Mem0ServiceLive),
 
   // Misc.
   Layer.provideMerge(AnalyticsServiceLayerLive),

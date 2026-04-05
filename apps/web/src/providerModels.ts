@@ -5,7 +5,7 @@ import {
   type ServerProvider,
   type ServerProviderModel,
 } from "@t3tools/contracts";
-import { normalizeModelSlug } from "@t3tools/shared/model";
+import { normalizeModelSlug, type SelectableModelOption } from "@t3tools/shared/model";
 
 const EMPTY_CAPABILITIES: ModelCapabilities = {
   reasoningEffortLevels: [],
@@ -20,6 +20,23 @@ export function getProviderModels(
   provider: ProviderKind,
 ): ReadonlyArray<ServerProviderModel> {
   return providers.find((candidate) => candidate.provider === provider)?.models ?? [];
+}
+
+export function getProviderModelsByProvider(
+  providers: ReadonlyArray<ServerProvider>,
+): Record<ProviderKind, ReadonlyArray<ServerProviderModel>> {
+  return {
+    codex: getProviderModels(providers, "codex"),
+    claudeAgent: getProviderModels(providers, "claudeAgent"),
+    gemini: getProviderModels(providers, "gemini"),
+  };
+}
+
+export function getProviderModelsForProvider(
+  modelOptionsByProvider: Partial<Record<ProviderKind, ReadonlyArray<SelectableModelOption>>>,
+  provider: ProviderKind,
+): ReadonlyArray<SelectableModelOption> {
+  return modelOptionsByProvider[provider] ?? [];
 }
 
 export function getProviderSnapshot(

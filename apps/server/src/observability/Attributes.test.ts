@@ -42,5 +42,6 @@ describe("Attributes", () => {
     assert.strictEqual(normalizeModelMetricLabel("gpt-4o"), "gpt");
     assert.strictEqual(normalizeModelMetricLabel("gpt-5.4"), "gpt");
     assert.strictEqual(normalizeModelMetricLabel("claude-sonnet-4"), "claude");
+    assert.strictEqual(normalizeModelMetricLabel("gemini-2.5-pro"), "gemini");
   });
 });

@@ -134,6 +134,20 @@ it.effect("decodes project.meta-updated payloads with explicit default provider"
   }),
 );
 
+it.effect("decodes gemini default model selections", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeProjectMetaUpdatedPayload({
+      projectId: "project-1",
+      defaultModelSelection: {
+        provider: "gemini",
+        model: "gemini-2.5-pro",
+      },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.defaultModelSelection?.provider, "gemini");
+  }),
+);
+
 it.effect("rejects command fields that become empty after trim", () =>
   Effect.gen(function* () {
     const result = yield* Effect.exit(
@@ -269,6 +283,20 @@ it.effect("decodes thread.meta-updated payloads with explicit provider", () =>
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.modelSelection?.provider, "claudeAgent");
+  }),
+);
+
+it.effect("decodes thread.meta-updated payloads with gemini provider", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadMetaUpdatedPayload({
+      threadId: "thread-1",
+      modelSelection: {
+        provider: "gemini",
+        model: "gemini-2.5-pro",
+      },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.modelSelection?.provider, "gemini");
   }),
 );
 

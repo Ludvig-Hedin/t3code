@@ -6,6 +6,7 @@ import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
+import { MemoryReactor } from "../../memory/Services/MemoryReactor.ts";
 
 describe("OrchestrationReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<OrchestrationReactor, never> | null = null;
@@ -49,6 +50,14 @@ describe("OrchestrationReactor", () => {
             drain: Effect.void,
           }),
         ),
+        Layer.provideMerge(
+          Layer.succeed(MemoryReactor, {
+            start: () => {
+              started.push("memory-reactor");
+              return Effect.void;
+            },
+          }),
+        ),
       ),
     );
 
@@ -60,6 +69,7 @@ describe("OrchestrationReactor", () => {
       "provider-runtime-ingestion",
       "provider-command-reactor",
       "checkpoint-reactor",
+      "memory-reactor",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

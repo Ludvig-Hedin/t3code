@@ -52,6 +52,7 @@ import {
   ProviderRegistry,
   type ProviderRegistryShape,
 } from "./provider/Services/ProviderRegistry.ts";
+import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService.ts";
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
 import { ServerSettingsService, type ServerSettingsShape } from "./serverSettings.ts";
@@ -64,6 +65,8 @@ import {
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
+import { SkillService } from "./skills/SkillService.ts";
+import { Mem0Service } from "./memory/Services/Mem0Service.ts";
 
 const defaultProjectId = ProjectId.makeUnsafe("project-default");
 const defaultThreadId = ThreadId.makeUnsafe("thread-default");
@@ -140,6 +143,7 @@ const buildAppUnderTest = (options?: {
     checkpointDiffQuery?: Partial<CheckpointDiffQueryShape>;
     serverLifecycleEvents?: Partial<ServerLifecycleEventsShape>;
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
+    providerService?: Partial<ProviderServiceShape>;
   };
 }) =>
   Effect.gen(function* () {
@@ -277,6 +281,39 @@ const buildAppUnderTest = (options?: {
           markHttpListening: Effect.void,
           enqueueCommand: (effect) => effect,
           ...options?.layers?.serverRuntimeStartup,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProviderService)({
+          startSession: () => Effect.die(new Error("not implemented in test")),
+          sendTurn: () => Effect.die(new Error("not implemented in test")),
+          interruptTurn: () => Effect.void,
+          respondToRequest: () => Effect.void,
+          respondToUserInput: () => Effect.void,
+          stopSession: () => Effect.void,
+          listSessions: () => Effect.succeed([]),
+          getCapabilities: () => Effect.die(new Error("not implemented in test")),
+          rollbackConversation: () => Effect.void,
+          getRateLimits: () => Effect.succeed([]),
+          refreshRateLimits: () => Effect.void,
+          streamEvents: Stream.empty,
+          ...options?.layers?.providerService,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(SkillService)({
+          list: Effect.succeed([]),
+          save: () => Effect.die(new Error("not implemented in test")),
+          remove: () => Effect.die(new Error("not implemented in test")),
+          generate: () => Effect.die(new Error("not implemented in test")),
+        }),
+      ),
+      Layer.provide(
+        // Mem0Service is no-op in tests — no API key is provided
+        Layer.mock(Mem0Service)({
+          defaultUserId: "test-user",
+          search: () => Effect.succeed([]),
+          add: () => Effect.void,
         }),
       ),
       Layer.provide(workspaceAndProjectServicesLayer),
@@ -741,6 +778,58 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         result.failure.message,
         "Workspace root does not exist: /definitely/not/a/real/workspace/path",
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc projects.readFile", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-read-" });
+      yield* fs.writeFileString(
+        path.join(workspaceDir, "package.json"),
+        '{"scripts":{"lint":"bun run lint"}}',
+      );
+
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectsReadFile]({
+            cwd: workspaceDir,
+            relativePath: "package.json",
+          }),
+        ),
+      );
+
+      assert.deepEqual(response, {
+        relativePath: "package.json",
+        contents: '{"scripts":{"lint":"bun run lint"}}',
+      });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc projects.readFile returns null for missing files", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-ws-project-read-miss-",
+      });
+
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectsReadFile]({
+            cwd: workspaceDir,
+            relativePath: "package.json",
+          }),
+        ),
+      );
+
+      assert.equal(response, null);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

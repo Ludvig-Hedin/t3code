@@ -70,6 +70,8 @@ import {
 import { deriveServerPaths, ServerConfig } from "../src/config.ts";
 import { WorkspaceEntriesLive } from "../src/workspace/Layers/WorkspaceEntries.ts";
 import { WorkspacePathsLive } from "../src/workspace/Layers/WorkspacePaths.ts";
+import { MemoryReactorLive } from "../src/memory/Layers/MemoryReactor.ts";
+import { Mem0ServiceLive } from "../src/memory/Layers/Mem0Service.ts";
 
 function runGit(cwd: string, args: ReadonlyArray<string>) {
   return execFileSync("git", args, {
@@ -329,10 +331,15 @@ export const makeOrchestrationIntegrationHarness = (
       ),
       Layer.provideMerge(WorkspacePathsLive),
     );
+    const memoryReactorLayer = MemoryReactorLive.pipe(
+      Layer.provideMerge(runtimeServicesLayer),
+      Layer.provideMerge(Mem0ServiceLive),
+    );
     const orchestrationReactorLayer = OrchestrationReactorLive.pipe(
       Layer.provideMerge(runtimeIngestionLayer),
       Layer.provideMerge(providerCommandReactorLayer),
       Layer.provideMerge(checkpointReactorLayer),
+      Layer.provideMerge(memoryReactorLayer),
     );
     const layer = Layer.empty.pipe(
       Layer.provideMerge(runtimeServicesLayer),

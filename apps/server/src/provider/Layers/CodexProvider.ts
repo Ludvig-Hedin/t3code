@@ -154,6 +154,41 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
       promptInjectedEffortLevels: [],
     },
   },
+  // GPT-5.1 Codex generation models
+  {
+    slug: "gpt-5.1-codex-mini",
+    name: "GPT-5.1 Codex Mini",
+    isCustom: false,
+    capabilities: {
+      reasoningEffortLevels: [
+        { value: "xhigh", label: "Extra High" },
+        { value: "high", label: "High", isDefault: true },
+        { value: "medium", label: "Medium" },
+        { value: "low", label: "Low" },
+      ],
+      supportsFastMode: true,
+      supportsThinkingToggle: false,
+      contextWindowOptions: [],
+      promptInjectedEffortLevels: [],
+    },
+  },
+  {
+    slug: "gpt-5.1-codex-max",
+    name: "GPT-5.1 Codex Max",
+    isCustom: false,
+    capabilities: {
+      reasoningEffortLevels: [
+        { value: "xhigh", label: "Extra High" },
+        { value: "high", label: "High", isDefault: true },
+        { value: "medium", label: "Medium" },
+        { value: "low", label: "Low" },
+      ],
+      supportsFastMode: true,
+      supportsThinkingToggle: false,
+      contextWindowOptions: [],
+      promptInjectedEffortLevels: [],
+    },
+  },
 ];
 
 export function getCodexModelCapabilities(model: string | null | undefined): ModelCapabilities {

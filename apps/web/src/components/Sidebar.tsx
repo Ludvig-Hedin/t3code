@@ -6,7 +6,9 @@ import {
   GitPullRequestIcon,
   LoaderCircleIcon,
   PlusIcon,
+  SearchIcon,
   SettingsIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -81,6 +83,7 @@ import { toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { createProjectFromPath } from "../lib/createProject";
+import { SearchModal } from "./search/SearchModal";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -592,16 +595,23 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
   );
 }
 
-function T3Wordmark() {
+// Bird Code logo — inline SVG extracted from logo-dark/light.svg.
+// Background rect removed; fill uses currentColor so it adapts to dark/light theme automatically.
+function BirdLogomark() {
   return (
     <svg
-      aria-label="T3"
-      className="h-2.5 w-auto shrink-0 text-foreground"
-      viewBox="15.5309 37 94.3941 56.96"
+      aria-label="Bird Code"
+      className="size-5 shrink-0 text-foreground"
+      viewBox="0 0 1024 1024"
+      fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       <path
-        d="M33.4509 93V47.56H15.5309V37H64.3309V47.56H46.4109V93H33.4509ZM86.7253 93.96C82.832 93.96 78.9653 93.4533 75.1253 92.44C71.2853 91.3733 68.032 89.88 65.3653 87.96L70.4053 78.04C72.5386 79.5867 75.0186 80.8133 77.8453 81.72C80.672 82.6267 83.5253 83.08 86.4053 83.08C89.6586 83.08 92.2186 82.44 94.0853 81.16C95.952 79.88 96.8853 78.12 96.8853 75.88C96.8853 73.7467 96.0586 72.0667 94.4053 70.84C92.752 69.6133 90.0853 69 86.4053 69H80.4853V60.44L96.0853 42.76L97.5253 47.4H68.1653V37H107.365V45.4L91.8453 63.08L85.2853 59.32H89.0453C95.9253 59.32 101.125 60.8667 104.645 63.96C108.165 67.0533 109.925 71.0267 109.925 75.88C109.925 79.0267 109.099 81.9867 107.445 84.76C105.792 87.48 103.259 89.6933 99.8453 91.4C96.432 93.1067 92.0586 93.96 86.7253 93.96Z"
+        d="M327.702 724.854L515.565 399.426L557.026 327.592C560.249 322.01 576.142 293.565 579.065 290.983C585.467 289.99 609.754 290.453 617.313 290.454L694.588 290.478L773.236 290.447C779.603 290.441 804.315 289.975 809.516 291.127C812.469 293.029 830.88 326.155 834.474 332.387L874.158 401.144L915.308 472.407C922.686 485.184 930.931 498.883 937.898 511.761C931.081 524.744 921.15 540.875 913.701 553.777L865.969 636.448L829.588 699.509C825.919 705.886 814.326 728.077 810.132 731.841C807.829 733.908 759.856 732.907 753.148 732.897L717.409 732.952C713.019 732.962 690.153 735.129 693.592 726.996C695.439 722.632 699.744 715.48 702.297 711.046L720.797 679.019L793.083 553.802C793.748 552.681 796.366 548.152 797.377 547.631C821.995 535.009 848.519 523.738 873.372 511.661C855.807 503.203 838.008 495.153 820.308 486.971C813.936 484.024 802.919 479.965 797.678 476.094C794.159 473.492 774.127 436.776 769.952 429.539L720.963 344.627C712.523 330.002 703.198 312.913 694.283 298.746L520.31 600.067L469.23 688.544L453.865 715.155C450.842 720.385 446.976 727.557 443.441 732.201C439.198 733.247 422.995 732.912 417.476 732.912L369.691 732.902L267.2 732.907C250.215 732.907 229.197 733.458 212.48 732.697C209.559 729.939 201.416 715.01 198.87 710.58L178.179 674.63L84.1953 511.676L170.973 361.255L196.558 316.868C199.46 311.833 209.567 292.613 213.332 290.584C231.487 289.867 249.888 290.463 268.066 290.457C277.287 290.454 320.556 289.259 326.785 291.481C327.718 291.814 328.283 292.542 328.563 293.508C329.125 295.44 328.207 297.249 327.37 298.935C323.225 307.289 318.062 315.352 313.389 323.428L287.496 368.204L204.701 511.651C217.287 534.874 232.509 559.973 245.852 583.081L327.702 724.854Z"
+        fill="currentColor"
+      />
+      <path
+        d="M698.683 447.332C716.408 447.105 730.969 461.276 731.219 478.999C731.47 496.722 717.314 511.301 699.589 511.571C681.83 511.846 667.218 497.662 666.968 479.906C666.718 462.15 680.924 447.56 698.683 447.332Z"
         fill="currentColor"
       />
     </svg>
@@ -744,7 +754,8 @@ export default function Sidebar() {
   const isOnSettings = pathname.startsWith("/settings");
   const appSettings = useSettings();
   const { updateSettings } = useUpdateSettings();
-  const { activeDraftThread, activeThread, handleNewThread } = useHandleNewThread();
+  const { activeDraftThread, activeThread, defaultProjectId, handleNewThread } =
+    useHandleNewThread();
   const { archiveThread, deleteThread } = useThreadActions();
   const routeThreadId = useParams({
     strict: false,
@@ -771,6 +782,8 @@ export default function Sidebar() {
   const suppressProjectClickAfterDragRef = useRef(false);
   const suppressProjectClickForContextMenuRef = useRef(false);
   const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
+  // Search modal open state — toggled by search button and Cmd+K shortcut
+  const [searchOpen, setSearchOpen] = useState(false);
   const selectedThreadIds = useThreadSelectionStore((s) => s.selectedThreadIds);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
@@ -1553,6 +1566,20 @@ export default function Sidebar() {
         return;
       }
 
+      // Open search modal on Cmd+K (Mac) or Ctrl+K (other platforms), but only
+      // when the terminal does not have focus — the terminal handles Cmd+K itself.
+      const key = event.key.toLowerCase();
+      const isSearchShortcut = isMacPlatform(platform)
+        ? key === "k" && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+        : key === "k" && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+
+      if (isSearchShortcut && !isTerminalFocused()) {
+        event.preventDefault();
+        event.stopPropagation();
+        setSearchOpen((prev) => !prev);
+        return;
+      }
+
       const command = resolveShortcutCommand(event, keybindings, {
         platform,
         context: getShortcutContext(),
@@ -2021,9 +2048,9 @@ export default function Sidebar() {
               className="ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md outline-hidden ring-ring transition-colors hover:text-foreground focus-visible:ring-2"
               to="/"
             >
-              <T3Wordmark />
+              <BirdLogomark />
               <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
-                Code
+                Bird Code
               </span>
               <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
                 {APP_STAGE_LABEL}
@@ -2054,6 +2081,38 @@ export default function Sidebar() {
         <SettingsSidebarNav pathname={pathname} />
       ) : (
         <>
+          {/* New thread + search — styled to match footer buttons (same size/weight) */}
+          {projects.length > 0 && defaultProjectId && (
+            <div className="px-2 py-1">
+              {/* Navigates to the home/new-chat page so the project picker and prompt
+                  suggestions are shown — rather than jumping straight into a draft thread */}
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                onClick={() => void navigate({ to: "/" })}
+              >
+                <SquarePenIcon className="size-3.5" />
+                <span className="flex-1 text-left">New thread</span>
+                {newThreadShortcutLabel && (
+                  <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+                    {newThreadShortcutLabel}
+                  </kbd>
+                )}
+              </button>
+              {/* Search button — opens the search modal (also triggered by Cmd+K) */}
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                onClick={() => setSearchOpen(true)}
+              >
+                <SearchIcon className="size-3.5" />
+                <span className="flex-1 text-left">Search</span>
+                <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+                  {isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"}
+                </kbd>
+              </button>
+            </div>
+          )}
           <SidebarContent className="gap-0">
             {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
               <SidebarGroup className="px-2 pt-2 pb-0">
@@ -2224,6 +2283,16 @@ export default function Sidebar() {
                 <SidebarMenuButton
                   size="sm"
                   className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  onClick={() => void navigate({ to: "/skills" })}
+                >
+                  <SparklesIcon className="size-3.5" />
+                  <span className="text-xs">Skills</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
                   onClick={() => void navigate({ to: "/settings" })}
                 >
                   <SettingsIcon className="size-3.5" />
@@ -2234,6 +2303,8 @@ export default function Sidebar() {
           </SidebarFooter>
         </>
       )}
+      {/* Search modal — rendered outside conditional blocks so it survives route changes */}
+      <SearchModal open={searchOpen} onOpenChange={setSearchOpen} projects={projects} />
     </>
   );
 }

@@ -48,6 +48,7 @@ export interface WsRpcClient {
   };
   readonly projects: {
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>;
+    readonly readFile: RpcUnaryMethod<typeof WS_METHODS.projectsReadFile>;
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>;
   };
   readonly shell: {
@@ -73,6 +74,7 @@ export interface WsRpcClient {
     readonly preparePullRequestThread: RpcUnaryMethod<
       typeof WS_METHODS.gitPreparePullRequestThread
     >;
+    readonly prepareReviewContext: RpcUnaryMethod<typeof WS_METHODS.gitPrepareReviewContext>;
   };
   readonly server: {
     readonly getConfig: RpcUnaryNoArgMethod<typeof WS_METHODS.serverGetConfig>;
@@ -92,6 +94,17 @@ export interface WsRpcClient {
     readonly getFullThreadDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getFullThreadDiff>;
     readonly replayEvents: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.replayEvents>;
     readonly onDomainEvent: RpcStreamMethod<typeof WS_METHODS.subscribeOrchestrationDomainEvents>;
+  };
+  readonly provider: {
+    // Streams per-provider rate limit entries. Emits cached snapshot on
+    // subscribe, then delivers live updates as providers report new limits.
+    readonly onRateLimitUpdate: RpcStreamMethod<typeof WS_METHODS.subscribeProviderRateLimits>;
+  };
+  readonly skills: {
+    readonly list: RpcUnaryNoArgMethod<typeof WS_METHODS.skillsList>;
+    readonly save: RpcUnaryMethod<typeof WS_METHODS.skillsSave>;
+    readonly delete: RpcUnaryMethod<typeof WS_METHODS.skillsDelete>;
+    readonly generate: RpcUnaryMethod<typeof WS_METHODS.skillsGenerate>;
   };
 }
 
@@ -126,6 +139,8 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
     projects: {
       searchEntries: (input) =>
         transport.request((client) => client[WS_METHODS.projectsSearchEntries](input)),
+      readFile: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsReadFile](input)),
       writeFile: (input) =>
         transport.request((client) => client[WS_METHODS.projectsWriteFile](input)),
     },
@@ -169,6 +184,8 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport.request((client) => client[WS_METHODS.gitResolvePullRequest](input)),
       preparePullRequestThread: (input) =>
         transport.request((client) => client[WS_METHODS.gitPreparePullRequestThread](input)),
+      prepareReviewContext: (input) =>
+        transport.request((client) => client[WS_METHODS.gitPrepareReviewContext](input)),
     },
     server: {
       getConfig: () => transport.request((client) => client[WS_METHODS.serverGetConfig]({})),
@@ -202,6 +219,19 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
           (client) => client[WS_METHODS.subscribeOrchestrationDomainEvents]({}),
           listener,
         ),
+    },
+    provider: {
+      onRateLimitUpdate: (listener) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.subscribeProviderRateLimits]({}),
+          listener,
+        ),
+    },
+    skills: {
+      list: () => transport.request((client) => client[WS_METHODS.skillsList]({})),
+      save: (input) => transport.request((client) => client[WS_METHODS.skillsSave](input)),
+      delete: (input) => transport.request((client) => client[WS_METHODS.skillsDelete](input)),
+      generate: (input) => transport.request((client) => client[WS_METHODS.skillsGenerate](input)),
     },
   };
 }

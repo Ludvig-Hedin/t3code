@@ -47,6 +47,7 @@ const rpcClientMock = {
   },
   projects: {
     searchEntries: vi.fn(),
+    readFile: vi.fn(),
     writeFile: vi.fn(),
   },
   shell: {
@@ -354,5 +355,26 @@ describe("wsNativeApi", () => {
 
     await expect(api.contextMenu.show(items, { x: 4, y: 5 })).resolves.toBe("rename");
     expect(showContextMenuFallbackMock).toHaveBeenCalledWith(items, { x: 4, y: 5 });
+  });
+
+  it("forwards workspace file reads directly to the RPC client", async () => {
+    rpcClientMock.projects.readFile.mockResolvedValue({
+      relativePath: "package.json",
+      contents: '{"scripts":{"lint":"bun run lint"}}',
+    });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+
+    await expect(
+      api.projects.readFile({ cwd: "/tmp/workspace", relativePath: "package.json" }),
+    ).resolves.toEqual({
+      relativePath: "package.json",
+      contents: '{"scripts":{"lint":"bun run lint"}}',
+    });
+    expect(rpcClientMock.projects.readFile).toHaveBeenCalledWith({
+      cwd: "/tmp/workspace",
+      relativePath: "package.json",
+    });
   });
 });

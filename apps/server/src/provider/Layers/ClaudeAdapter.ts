@@ -3060,6 +3060,9 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    // Claude rate limits arrive only as push events (rate_limit_event from the SDK).
+    // There is no pull API, so refreshRateLimits is a deliberate no-op here.
+    refreshRateLimits: () => Effect.void,
     streamEvents: Stream.fromQueue(runtimeEventQueue),
   } satisfies ClaudeAdapterShape;
 });

@@ -6,6 +6,8 @@ import {
   GitActionProgressEvent,
   GitActionProgressPhase,
   GitCommandError,
+  GitPrepareReviewContextInput,
+  GitPrepareReviewContextResult,
   GitRunStackedActionResult,
   GitStackedAction,
   ModelSelection,
@@ -1706,11 +1708,72 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
     },
   );
 
+  /**
+   * Fetch a git diff range context suitable for embedding in a code review agent prompt.
+   * Resolves the base branch automatically via GitHub CLI or upstreamRef when not provided.
+   */
+  const prepareReviewContext = Effect.fn("prepareReviewContext")(function* (
+    input: GitPrepareReviewContextInput,
+  ) {
+    const details = yield* gitCore
+      .statusDetails(input.cwd)
+      .pipe(
+        Effect.mapError((cause) => gitManagerError("prepareReviewContext", cause.message, cause)),
+      );
+
+    if (!details.isRepo) {
+      return yield* gitManagerError("prepareReviewContext", "Not a git repository.");
+    }
+
+    // Resolve the base branch.
+    // Priority: explicit input → upstream branch → GitHub CLI default → "main"
+    let resolvedBaseBranch: string;
+    if (input.baseBranch) {
+      resolvedBaseBranch = input.baseBranch;
+    } else {
+      let inferred: string | null = null;
+      if (details.upstreamRef && details.branch) {
+        const upstream = extractBranchNameFromRemoteRef(details.upstreamRef, {
+          remoteName: null,
+        });
+        if (upstream.length > 0 && upstream !== details.branch) {
+          inferred = upstream;
+        }
+      }
+      if (!inferred) {
+        inferred = yield* gitHubCli
+          .getDefaultBranch({ cwd: input.cwd })
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+      }
+      resolvedBaseBranch = inferred ?? "main";
+    }
+
+    const rangeContext = yield* gitCore
+      .readRangeContext(input.cwd, resolvedBaseBranch)
+      .pipe(
+        Effect.mapError((cause) =>
+          gitManagerError(
+            "prepareReviewContext",
+            `Failed to read range context: ${cause.message}`,
+            cause,
+          ),
+        ),
+      );
+
+    return {
+      baseBranch: resolvedBaseBranch,
+      commitSummary: limitContext(rangeContext.commitSummary, 20_000),
+      diffSummary: limitContext(rangeContext.diffSummary, 20_000),
+      diffPatch: limitContext(rangeContext.diffPatch, 60_000),
+    } satisfies GitPrepareReviewContextResult;
+  });
+
   return {
     status,
     resolvePullRequest,
     preparePullRequestThread,
     runStackedAction,
+    prepareReviewContext,
   } satisfies GitManagerShape;
 });
 

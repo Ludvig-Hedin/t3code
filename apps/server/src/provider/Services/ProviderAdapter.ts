@@ -120,6 +120,17 @@ export interface ProviderAdapterShape<TError> {
   readonly stopAll: () => Effect.Effect<void, TError>;
 
   /**
+   * Request a fresh rate-limit snapshot for the given session.
+   *
+   * Adapters that support on-demand rate-limit reads (e.g. Codex via
+   * `account/rateLimits/read`) should implement this by emitting a
+   * synthetic `account.rate-limits.updated` event into `streamEvents`.
+   * Adapters that only receive rate-limit data via push notifications
+   * (Claude, Gemini) return `Effect.void` — a no-op is always acceptable.
+   */
+  readonly refreshRateLimits: (threadId: ThreadId) => Effect.Effect<void>;
+
+  /**
    * Canonical runtime event stream emitted by this adapter.
    */
   readonly streamEvents: Stream.Stream<ProviderRuntimeEvent>;

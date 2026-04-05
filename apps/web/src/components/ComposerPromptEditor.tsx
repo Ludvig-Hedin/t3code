@@ -717,6 +717,48 @@ function ComposerCommandKeyPlugin(props: {
   return null;
 }
 
+/**
+ * ComposerMarkdownShortcutsPlugin — Adds Cmd/Ctrl+B to wrap selected text in
+ * markdown bold (**text**). Works within the PlainText editor by manipulating
+ * text nodes directly.
+ */
+function ComposerMarkdownShortcutsPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Cmd+B (Mac) or Ctrl+B (Win/Linux) for bold
+      if (event.key === "b" && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        editor.update(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
+
+          const selectedText = selection.getTextContent();
+          if (!selectedText) return;
+
+          // Toggle: if already wrapped in **, unwrap; otherwise wrap
+          const isBold =
+            selectedText.startsWith("**") && selectedText.endsWith("**") && selectedText.length > 4;
+          const replacement = isBold ? selectedText.slice(2, -2) : `**${selectedText}**`;
+
+          selection.insertRawText(replacement);
+        });
+      }
+    };
+
+    rootElement.addEventListener("keydown", handleKeyDown);
+    return () => rootElement.removeEventListener("keydown", handleKeyDown);
+  }, [editor]);
+
+  return null;
+}
+
 function ComposerInlineTokenArrowPlugin() {
   const [editor] = useLexicalComposerContext();
 
@@ -1113,6 +1155,7 @@ function ComposerPromptEditorInner({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
+        <ComposerMarkdownShortcutsPlugin />
         <ComposerInlineTokenArrowPlugin />
         <ComposerInlineTokenSelectionNormalizePlugin />
         <ComposerInlineTokenBackspacePlugin />

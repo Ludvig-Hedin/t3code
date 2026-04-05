@@ -1,7 +1,7 @@
 import type { GitBranch } from "@t3tools/contracts";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -41,6 +41,16 @@ import {
   ComboboxTrigger,
 } from "./ui/combobox";
 import { toastManager } from "./ui/toast";
+import {
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "./ui/dialog";
+import { Input } from "./ui/input";
 
 interface BranchToolbarBranchSelectorProps {
   activeProjectCwd: string;
@@ -88,6 +98,9 @@ export function BranchToolbarBranchSelector({
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
   const deferredBranchQuery = useDeferredValue(branchQuery);
+  // Modal state for the "Create & checkout new branch" flow
+  const [isCreateBranchModalOpen, setIsCreateBranchModalOpen] = useState(false);
+  const [createBranchModalName, setCreateBranchModalName] = useState("");
 
   const branchStatusQuery = useQuery(gitStatusQueryOptions(branchCwd));
   const trimmedBranchQuery = branchQuery.trim();
@@ -257,6 +270,9 @@ export function BranchToolbarBranchSelector({
     const api = readNativeApi();
     if (!api || !branchCwd || !name || isBranchActionPending) return;
 
+    // Close modal if this was triggered from the create branch modal
+    setIsCreateBranchModalOpen(false);
+    setCreateBranchModalName("");
     setIsBranchMenuOpen(false);
     onComposerFocusRequest?.();
 
@@ -287,6 +303,29 @@ export function BranchToolbarBranchSelector({
       setOptimisticBranch(name);
       onSetThreadBranch(name, activeWorktreePath);
       setBranchQuery("");
+    });
+  };
+
+  // Creates a branch without checking it out — used by "Create but stay on current branch"
+  const createBranchOnly = (rawName: string) => {
+    const name = rawName.trim();
+    const api = readNativeApi();
+    if (!api || !branchCwd || !name || isBranchActionPending) return;
+
+    setIsCreateBranchModalOpen(false);
+    setCreateBranchModalName("");
+
+    runBranchAction(async () => {
+      try {
+        await api.git.createBranch({ cwd: branchCwd, branch: name });
+        await invalidateGitQueries(queryClient);
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "Failed to create branch.",
+          description: toBranchActionErrorMessage(error),
+        });
+      }
     });
   };
 
@@ -484,67 +523,126 @@ export function BranchToolbarBranchSelector({
   }
 
   return (
-    <Combobox
-      items={branchPickerItems}
-      filteredItems={filteredBranchPickerItems}
-      autoHighlight
-      virtualized={shouldVirtualizeBranchList}
-      onItemHighlighted={(_value, eventDetails) => {
-        if (!isBranchMenuOpen || eventDetails.index < 0) return;
-        branchListVirtualizer.scrollToIndex(eventDetails.index, { align: "auto" });
-      }}
-      onOpenChange={handleOpenChange}
-      open={isBranchMenuOpen}
-      value={resolvedActiveBranch}
-    >
-      <ComboboxTrigger
-        render={<Button variant="ghost" size="xs" />}
-        className="text-muted-foreground/70 hover:text-foreground/80"
-        disabled={(isBranchesSearchPending && branches.length === 0) || isBranchActionPending}
+    <>
+      <Combobox
+        items={branchPickerItems}
+        filteredItems={filteredBranchPickerItems}
+        autoHighlight
+        virtualized={shouldVirtualizeBranchList}
+        onItemHighlighted={(_value, eventDetails) => {
+          if (!isBranchMenuOpen || eventDetails.index < 0) return;
+          branchListVirtualizer.scrollToIndex(eventDetails.index, { align: "auto" });
+        }}
+        onOpenChange={handleOpenChange}
+        open={isBranchMenuOpen}
+        value={resolvedActiveBranch}
       >
-        <span className="max-w-[240px] truncate">{triggerLabel}</span>
-        <ChevronDownIcon />
-      </ComboboxTrigger>
-      <ComboboxPopup align="end" side="top" className="w-80">
-        <div className="border-b p-1">
-          <ComboboxInput
-            className="[&_input]:font-sans rounded-md"
-            inputClassName="ring-0"
-            placeholder="Search branches..."
-            showTrigger={false}
-            size="sm"
-            value={branchQuery}
-            onChange={(event) => setBranchQuery(event.target.value)}
-          />
-        </div>
-        <ComboboxEmpty>No branches found.</ComboboxEmpty>
+        <ComboboxTrigger
+          render={<Button variant="ghost" size="xs" />}
+          className="text-muted-foreground/70 hover:text-foreground/80"
+          disabled={(isBranchesSearchPending && branches.length === 0) || isBranchActionPending}
+        >
+          <span className="max-w-[240px] truncate">{triggerLabel}</span>
+          <ChevronDownIcon />
+        </ComboboxTrigger>
+        <ComboboxPopup align="end" side="top" className="w-80">
+          <div className="border-b p-1">
+            <ComboboxInput
+              className="[&_input]:font-sans rounded-md"
+              inputClassName="ring-0"
+              placeholder="Search branches..."
+              showTrigger={false}
+              size="sm"
+              value={branchQuery}
+              onChange={(event) => setBranchQuery(event.target.value)}
+            />
+          </div>
+          <ComboboxEmpty>No branches found.</ComboboxEmpty>
 
-        <ComboboxList ref={setBranchListRef} className="max-h-56">
-          {shouldVirtualizeBranchList ? (
-            <div
-              className="relative"
-              style={{
-                height: `${branchListVirtualizer.getTotalSize()}px`,
+          <ComboboxList ref={setBranchListRef} className="max-h-56">
+            {shouldVirtualizeBranchList ? (
+              <div
+                className="relative"
+                style={{
+                  height: `${branchListVirtualizer.getTotalSize()}px`,
+                }}
+              >
+                {virtualBranchRows.map((virtualRow) => {
+                  const itemValue = filteredBranchPickerItems[virtualRow.index];
+                  if (!itemValue) return null;
+                  return renderPickerItem(itemValue, virtualRow.index, {
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                  });
+                })}
+              </div>
+            ) : (
+              filteredBranchPickerItems.map((itemValue, index) =>
+                renderPickerItem(itemValue, index),
+              )
+            )}
+          </ComboboxList>
+          {branchStatusText ? <ComboboxStatus>{branchStatusText}</ComboboxStatus> : null}
+          {/* Persistent footer button to open the create-branch modal */}
+          <div className="border-t p-1">
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => {
+                setIsBranchMenuOpen(false);
+                // Pre-fill with whatever the user typed in the search field
+                setCreateBranchModalName(trimmedBranchQuery);
+                setIsCreateBranchModalOpen(true);
               }}
             >
-              {virtualBranchRows.map((virtualRow) => {
-                const itemValue = filteredBranchPickerItems[virtualRow.index];
-                if (!itemValue) return null;
-                return renderPickerItem(itemValue, virtualRow.index, {
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualRow.start}px)`,
-                });
-              })}
-            </div>
-          ) : (
-            filteredBranchPickerItems.map((itemValue, index) => renderPickerItem(itemValue, index))
-          )}
-        </ComboboxList>
-        {branchStatusText ? <ComboboxStatus>{branchStatusText}</ComboboxStatus> : null}
-      </ComboboxPopup>
-    </Combobox>
+              <PlusIcon className="size-3.5 shrink-0" />
+              Create & checkout new branch
+            </button>
+          </div>
+        </ComboboxPopup>
+      </Combobox>
+
+      {/* Create branch modal — rendered outside the Combobox to avoid portal conflicts */}
+      <Dialog open={isCreateBranchModalOpen} onOpenChange={setIsCreateBranchModalOpen}>
+        <DialogPopup showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Create new branch</DialogTitle>
+          </DialogHeader>
+          <DialogPanel>
+            <Input
+              autoFocus
+              placeholder="branch-name"
+              value={createBranchModalName}
+              onChange={(e) => setCreateBranchModalName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && createBranchModalName.trim()) {
+                  createBranch(createBranchModalName);
+                }
+              }}
+            />
+          </DialogPanel>
+          <DialogFooter variant="bare">
+            {/* DOM order: Close → secondary → primary, so flex-col-reverse on mobile shows primary first */}
+            <DialogClose render={<Button variant="ghost" />}>Close</DialogClose>
+            <Button
+              variant="ghost"
+              onClick={() => createBranchOnly(createBranchModalName)}
+              disabled={!createBranchModalName.trim() || isBranchActionPending}
+            >
+              Create but stay on current branch
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => createBranch(createBranchModalName)}
+              disabled={!createBranchModalName.trim() || isBranchActionPending}
+            >
+              Create and checkout
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+    </>
   );
 }

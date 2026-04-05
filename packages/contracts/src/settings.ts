@@ -15,6 +15,10 @@ export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"])
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
 
+export const EnterKeyBehavior = Schema.Literals(["send", "newline"]);
+export type EnterKeyBehavior = typeof EnterKeyBehavior.Type;
+export const DEFAULT_ENTER_KEY_BEHAVIOR: EnterKeyBehavior = "newline";
+
 export const SidebarProjectSortOrder = Schema.Literals(["updated_at", "created_at", "manual"]);
 export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
 export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "updated_at";
@@ -34,6 +38,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(() => DEFAULT_SIDEBAR_THREAD_SORT_ORDER),
   ),
   timestampFormat: TimestampFormat.pipe(Schema.withDecodingDefault(() => DEFAULT_TIMESTAMP_FORMAT)),
+  enterKeyBehavior: EnterKeyBehavior.pipe(
+    Schema.withDecodingDefault(() => DEFAULT_ENTER_KEY_BEHAVIOR),
+  ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -71,11 +78,36 @@ export const ClaudeSettings = Schema.Struct({
 });
 export type ClaudeSettings = typeof ClaudeSettings.Type;
 
+export const GeminiSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  binaryPath: makeBinaryPathSetting("gemini"),
+  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+});
+export type GeminiSettings = typeof GeminiSettings.Type;
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
+
+// ── Code Review Settings ─────────────────────────────────────────────
+
+/**
+ * How the agent should respond after completing a review turn.
+ * - review-only: list findings, do not touch files
+ * - auto-fix: list findings, then a second turn auto-triggers to fix them
+ * - agent-decides: review AND fix in a single full-access turn
+ */
+export const CodeReviewFixMode = Schema.Literals(["review-only", "auto-fix", "agent-decides"]);
+export type CodeReviewFixMode = typeof CodeReviewFixMode.Type;
+export const DEFAULT_CODE_REVIEW_FIX_MODE: CodeReviewFixMode = "review-only";
+
+export const CodeReviewSettings = Schema.Struct({
+  autoReviewOnPush: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  fixMode: CodeReviewFixMode.pipe(Schema.withDecodingDefault(() => DEFAULT_CODE_REVIEW_FIX_MODE)),
+});
+export type CodeReviewSettings = typeof CodeReviewSettings.Type;
 
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
@@ -93,8 +125,10 @@ export const ServerSettings = Schema.Struct({
   providers: Schema.Struct({
     codex: CodexSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    gemini: GeminiSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(() => ({}))),
+  codeReview: CodeReviewSettings.pipe(Schema.withDecodingDefault(() => ({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -135,6 +169,8 @@ const ClaudeModelOptionsPatch = Schema.Struct({
   contextWindow: Schema.optionalKey(ClaudeModelOptions.fields.contextWindow),
 });
 
+const GeminiModelOptionsPatch = Schema.Struct({});
+
 const ModelSelectionPatch = Schema.Union([
   Schema.Struct({
     provider: Schema.optionalKey(Schema.Literal("codex")),
@@ -146,6 +182,11 @@ const ModelSelectionPatch = Schema.Union([
     model: Schema.optionalKey(TrimmedNonEmptyString),
     options: Schema.optionalKey(ClaudeModelOptionsPatch),
   }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("gemini")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(GeminiModelOptionsPatch),
+  }),
 ]);
 
 const CodexSettingsPatch = Schema.Struct({
@@ -156,6 +197,12 @@ const CodexSettingsPatch = Schema.Struct({
 });
 
 const ClaudeSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(Schema.String),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+const GeminiSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(Schema.String),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -175,6 +222,13 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({
       codex: Schema.optionalKey(CodexSettingsPatch),
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
+      gemini: Schema.optionalKey(GeminiSettingsPatch),
+    }),
+  ),
+  codeReview: Schema.optionalKey(
+    Schema.Struct({
+      autoReviewOnPush: Schema.optionalKey(Schema.Boolean),
+      fixMode: Schema.optionalKey(CodeReviewFixMode),
     }),
   ),
 });

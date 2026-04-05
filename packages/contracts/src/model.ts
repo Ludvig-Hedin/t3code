@@ -77,6 +77,13 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "gpt-5.3": "gpt-5.3-codex",
     "5.3-spark": "gpt-5.3-codex-spark",
     "gpt-5.3-spark": "gpt-5.3-codex-spark",
+    // GPT-5.1 Codex generation aliases
+    "5.1-mini": "gpt-5.1-codex-mini",
+    "gpt-5.1-mini": "gpt-5.1-codex-mini",
+    "5.1-codex-mini": "gpt-5.1-codex-mini",
+    "5.1-max": "gpt-5.1-codex-max",
+    "gpt-5.1-max": "gpt-5.1-codex-max",
+    "5.1-codex-max": "gpt-5.1-codex-max",
   },
   claudeAgent: {
     opus: "claude-opus-4-6",

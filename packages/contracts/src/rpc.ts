@@ -16,6 +16,8 @@ import {
   GitManagerServiceError,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
+  GitPrepareReviewContextInput,
+  GitPrepareReviewContextResult,
   GitPullInput,
   GitPullRequestRefInput,
   GitPullResult,
@@ -45,6 +47,9 @@ import {
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
+  ProjectReadFileError,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectWriteFileError,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
@@ -67,8 +72,17 @@ import {
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
+  ProviderRateLimitEntry,
 } from "./server";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings";
+import {
+  SkillDeleteInput,
+  SkillDraft,
+  SkillError,
+  SkillGenerateInput,
+  SkillGenerateResult,
+  SkillInfo,
+} from "./skills";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -76,6 +90,7 @@ export const WS_METHODS = {
   projectsAdd: "projects.add",
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
+  projectsReadFile: "projects.readFile",
   projectsWriteFile: "projects.writeFile",
 
   // Shell methods
@@ -93,6 +108,7 @@ export const WS_METHODS = {
   gitInit: "git.init",
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
+  gitPrepareReviewContext: "git.prepareReviewContext",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -109,11 +125,18 @@ export const WS_METHODS = {
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
 
+  // Skills methods
+  skillsList: "skills.list",
+  skillsSave: "skills.save",
+  skillsDelete: "skills.delete",
+  skillsGenerate: "skills.generate",
+
   // Streaming subscriptions
   subscribeOrchestrationDomainEvents: "subscribeOrchestrationDomainEvents",
   subscribeTerminalEvents: "subscribeTerminalEvents",
   subscribeServerConfig: "subscribeServerConfig",
   subscribeServerLifecycle: "subscribeServerLifecycle",
+  subscribeProviderRateLimits: "subscribeProviderRateLimits",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -149,6 +172,12 @@ export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntr
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
   error: ProjectSearchEntriesError,
+});
+
+export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
+  payload: ProjectReadFileInput,
+  success: Schema.NullOr(ProjectReadFileResult),
+  error: ProjectReadFileError,
 });
 
 export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
@@ -190,6 +219,12 @@ export const WsGitResolvePullRequestRpc = Rpc.make(WS_METHODS.gitResolvePullRequ
 export const WsGitPreparePullRequestThreadRpc = Rpc.make(WS_METHODS.gitPreparePullRequestThread, {
   payload: GitPreparePullRequestThreadInput,
   success: GitPreparePullRequestThreadResult,
+  error: GitManagerServiceError,
+});
+
+export const WsGitPrepareReviewContextRpc = Rpc.make(WS_METHODS.gitPrepareReviewContext, {
+  payload: GitPrepareReviewContextInput,
+  success: GitPrepareReviewContextResult,
   error: GitManagerServiceError,
 });
 
@@ -321,6 +356,39 @@ export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServer
   stream: true,
 });
 
+// Streams per-provider rate limit updates. On subscribe, emits the current cached
+// snapshot for all providers that have already reported limits, then streams live updates.
+export const WsSubscribeProviderRateLimitsRpc = Rpc.make(WS_METHODS.subscribeProviderRateLimits, {
+  payload: Schema.Struct({}),
+  success: ProviderRateLimitEntry,
+  stream: true,
+});
+
+// --- Skills RPCs ---
+
+export const WsSkillsListRpc = Rpc.make(WS_METHODS.skillsList, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(SkillInfo),
+  error: SkillError,
+});
+
+export const WsSkillsSaveRpc = Rpc.make(WS_METHODS.skillsSave, {
+  payload: SkillDraft,
+  success: SkillInfo,
+  error: SkillError,
+});
+
+export const WsSkillsDeleteRpc = Rpc.make(WS_METHODS.skillsDelete, {
+  payload: SkillDeleteInput,
+  error: SkillError,
+});
+
+export const WsSkillsGenerateRpc = Rpc.make(WS_METHODS.skillsGenerate, {
+  payload: SkillGenerateInput,
+  success: SkillGenerateResult,
+  error: SkillError,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -328,6 +396,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
   WsProjectsSearchEntriesRpc,
+  WsProjectsReadFileRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsGitStatusRpc,
@@ -335,6 +404,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,
+  WsGitPrepareReviewContextRpc,
   WsGitListBranchesRpc,
   WsGitCreateWorktreeRpc,
   WsGitRemoveWorktreeRpc,
@@ -351,9 +421,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeTerminalEventsRpc,
   WsSubscribeServerConfigRpc,
   WsSubscribeServerLifecycleRpc,
+  WsSubscribeProviderRateLimitsRpc,
   WsOrchestrationGetSnapshotRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
   WsOrchestrationReplayEventsRpc,
+  WsSkillsListRpc,
+  WsSkillsSaveRpc,
+  WsSkillsDeleteRpc,
+  WsSkillsGenerateRpc,
 );

@@ -398,7 +398,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         cwd: process.cwd(),
         baseDir,
         ...derivedPaths,
-        host: "127.0.0.1",
+        host: "0.0.0.0",
         staticDir: resolved.staticDir,
         devUrl: undefined,
         noBrowser: true,

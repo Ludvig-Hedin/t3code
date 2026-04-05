@@ -48,9 +48,11 @@ import {
   gitStatusQueryOptions,
   invalidateGitStatusQuery,
 } from "~/lib/gitReactQuery";
-import { newCommandId, randomUUID } from "~/lib/utils";
+import { newCommandId, newMessageId, randomUUID } from "~/lib/utils";
+import { buildCodeReviewPrompt, runtimeModeForFixMode } from "~/lib/codeReview";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { readNativeApi } from "~/nativeApi";
+import { useSettings } from "~/hooks/useSettings";
 import { useStore } from "~/store";
 
 interface GitActionsControlProps {
@@ -90,6 +92,8 @@ interface RunGitActionWithToastInput {
   featureBranch?: boolean;
   progressToastId?: GitActionToastId;
   filePaths?: string[];
+  /** When true, skip the auto-review-before-push intercept (prevents re-entry). */
+  skipAutoReview?: boolean;
 }
 
 function formatElapsedDescription(startedAtMs: number | null): string | undefined {
@@ -222,6 +226,17 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null);
   const activeGitActionProgressRef = useRef<ActiveGitActionProgress | null>(null);
+
+  // ── Auto-review-before-push state ──────────────────────────────────
+  const codeReviewSettings = useSettings();
+  const autoReviewOnPush = codeReviewSettings.codeReview.autoReviewOnPush;
+  const codeReviewFixMode = codeReviewSettings.codeReview.fixMode;
+  // Callback ref used to resume the pending push after the review turn completes.
+  // Stored as a ref to avoid including runGitActionWithToast in the useEffect deps.
+  const resumePushCallbackRef = useRef<(() => void) | null>(null);
+  // Holds the review turn ID we are waiting for ("__waiting__" until it appears).
+  const reviewTurnIdForPushRef = useRef<string | null>(null);
+
   let runGitActionWithToast: (input: RunGitActionWithToastInput) => Promise<void>;
 
   const updateActiveProgressToast = useCallback(() => {
@@ -359,6 +374,34 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
     };
   }, [updateActiveProgressToast]);
 
+  // ── Auto-review completion → resume push ──────────────────────────────
+  // When the review turn ID is known (not "__waiting__"), watch for it to
+  // complete and then call the stored resumePushCallbackRef to run the push.
+  const latestTurnForReview = activeServerThread?.latestTurn;
+  useEffect(() => {
+    const sentinel = reviewTurnIdForPushRef.current;
+    if (!sentinel) return;
+
+    // Replace placeholder once the real turn ID appears
+    if (sentinel === "__waiting__" && latestTurnForReview?.turnId) {
+      reviewTurnIdForPushRef.current = latestTurnForReview.turnId;
+      return;
+    }
+
+    if (
+      sentinel !== "__waiting__" &&
+      latestTurnForReview?.turnId === sentinel &&
+      latestTurnForReview.state === "completed"
+    ) {
+      const resume = resumePushCallbackRef.current;
+      reviewTurnIdForPushRef.current = null;
+      resumePushCallbackRef.current = null;
+      // The callback holds a closure over runGitActionWithToast (useEffectEvent);
+      // calling it here avoids a direct dep on runGitActionWithToast in this effect.
+      resume?.();
+    }
+  }, [latestTurnForReview]);
+
   const openExistingPr = useCallback(async () => {
     const api = readNativeApi();
     if (!api) {
@@ -398,7 +441,64 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
       featureBranch = false,
       progressToastId,
       filePaths,
+      skipAutoReview = false,
     }: RunGitActionWithToastInput) => {
+      // ── Auto-review-before-push intercept ────────────────────────
+      // When enabled, pause push-type actions, run a code review turn first,
+      // and resume the push automatically once the review turn completes.
+      const actionIncludesPush =
+        action === "push" || action === "commit_push" || action === "commit_push_pr";
+      if (autoReviewOnPush && actionIncludesPush && !skipAutoReview && gitCwd) {
+        const api = readNativeApi();
+        if (api) {
+          toastManager.add({
+            type: "loading",
+            title: "Running code review before push…",
+            description: "The push will continue automatically when review completes.",
+            timeout: 0,
+            data: threadToastData ?? undefined,
+          });
+          try {
+            const ctx = await api.git.prepareReviewContext({ cwd: gitCwd });
+            const prompt = buildCodeReviewPrompt(ctx, codeReviewFixMode);
+            await api.orchestration.dispatchCommand({
+              type: "thread.turn.start",
+              commandId: newCommandId(),
+              threadId: activeThreadId!,
+              message: {
+                messageId: newMessageId(),
+                role: "user",
+                text: prompt,
+                attachments: [],
+              },
+              runtimeMode: runtimeModeForFixMode(codeReviewFixMode),
+              interactionMode: "default",
+              createdAt: new Date().toISOString(),
+            });
+            // Store the resume callback so the useEffect can trigger the push
+            // after the review turn completes without a direct dep on runGitActionWithToast.
+            const pendingInput: RunGitActionWithToastInput = {
+              action,
+              skipDefaultBranchPrompt,
+              featureBranch,
+              skipAutoReview: true,
+              ...(commitMessage !== undefined ? { commitMessage } : {}),
+              ...(onConfirmed !== undefined ? { onConfirmed } : {}),
+              ...(statusOverride !== undefined ? { statusOverride } : {}),
+              ...(progressToastId !== undefined ? { progressToastId } : {}),
+              ...(filePaths !== undefined ? { filePaths } : {}),
+            };
+            resumePushCallbackRef.current = () => {
+              void runGitActionWithToast(pendingInput);
+            };
+            reviewTurnIdForPushRef.current = "__waiting__";
+            return;
+          } catch {
+            // If review dispatch fails, fall through and run the push normally
+          }
+        }
+      }
+
       const actionStatus = statusOverride ?? gitStatusForActions;
       const actionBranch = actionStatus?.branch ?? null;
       const actionIsDefaultBranch = featureBranch ? false : isDefaultBranch;

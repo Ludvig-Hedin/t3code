@@ -651,7 +651,7 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     void dialog.showMessageBox({
       type: "info",
       title: "You're up to date!",
-      message: `T3 Code ${updateState.currentVersion} is currently the newest version available.`,
+      message: `Bird Code ${updateState.currentVersion} is currently the newest version available.`,
       buttons: ["OK"],
     });
   } else if (updateState.status === "error") {

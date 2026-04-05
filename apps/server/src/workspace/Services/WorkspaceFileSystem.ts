@@ -28,6 +28,16 @@ export class WorkspaceFileSystemError extends Schema.TaggedErrorClass<WorkspaceF
  */
 export interface WorkspaceFileSystemShape {
   /**
+   * Read a file relative to the workspace root.
+   *
+   * Returns null when the target does not exist or is not a file.
+   */
+  readonly readFile: (input: {
+    cwd: string;
+    relativePath: string;
+  }) => Effect.Effect<string | null, WorkspacePathOutsideRootError>;
+
+  /**
    * Write a file relative to the workspace root.
    *
    * Creates parent directories as needed and rejects paths that escape the

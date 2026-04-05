@@ -14,7 +14,14 @@ import {
   SettingsIcon,
   WrenchIcon,
 } from "lucide-react";
-import React, { type FormEvent, type KeyboardEvent, useCallback, useMemo, useState } from "react";
+import React, {
+  type FormEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   keybindingValueForCommand,
@@ -37,6 +44,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import {
   Dialog,
   DialogDescription,
@@ -53,6 +61,8 @@ import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "./ui/menu"
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
+import { ensureNativeApi } from "~/nativeApi";
+import { buildPackageJsonScriptRecommendations } from "~/projectScriptRecommendations";
 
 const SCRIPT_ICONS: Array<{ id: ProjectScriptIcon; label: string }> = [
   { id: "play", label: "Play" },
@@ -89,6 +99,7 @@ export interface NewProjectScriptInput {
 interface ProjectScriptsControlProps {
   scripts: ProjectScript[];
   keybindings: ResolvedKeybindingsConfig;
+  projectCwd?: string | null;
   preferredScriptId?: string | null;
   onRunScript: (script: ProjectScript) => void;
   onAddScript: (input: NewProjectScriptInput) => Promise<void> | void;
@@ -150,6 +161,7 @@ function keybindingFromEvent(event: KeyboardEvent<HTMLInputElement>): string | n
 export default function ProjectScriptsControl({
   scripts,
   keybindings,
+  projectCwd = null,
   preferredScriptId = null,
   onRunScript,
   onAddScript,
@@ -167,6 +179,12 @@ export default function ProjectScriptsControl({
   const [keybinding, setKeybinding] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [recommendedActions, setRecommendedActions] = useState<
+    ReturnType<typeof buildPackageJsonScriptRecommendations>
+  >([]);
+  const [recommendedActionsLoading, setRecommendedActionsLoading] = useState(false);
+  const [recommendedActionsError, setRecommendedActionsError] = useState<string | null>(null);
+  const [selectedRecommendedActionKeys, setSelectedRecommendedActionKeys] = useState<string[]>([]);
 
   const primaryScript = useMemo(() => {
     if (preferredScriptId) {
@@ -189,6 +207,40 @@ export default function ProjectScriptsControl({
     const next = keybindingFromEvent(event);
     if (!next) return;
     setKeybinding(next);
+  };
+
+  const toggleRecommendedAction = (actionKey: string) => {
+    setSelectedRecommendedActionKeys((current) =>
+      current.includes(actionKey)
+        ? current.filter((key) => key !== actionKey)
+        : [...current, actionKey],
+    );
+  };
+
+  const addRecommendedActions = async () => {
+    const selectedActions = recommendedActions.filter((action) =>
+      selectedRecommendedActionKeys.includes(action.key),
+    );
+    if (selectedActions.length === 0) {
+      return;
+    }
+
+    setValidationError(null);
+    try {
+      for (const recommendation of selectedActions) {
+        await onAddScript({
+          name: recommendation.name,
+          command: recommendation.command,
+          icon: recommendation.icon,
+          runOnWorktreeCreate: false,
+          keybinding: null,
+        });
+      }
+      setDialogOpen(false);
+      setIconPickerOpen(false);
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : "Failed to save action.");
+    }
   };
 
   const submitAddScript = async (event: FormEvent) => {
@@ -235,6 +287,56 @@ export default function ProjectScriptsControl({
     }
   };
 
+  useEffect(() => {
+    if (!dialogOpen || isEditing || !projectCwd) {
+      setRecommendedActions([]);
+      setSelectedRecommendedActionKeys([]);
+      setRecommendedActionsLoading(false);
+      setRecommendedActionsError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setRecommendedActionsLoading(true);
+    setRecommendedActionsError(null);
+    setSelectedRecommendedActionKeys([]);
+
+    void (async () => {
+      try {
+        const api = ensureNativeApi();
+        const packageJson = await api.projects.readFile({
+          cwd: projectCwd,
+          relativePath: "package.json",
+        });
+        if (cancelled) {
+          return;
+        }
+        setRecommendedActions(
+          buildPackageJsonScriptRecommendations({
+            packageJsonText: packageJson?.contents ?? null,
+            existingScripts: scripts,
+          }),
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setRecommendedActions([]);
+        setRecommendedActionsError(
+          error instanceof Error ? error.message : "Failed to load actions.",
+        );
+      } finally {
+        if (!cancelled) {
+          setRecommendedActionsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dialogOpen, isEditing, projectCwd, scripts]);
+
   const openAddDialog = () => {
     setEditingScriptId(null);
     setName("");
@@ -244,6 +346,9 @@ export default function ProjectScriptsControl({
     setRunOnWorktreeCreate(false);
     setKeybinding("");
     setValidationError(null);
+    setRecommendedActions([]);
+    setSelectedRecommendedActionKeys([]);
+    setRecommendedActionsError(null);
     setDialogOpen(true);
   };
 
@@ -364,6 +469,10 @@ export default function ProjectScriptsControl({
           setRunOnWorktreeCreate(false);
           setKeybinding("");
           setValidationError(null);
+          setRecommendedActions([]);
+          setSelectedRecommendedActionKeys([]);
+          setRecommendedActionsLoading(false);
+          setRecommendedActionsError(null);
         }}
         open={dialogOpen}
       >
@@ -375,7 +484,65 @@ export default function ProjectScriptsControl({
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            <form id={addScriptFormId} className="space-y-4" onSubmit={submitAddScript}>
+            {projectCwd && !isEditing && (
+              <div className="space-y-3 rounded-md border border-border/70 bg-muted/20 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium text-foreground">Recommended actions</p>
+                    <p className="text-xs text-muted-foreground">
+                      From <code>package.json</code> in {projectCwd ?? "the active project"}.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    disabled={selectedRecommendedActionKeys.length === 0}
+                    onClick={() => {
+                      void addRecommendedActions();
+                    }}
+                  >
+                    Add selected
+                  </Button>
+                </div>
+                {recommendedActionsLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading package scripts…</p>
+                ) : recommendedActionsError ? (
+                  <p className="text-sm text-destructive">{recommendedActionsError}</p>
+                ) : recommendedActions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No package scripts were found in this project.
+                  </p>
+                ) : (
+                  <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                    {recommendedActions.map((recommendation) => {
+                      const isSelected = selectedRecommendedActionKeys.includes(recommendation.key);
+                      return (
+                        <label
+                          key={recommendation.key}
+                          className="flex cursor-pointer items-start gap-3 rounded-md border border-transparent px-2 py-2 text-sm transition-colors hover:border-border/70 hover:bg-background"
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleRecommendedAction(recommendation.key)}
+                          />
+                          <span className="min-w-0 flex-1 space-y-0.5">
+                            <span className="flex items-center gap-2 font-medium text-foreground">
+                              <ScriptIcon icon={recommendation.icon} className="size-3.5" />
+                              <span className="truncate">{recommendation.name}</span>
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {recommendation.command}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            <form id={addScriptFormId} className="space-y-4 pt-4" onSubmit={submitAddScript}>
               <div className="space-y-1.5">
                 <Label htmlFor="script-name">Name</Label>
                 <div className="flex items-center gap-2">

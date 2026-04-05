@@ -72,7 +72,9 @@ function getProviderStateFromCapabilities(
   const normalizedOptions =
     provider === "codex"
       ? normalizeCodexModelOptionsWithCapabilities(caps, providerOptions)
-      : normalizeClaudeModelOptionsWithCapabilities(caps, providerOptions);
+      : provider === "claudeAgent"
+        ? normalizeClaudeModelOptionsWithCapabilities(caps, providerOptions)
+        : undefined;
 
   // Ultrathink styling (driven by capabilities data, not provider identity)
   const ultrathinkActive =
@@ -146,6 +148,38 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
     renderTraitsPicker: ({ threadId, model, models, modelOptions, prompt, onPromptChange }) => (
       <TraitsPicker
         provider="claudeAgent"
+        models={models}
+        threadId={threadId}
+        model={model}
+        modelOptions={modelOptions}
+        prompt={prompt}
+        onPromptChange={onPromptChange}
+      />
+    ),
+  },
+  gemini: {
+    getState: (input) => getProviderStateFromCapabilities(input),
+    renderTraitsMenuContent: ({
+      threadId,
+      model,
+      models,
+      modelOptions,
+      prompt,
+      onPromptChange,
+    }) => (
+      <TraitsMenuContent
+        provider="gemini"
+        models={models}
+        threadId={threadId}
+        model={model}
+        modelOptions={modelOptions}
+        prompt={prompt}
+        onPromptChange={onPromptChange}
+      />
+    ),
+    renderTraitsPicker: ({ threadId, model, models, modelOptions, prompt, onPromptChange }) => (
+      <TraitsPicker
+        provider="gemini"
         models={models}
         threadId={threadId}
         model={model}

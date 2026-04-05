@@ -14,6 +14,7 @@
 import type {
   ProviderInterruptTurnInput,
   ProviderKind,
+  ProviderRateLimitEntry,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderRuntimeEvent,
@@ -98,6 +99,21 @@ export interface ProviderServiceShape {
     readonly threadId: ThreadId;
     readonly numTurns: number;
   }) => Effect.Effect<void, ProviderServiceError>;
+
+  /**
+   * Returns the latest cached rate limit entry for each provider that has
+   * reported rate-limit data since server start.
+   */
+  readonly getRateLimits: () => Effect.Effect<ReadonlyArray<ProviderRateLimitEntry>>;
+
+  /**
+   * Proactively requests a fresh rate-limit snapshot from all adapters that
+   * support on-demand reads (currently Codex). Adapters that only push rate
+   * limits (Claude, Gemini) are silently skipped via their no-op implementations.
+   *
+   * Call this when a client first subscribes so stale/absent data is refreshed.
+   */
+  readonly refreshRateLimits: () => Effect.Effect<void>;
 
   /**
    * Canonical provider runtime event stream.

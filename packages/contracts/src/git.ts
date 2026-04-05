@@ -384,3 +384,26 @@ export const GitActionProgressEvent = Schema.Union([
   GitActionFailedEvent,
 ]);
 export type GitActionProgressEvent = typeof GitActionProgressEvent.Type;
+
+// ── Code Review Context ───────────────────────────────────────────────
+
+/**
+ * Input for fetching the git diff context used to build a code review prompt.
+ * When baseBranch is omitted the server resolves the default branch (main/master).
+ */
+export const GitPrepareReviewContextInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  baseBranch: Schema.optional(TrimmedNonEmptyStringSchema),
+});
+export type GitPrepareReviewContextInput = typeof GitPrepareReviewContextInput.Type;
+
+/**
+ * Structured git diff data returned by the server, ready to embed in a review prompt.
+ */
+export const GitPrepareReviewContextResult = Schema.Struct({
+  baseBranch: Schema.String,
+  commitSummary: Schema.String,
+  diffSummary: Schema.String,
+  diffPatch: Schema.String,
+});
+export type GitPrepareReviewContextResult = typeof GitPrepareReviewContextResult.Type;

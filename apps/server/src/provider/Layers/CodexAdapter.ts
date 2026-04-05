@@ -1573,6 +1573,14 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       manager.stopAll();
     });
 
+  // Actively requests `account/rateLimits/read` from the Codex app-server so
+  // that rate-limit data is available without waiting for a push notification.
+  const refreshRateLimits: CodexAdapterShape["refreshRateLimits"] = (threadId) =>
+    Effect.tryPromise({
+      try: () => manager.readRateLimits(threadId),
+      catch: () => undefined,
+    }).pipe(Effect.orElseSucceed(() => {}));
+
   const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
 
   const writeNativeEvent = Effect.fn("writeNativeEvent")(function* (event: ProviderEvent) {
@@ -1631,6 +1639,7 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    refreshRateLimits,
     streamEvents: Stream.fromQueue(runtimeEventQueue),
   } satisfies CodexAdapterShape;
 });

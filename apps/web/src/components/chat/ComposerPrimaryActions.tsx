@@ -1,8 +1,10 @@
 import { memo } from "react";
 import { ChevronDownIcon, ChevronLeftIcon } from "lucide-react";
+import type { EnterKeyBehavior } from "@t3tools/contracts/settings";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface PendingActionState {
   questionIndex: number;
@@ -22,6 +24,8 @@ interface ComposerPrimaryActionsProps {
   isConnecting: boolean;
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
+  enterKeyBehavior: EnterKeyBehavior;
+  isMac: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -51,6 +55,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isConnecting,
   isPreparingWorktree,
   hasSendableContent,
+  enterKeyBehavior,
+  isMac,
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
@@ -103,16 +109,23 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   if (isRunning) {
     return (
-      <button
-        type="button"
-        className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
-        onClick={onInterrupt}
-        aria-label="Stop generation"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-          <rect x="2" y="2" width="8" height="8" rx="1.5" />
-        </svg>
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
+              onClick={onInterrupt}
+              aria-label="Stop generation"
+            />
+          }
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <rect x="2" y="2" width="8" height="8" rx="1.5" />
+          </svg>
+        </TooltipTrigger>
+        <TooltipPopup side="top">Stop generation</TooltipPopup>
+      </Tooltip>
     );
   }
 
@@ -167,51 +180,66 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     );
   }
 
+  // Build dynamic tooltip label based on enter key behavior and platform
+  const sendShortcutLabel =
+    enterKeyBehavior === "newline"
+      ? isMac
+        ? "Send message (⌘↵)"
+        : "Send message (Ctrl+Enter)"
+      : "Send message (↵)";
+
+  const statusLabel = isConnecting
+    ? "Connecting"
+    : isPreparingWorktree
+      ? "Preparing worktree"
+      : isSendBusy
+        ? "Sending"
+        : sendShortcutLabel;
+
   return (
-    <button
-      type="submit"
-      className="flex h-9 w-9 enabled:cursor-pointer items-center justify-center rounded-full bg-primary/90 text-primary-foreground transition-all duration-150 hover:bg-primary hover:scale-105 disabled:pointer-events-none disabled:opacity-30 disabled:hover:scale-100 sm:h-8 sm:w-8"
-      disabled={isSendBusy || isConnecting || !hasSendableContent}
-      aria-label={
-        isConnecting
-          ? "Connecting"
-          : isPreparingWorktree
-            ? "Preparing worktree"
-            : isSendBusy
-              ? "Sending"
-              : "Send message"
-      }
-    >
-      {isConnecting || isSendBusy ? (
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 14 14"
-          fill="none"
-          className="animate-spin"
-          aria-hidden="true"
-        >
-          <circle
-            cx="7"
-            cy="7"
-            r="5.5"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeDasharray="20 12"
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="submit"
+            className="flex h-9 w-9 enabled:cursor-pointer items-center justify-center rounded-full bg-foreground/90 text-background transition-all duration-150 hover:bg-foreground hover:scale-105 disabled:pointer-events-none disabled:opacity-30 disabled:hover:scale-100 sm:h-8 sm:w-8"
+            disabled={isSendBusy || isConnecting || !hasSendableContent}
+            aria-label={statusLabel}
           />
-        </svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-          <path
-            d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      )}
-    </button>
+        }
+      >
+        {isConnecting || isSendBusy ? (
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            className="animate-spin"
+            aria-hidden="true"
+          >
+            <circle
+              cx="7"
+              cy="7"
+              r="5.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeDasharray="20 12"
+            />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path
+              d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </TooltipTrigger>
+      <TooltipPopup side="top">{statusLabel}</TooltipPopup>
+    </Tooltip>
   );
 });

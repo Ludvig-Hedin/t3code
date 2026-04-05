@@ -1,6 +1,7 @@
 import {
   type ClaudeModelOptions,
   type CodexModelOptions,
+  type GeminiModelOptions,
   type ProviderKind,
   type ProviderModelOptions,
   type ServerProviderModel,
@@ -52,7 +53,10 @@ function getRawEffort(
   if (provider === "codex") {
     return trimOrNull((modelOptions as CodexModelOptions | undefined)?.reasoningEffort);
   }
-  return trimOrNull((modelOptions as ClaudeModelOptions | undefined)?.effort);
+  if (provider === "claudeAgent") {
+    return trimOrNull((modelOptions as ClaudeModelOptions | undefined)?.effort);
+  }
+  return null;
 }
 
 function getRawContextWindow(
@@ -73,7 +77,10 @@ function buildNextOptions(
   if (provider === "codex") {
     return { ...(modelOptions as CodexModelOptions | undefined), ...patch } as CodexModelOptions;
   }
-  return { ...(modelOptions as ClaudeModelOptions | undefined), ...patch } as ClaudeModelOptions;
+  if (provider === "claudeAgent") {
+    return { ...(modelOptions as ClaudeModelOptions | undefined), ...patch } as ClaudeModelOptions;
+  }
+  return { ...(modelOptions as GeminiModelOptions | undefined), ...patch } as GeminiModelOptions;
 }
 
 function getSelectedTraits(

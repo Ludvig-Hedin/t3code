@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
+import { CodeReviewControl } from "../CodeReviewControl";
 import { DiffIcon, TerminalSquareIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -18,6 +19,7 @@ interface ChatHeaderProps {
   activeThreadId: ThreadId;
   activeThreadTitle: string;
   activeProjectName: string | undefined;
+  activeProjectCwd: string | null;
   isGitRepo: boolean;
   openInCwd: string | null;
   activeProjectScripts: ProjectScript[] | undefined;
@@ -42,6 +44,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadId,
   activeThreadTitle,
   activeProjectName,
+  activeProjectCwd,
   isGitRepo,
   openInCwd,
   activeProjectScripts,
@@ -87,6 +90,7 @@ export const ChatHeader = memo(function ChatHeader({
           <ProjectScriptsControl
             scripts={activeProjectScripts}
             keybindings={keybindings}
+            projectCwd={activeProjectCwd}
             preferredScriptId={preferredScriptId}
             onRunScript={onRunProjectScript}
             onAddScript={onAddProjectScript}
@@ -102,6 +106,13 @@ export const ChatHeader = memo(function ChatHeader({
           />
         )}
         {activeProjectName && <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />}
+        {activeProjectName && (
+          <CodeReviewControl
+            gitCwd={gitCwd}
+            activeThreadId={activeThreadId}
+            isGitRepo={isGitRepo}
+          />
+        )}
         <Tooltip>
           <TooltipTrigger
             render={

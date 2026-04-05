@@ -19,10 +19,13 @@ import {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
+  type AccountRateLimitsUpdatedPayload,
+  type ProviderKind,
+  type ProviderRateLimitEntry,
   type ProviderRuntimeEvent,
   type ProviderSession,
 } from "@t3tools/contracts";
-import { Effect, Layer, Option, PubSub, Queue, Schema, SchemaIssue, Stream } from "effect";
+import { Effect, Layer, Option, PubSub, Queue, Ref, Schema, SchemaIssue, Stream } from "effect";
 
 import {
   increment,
@@ -158,6 +161,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const directory = yield* ProviderSessionDirectory;
   const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
   const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+  // Caches the most-recent rate-limit payload per provider so subscribers can
+  // receive an initial snapshot before live events arrive.
+  const rateLimitCache = yield* Ref.make<Map<ProviderKind, ProviderRateLimitEntry>>(new Map());
 
   const publishRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
     Effect.succeed(event).pipe(
@@ -188,11 +194,27 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const providers = yield* registry.listProviders();
   const adapters = yield* Effect.forEach(providers, (provider) => registry.getByProvider(provider));
-  const processRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
-    increment(providerRuntimeEventsTotal, {
+  const processRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> => {
+    // When a rate-limit event arrives, update the per-provider cache so that
+    // new WS subscribers receive the current snapshot before live events flow.
+    const cacheUpdate =
+      event.type === "account.rate-limits.updated"
+        ? Ref.update(rateLimitCache, (map) => {
+            const next = new Map(map);
+            next.set(event.provider, {
+              provider: event.provider,
+              rateLimits: (event.payload as AccountRateLimitsUpdatedPayload).rateLimits,
+              updatedAt: event.createdAt,
+            });
+            return next;
+          })
+        : Effect.void;
+
+    return increment(providerRuntimeEventsTotal, {
       provider: event.provider,
       eventType: event.type,
-    }).pipe(Effect.andThen(publishRuntimeEvent(event)));
+    }).pipe(Effect.andThen(cacheUpdate), Effect.andThen(publishRuntimeEvent(event)));
+  };
 
   const worker = Effect.forever(
     Queue.take(runtimeEventQueue).pipe(Effect.flatMap(processRuntimeEvent)),
@@ -748,6 +770,25 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     listSessions,
     getCapabilities,
     rollbackConversation,
+    getRateLimits: () =>
+      Ref.get(rateLimitCache).pipe(Effect.map((map) => Array.from(map.values()))),
+    refreshRateLimits: () =>
+      // For each registered adapter, list its active sessions and call
+      // refreshRateLimits so Codex (and others that implement it) emit a fresh
+      // rate-limit snapshot. Failures are swallowed — this is best-effort.
+      Effect.forEach(
+        adapters,
+        (adapter) =>
+          adapter.listSessions().pipe(
+            Effect.flatMap((sessions) =>
+              Effect.forEach(sessions, (session) =>
+                adapter.refreshRateLimits(session.threadId).pipe(Effect.orElseSucceed(() => {})),
+              ),
+            ),
+            Effect.orElseSucceed(() => {}),
+          ),
+        { discard: true },
+      ),
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each
     // independently receive all runtime events.
