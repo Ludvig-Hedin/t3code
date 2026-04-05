@@ -10,6 +10,7 @@
  * @module CheckpointStoreLive
  */
 import { randomUUID } from "node:crypto";
+import { APP_NAME } from "@t3tools/shared/branding";
 
 import { Effect, Layer, FileSystem, Path } from "effect";
 
@@ -98,9 +99,9 @@ const makeCheckpointStore = Effect.gen(function* () {
         const commitEnv: NodeJS.ProcessEnv = {
           ...process.env,
           GIT_INDEX_FILE: tempIndexPath,
-          GIT_AUTHOR_NAME: "T3 Code",
+          GIT_AUTHOR_NAME: APP_NAME,
           GIT_AUTHOR_EMAIL: "t3code@users.noreply.github.com",
-          GIT_COMMITTER_NAME: "T3 Code",
+          GIT_COMMITTER_NAME: APP_NAME,
           GIT_COMMITTER_EMAIL: "t3code@users.noreply.github.com",
         };
 

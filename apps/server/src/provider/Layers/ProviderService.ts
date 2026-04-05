@@ -26,6 +26,7 @@ import {
   type ProviderSession,
 } from "@t3tools/contracts";
 import { Effect, Layer, Option, PubSub, Queue, Ref, Schema, SchemaIssue, Stream } from "effect";
+import { APP_NAME } from "@t3tools/shared/branding";
 
 import {
   increment,
@@ -359,7 +360,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         if (!settings.providers[input.provider].enabled) {
           return yield* toValidationError(
             "ProviderService.startSession",
-            `Provider '${input.provider}' is disabled in T3 Code settings.`,
+            `Provider '${input.provider}' is disabled in ${APP_NAME} settings.`,
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));

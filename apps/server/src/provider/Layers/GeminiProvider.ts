@@ -1,4 +1,5 @@
 import type { ModelCapabilities, GeminiSettings, ServerProviderModel } from "@t3tools/contracts";
+import { APP_NAME } from "@t3tools/shared/branding";
 import { Effect, Equal, Layer, Option, Result, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
@@ -123,7 +124,7 @@ export const checkGeminiProviderStatus = Effect.fn("checkGeminiProviderStatus")(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Gemini is disabled in T3 Code settings.",
+        message: `Gemini is disabled in ${APP_NAME} settings.`,
       },
     });
   }

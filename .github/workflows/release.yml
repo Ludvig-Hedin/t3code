@@ -63,7 +63,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: package.json
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -120,7 +120,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: package.json
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -241,7 +241,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: package.json
+          node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
@@ -269,7 +269,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: package.json
+          node-version-file: .nvmrc
 
       - name: Download all desktop artifacts
         uses: actions/download-artifact@v8
@@ -342,7 +342,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: package.json
+          node-version-file: .nvmrc
 
       - id: update_versions
         name: Update version strings

@@ -7,16 +7,16 @@
 
 ## Context
 
-T3 Code is a web GUI for coding agents. As agents make code changes, developers need a fast way to preview the running app without leaving T3. This feature adds a Preview button to the `ChatHeader` that starts a project's dev server(s), proxies their traffic through the T3 server, and renders them in an in-app panel — available on both the desktop app and the iOS companion app.
+Bird Code is a web GUI for coding agents. As agents make code changes, developers need a fast way to preview the running app without leaving Bird Code. This feature adds a Preview button to the `ChatHeader` that starts a project's dev server(s), proxies their traffic through the Bird Code server, and renders them in an in-app panel — available on both the desktop app and the iOS companion app.
 
 ---
 
 ## Goals
 
-- Start/stop dev servers for any detected app in the project from within T3.
+- Start/stop dev servers for any detected app in the project from within Bird Code.
 - Preview browser-based apps in an iframe; show logs for non-browser apps (desktop, mobile, APIs).
 - Support monorepos with multiple apps — each as a separate tab.
-- Works on iOS companion because traffic is proxied through the T3 server (no direct localhost access needed).
+- Works on iOS companion because traffic is proxied through the Bird Code server (no direct localhost access needed).
 - Hot reload (Vite HMR, Next.js fast refresh) works because the proxy also forwards WebSocket upgrades.
 - Auto-detect the right start command; allow manual override per project.
 - Servers are per-project (not per-thread).
@@ -27,7 +27,7 @@ T3 Code is a web GUI for coding agents. As agents make code changes, developers 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  T3 Server (apps/server)                                │
+│  Bird Code Server (apps/server)                                │
 │                                                         │
 │  PreviewServerManager (new service)                     │
 │  ├─ detects apps in project cwd                         │
@@ -39,7 +39,7 @@ T3 Code is a web GUI for coding agents. As agents make code changes, developers 
 │  └─ /preview/:projectId/:appId/* → proxy → localhost:N  │
 │     (also proxies WebSocket upgrades for HMR)           │
 └───────────────────┬─────────────────────────────────────┘
-                    │ same T3 server connection
+                    │ same Bird Code server connection
               ┌─────┴──────┐
               │            │
         Desktop app      iOS app
@@ -229,7 +229,7 @@ Fed by a `subscribePreviewEvents` subscription, started when `PreviewPanel` moun
 
 ## iOS Companion
 
-No iOS-specific changes needed. The iOS app already connects to the T3 server. The preview URL `/preview/{projectId}/{appId}/` is accessible over the same connection. The iOS companion can render a `WKWebView` pointed at that URL. A future iOS PR can add the preview panel UI — the server-side work in this spec is sufficient to make it work.
+No iOS-specific changes needed. The iOS app already connects to the Bird Code server. The preview URL `/preview/{projectId}/{appId}/` is accessible over the same connection. The iOS companion can render a `WKWebView` pointed at that URL. A future iOS PR can add the preview panel UI — the server-side work in this spec is sufficient to make it work.
 
 ---
 

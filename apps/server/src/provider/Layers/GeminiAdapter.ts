@@ -1,3 +1,4 @@
+import { APP_NAME } from "@t3tools/shared/branding";
 import type {
   ModelSelection,
   ProviderKind,
@@ -366,7 +367,7 @@ export const GeminiAdapterLive = Layer.effect(
         }
         yield* emitEvent(
           makeThreadEvent("session.exited", threadId, {
-            reason: "Session stopped from T3 Code.",
+            reason: `Session stopped from ${APP_NAME}.`,
             recoverable: false,
             exitKind: "graceful",
           }),
@@ -435,7 +436,7 @@ export const GeminiAdapterLive = Layer.effect(
         for (const session of sessions.values()) {
           yield* emitEvent(
             makeThreadEvent("session.exited", session.session.threadId, {
-              reason: "All sessions stopped from T3 Code.",
+              reason: `All sessions stopped from ${APP_NAME}.`,
               recoverable: false,
               exitKind: "graceful",
             }),

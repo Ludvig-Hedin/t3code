@@ -1,4 +1,5 @@
 import * as OS from "node:os";
+import { APP_NAME } from "@t3tools/shared/branding";
 import type {
   ModelCapabilities,
   CodexSettings,
@@ -387,7 +388,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Codex is disabled in T3 Code settings.",
+        message: `Codex is disabled in ${APP_NAME} settings.`,
       },
     });
   }

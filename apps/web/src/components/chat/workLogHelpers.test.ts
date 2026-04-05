@@ -34,9 +34,9 @@ describe("categorizeWorkEntry", () => {
   });
 
   it("returns 'reasoning' for 'Reasoning update' label prefix regardless of tone", () => {
-    expect(categorizeWorkEntry(makeEntry({ label: "Reasoning update: step 1", tone: "tool" }))).toBe(
-      "reasoning",
-    );
+    expect(
+      categorizeWorkEntry(makeEntry({ label: "Reasoning update: step 1", tone: "tool" })),
+    ).toBe("reasoning");
   });
 
   it("returns 'sub-agent' for collab_agent_tool_call itemType", () => {

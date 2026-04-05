@@ -1,12 +1,12 @@
-# T3 Code
+# Bird Code
 
-T3 Code is a minimal web GUI for coding agents (currently Codex and Claude, more coming soon).
+Bird Code is a minimal web GUI for coding agents (currently Codex and Claude, more coming soon).
 It also includes an iOS-first companion app that mirrors the desktop UI and lets you chat with the desktop session from your phone.
 
 ## Installation
 
 > [!WARNING]
-> T3 Code currently supports Codex and Claude.
+> Bird Code currently supports Codex and Claude.
 > Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://github.com/openai/codex) and run `codex login`
@@ -78,8 +78,10 @@ We are not accepting contributions yet.
 
 Observability guide: [docs/observability.md](./docs/observability.md)
 
+Desktop releases (versioning, local build, publish): [docs/desktop-release-simple.md](./docs/desktop-release-simple.md)
+
 ## If you REALLY want to contribute still.... read this first
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or PR.
 
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+Need support? Use [GitHub Issues](https://github.com/Ludvig-Hedin/t3code/issues) or discussions on the repo.

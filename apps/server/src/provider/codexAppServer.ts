@@ -1,5 +1,6 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
+import { APP_NAME } from "@t3tools/shared/branding";
 import { readCodexAccountSnapshot, type CodexAccountSnapshot } from "./codexAccount";
 
 interface JsonRpcProbeResponse {
@@ -18,7 +19,7 @@ export function buildCodexInitializeParams() {
   return {
     clientInfo: {
       name: "t3code_desktop",
-      title: "T3 Code Desktop",
+      title: `${APP_NAME} Desktop`,
       version: "0.1.0",
     },
     capabilities: {

@@ -36,10 +36,7 @@ import {
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { WorkEntryRow } from "./WorkEntryRow";
-import {
-  groupWorkEntriesIntoSections,
-  computeWorkLogHeaderStats,
-} from "./workLogHelpers";
+import { groupWorkEntriesIntoSections, computeWorkLogHeaderStats } from "./workLogHelpers";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -375,10 +372,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
                   // Tool section: render each entry with per-type styling
                   return section.entries.map((workEntry) => (
-                    <WorkEntryRow
-                      key={`work-row:${workEntry.id}`}
-                      entry={workEntry}
-                    />
+                    <WorkEntryRow key={`work-row:${workEntry.id}`} entry={workEntry} />
                   ));
                 })}
               </div>
@@ -780,4 +774,3 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     </pre>
   );
 });
-

@@ -1,0 +1,11 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { FeaturesPage } from "../components/marketing/features-page";
+---
+
+<BaseLayout
+  title="Features — Bird Code"
+  description="Codex, Claude, and Gemini in one app (Cursor and OpenCode planned); threads, work log, terminal, settings, and comparisons to other tools."
+>
+  <FeaturesPage client:load />
+</BaseLayout>

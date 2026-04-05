@@ -1,6 +1,6 @@
 # Gemini Provider
 
-Gemini CLI support is wired into T3 Code as a first-class provider.
+Gemini CLI support is wired into Bird Code as a first-class provider.
 
 ## Current behavior
 
@@ -26,7 +26,7 @@ Gemini CLI support is wired into T3 Code as a first-class provider.
   - Google login
   - `GEMINI_API_KEY`
   - Vertex AI env vars, if you use that runtime
-- If you run T3 Code inside a trusted folder, remember the Gemini CLI can ignore project settings and `.env` files there. Set the needed env vars explicitly in your shell or launch environment.
+- If you run Bird Code inside a trusted folder, remember the Gemini CLI can ignore project settings and `.env` files there. Set the needed env vars explicitly in your shell or launch environment.
 
 ## Limitations
 

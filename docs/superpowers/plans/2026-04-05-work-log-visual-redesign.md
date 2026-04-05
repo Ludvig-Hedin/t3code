@@ -13,6 +13,7 @@
 ### Task 1: Add work log categorization and grouping helpers
 
 **Files:**
+
 - Create: `apps/web/src/components/chat/workLogHelpers.ts`
 - Create: `apps/web/src/components/chat/workLogHelpers.test.ts`
 
@@ -55,59 +56,47 @@ describe("categorizeWorkEntry", () => {
   });
 
   it("categorizes command_execution as command", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "3", itemType: "command_execution" })),
-    ).toBe("command");
+    expect(categorizeWorkEntry(makeEntry({ id: "3", itemType: "command_execution" }))).toBe(
+      "command",
+    );
   });
 
   it("categorizes entry with command field as command", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "4", command: "git status" })),
-    ).toBe("command");
+    expect(categorizeWorkEntry(makeEntry({ id: "4", command: "git status" }))).toBe("command");
   });
 
   it("categorizes file-read requestKind as file-read", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "5", requestKind: "file-read" })),
-    ).toBe("file-read");
+    expect(categorizeWorkEntry(makeEntry({ id: "5", requestKind: "file-read" }))).toBe("file-read");
   });
 
   it("categorizes image_view as file-read", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "6", itemType: "image_view" })),
-    ).toBe("file-read");
+    expect(categorizeWorkEntry(makeEntry({ id: "6", itemType: "image_view" }))).toBe("file-read");
   });
 
   it("categorizes file-change requestKind as file-write", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "7", requestKind: "file-change" })),
-    ).toBe("file-write");
+    expect(categorizeWorkEntry(makeEntry({ id: "7", requestKind: "file-change" }))).toBe(
+      "file-write",
+    );
   });
 
   it("categorizes file_change itemType as file-write", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "8", itemType: "file_change" })),
-    ).toBe("file-write");
+    expect(categorizeWorkEntry(makeEntry({ id: "8", itemType: "file_change" }))).toBe("file-write");
   });
 
   it("categorizes entry with changedFiles but no command/detail as file-write", () => {
-    expect(
-      categorizeWorkEntry(
-        makeEntry({ id: "9", changedFiles: ["src/foo.ts"] }),
-      ),
-    ).toBe("file-write");
+    expect(categorizeWorkEntry(makeEntry({ id: "9", changedFiles: ["src/foo.ts"] }))).toBe(
+      "file-write",
+    );
   });
 
   it("categorizes web_search as web-search", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "10", itemType: "web_search" })),
-    ).toBe("web-search");
+    expect(categorizeWorkEntry(makeEntry({ id: "10", itemType: "web_search" }))).toBe("web-search");
   });
 
   it("categorizes collab_agent_tool_call as sub-agent", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "11", itemType: "collab_agent_tool_call" })),
-    ).toBe("sub-agent");
+    expect(categorizeWorkEntry(makeEntry({ id: "11", itemType: "collab_agent_tool_call" }))).toBe(
+      "sub-agent",
+    );
   });
 
   it("categorizes Subagent task label as sub-agent", () => {
@@ -119,9 +108,9 @@ describe("categorizeWorkEntry", () => {
   });
 
   it("falls back to tool-call for mcp_tool_call", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ id: "13", itemType: "mcp_tool_call" })),
-    ).toBe("tool-call");
+    expect(categorizeWorkEntry(makeEntry({ id: "13", itemType: "mcp_tool_call" }))).toBe(
+      "tool-call",
+    );
   });
 
   it("falls back to tool-call for unknown entries", () => {
@@ -207,9 +196,7 @@ describe("computeWorkLogHeaderStats", () => {
   });
 
   it("omits categories with zero entries", () => {
-    const entries = [
-      makeEntry({ id: "1", itemType: "command_execution", command: "ls" }),
-    ];
+    const entries = [makeEntry({ id: "1", itemType: "command_execution", command: "ls" })];
     const stats = computeWorkLogHeaderStats(entries);
     expect(stats).toEqual([{ label: "1 command", count: 1 }]);
   });
@@ -223,7 +210,8 @@ describe("computeWorkLogHeaderStats", () => {
 
 describe("parseSubAgentDescription", () => {
   it("extracts description from JSON-style label", () => {
-    const label = 'Subagent task - Agent: {"description":"Implement Task 2: McpService","prompt":"You are implementing..."}';
+    const label =
+      'Subagent task - Agent: {"description":"Implement Task 2: McpService","prompt":"You are implementing..."}';
     expect(parseSubAgentDescription(label)).toBe("Implement Task 2: McpService");
   });
 
@@ -348,9 +336,7 @@ export function groupWorkEntriesIntoSections(
  * Computes a human-readable duration string from the first to last entry timestamps.
  * Returns null if there's only one entry (no meaningful duration).
  */
-export function computeReasoningDuration(
-  entries: ReadonlyArray<WorkLogEntry>,
-): string | null {
+export function computeReasoningDuration(entries: ReadonlyArray<WorkLogEntry>): string | null {
   if (entries.length < 2) return null;
 
   const firstCreatedAt = entries[0]!.createdAt;
@@ -386,9 +372,7 @@ export interface WorkLogStat {
  * Reasoning entries are excluded from the stats (they have their own section).
  * Only categories with count > 0 are included.
  */
-export function computeWorkLogHeaderStats(
-  entries: ReadonlyArray<WorkLogEntry>,
-): WorkLogStat[] {
+export function computeWorkLogHeaderStats(entries: ReadonlyArray<WorkLogEntry>): WorkLogStat[] {
   let commands = 0;
   let reads = 0;
   let writes = 0;
@@ -465,10 +449,7 @@ export function computeWorkLogHeaderStats(
  * The raw label often contains JSON like: 'Subagent task - Agent: {"description":"Implement..."}'
  * We parse out the description field for clean display.
  */
-export function parseSubAgentDescription(
-  label: string,
-  detail?: string,
-): string {
+export function parseSubAgentDescription(label: string, detail?: string): string {
   // Try to extract from JSON in label
   const jsonMatch = label.match(/\{[^}]*"description"\s*:\s*"([^"]+)"/);
   if (jsonMatch?.[1]) {
@@ -484,9 +465,7 @@ export function parseSubAgentDescription(
   }
 
   // Strip "Subagent task - " or "Subagent task - Agent: " prefix and return the rest
-  const cleaned = label
-    .replace(/^Subagent task\s*-\s*(?:Agent:\s*)?/i, "")
-    .trim();
+  const cleaned = label.replace(/^Subagent task\s*-\s*(?:Agent:\s*)?/i, "").trim();
 
   return cleaned.length > 0 ? cleaned : "Running sub-agent";
 }
@@ -514,6 +493,7 @@ git commit -m "feat(web): add work log categorization and grouping helpers"
 ### Task 2: Add the collapsible ReasoningBlock component
 
 **Files:**
+
 - Create: `apps/web/src/components/chat/ReasoningBlock.tsx`
 - Modify: `apps/web/src/components/chat/MessagesTimeline.tsx` (import only — no rendering changes yet)
 
@@ -569,9 +549,7 @@ export const ReasoningBlock = memo(function ReasoningBlock(props: ReasoningBlock
             isOpen && "rotate-90",
           )}
         />
-        <span className="text-[11px] text-muted-foreground/50 italic">
-          {summaryText}
-        </span>
+        <span className="text-[11px] text-muted-foreground/50 italic">{summaryText}</span>
         {shouldAutoOpen && (
           <span className="ml-1 size-1.5 shrink-0 animate-pulse rounded-full bg-muted-foreground/40" />
         )}
@@ -615,6 +593,7 @@ git commit -m "feat(web): add collapsible ReasoningBlock component"
 ### Task 3: Add per-type styled WorkEntryRow component
 
 **Files:**
+
 - Create: `apps/web/src/components/chat/WorkEntryRow.tsx`
 
 This replaces the `SimpleWorkEntryRow` in the new rendering path. It handles command, file-read, file-write, web-search, sub-agent, and generic tool-call entries with per-type visual treatment.
@@ -719,10 +698,7 @@ interface DisplayContent {
   primaryMono?: boolean;
 }
 
-function deriveDisplayContent(
-  entry: WorkLogEntry,
-  category: WorkEntryCategory,
-): DisplayContent {
+function deriveDisplayContent(entry: WorkLogEntry, category: WorkEntryCategory): DisplayContent {
   switch (category) {
     case "command": {
       const command = entry.command ?? normalizeCompactToolLabel(entry.toolTitle ?? entry.label);
@@ -794,12 +770,7 @@ export const WorkEntryRow = memo(function WorkEntryRow(props: WorkEntryRowProps)
   const isError = entry.tone === "error";
 
   return (
-    <div
-      className={cn(
-        "rounded-lg px-1 py-1",
-        isSubAgent && "border-l-2 border-blue-400/30 pl-2",
-      )}
-    >
+    <div className={cn("rounded-lg px-1 py-1", isSubAgent && "border-l-2 border-blue-400/30 pl-2")}>
       <div className="flex items-start gap-2">
         <span
           className={cn(
@@ -832,25 +803,24 @@ export const WorkEntryRow = memo(function WorkEntryRow(props: WorkEntryRowProps)
       </div>
 
       {/* Show changed files for file-write entries that also have additional context */}
-      {category === "file-write" &&
-        (entry.changedFiles?.length ?? 0) > 1 && (
-          <div className="mt-1 flex flex-wrap gap-1 pl-7">
-            {entry.changedFiles?.slice(1, 5).map((filePath) => (
-              <span
-                key={`${entry.id}:${filePath}`}
-                className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/60"
-                title={filePath}
-              >
-                {filePath}
-              </span>
-            ))}
-            {(entry.changedFiles?.length ?? 0) > 5 && (
-              <span className="px-1 text-[10px] text-muted-foreground/45">
-                +{(entry.changedFiles?.length ?? 0) - 5}
-              </span>
-            )}
-          </div>
-        )}
+      {category === "file-write" && (entry.changedFiles?.length ?? 0) > 1 && (
+        <div className="mt-1 flex flex-wrap gap-1 pl-7">
+          {entry.changedFiles?.slice(1, 5).map((filePath) => (
+            <span
+              key={`${entry.id}:${filePath}`}
+              className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/60"
+              title={filePath}
+            >
+              {filePath}
+            </span>
+          ))}
+          {(entry.changedFiles?.length ?? 0) > 5 && (
+            <span className="px-1 text-[10px] text-muted-foreground/45">
+              +{(entry.changedFiles?.length ?? 0) - 5}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 });
@@ -873,6 +843,7 @@ git commit -m "feat(web): add per-type styled WorkEntryRow component"
 ### Task 4: Refactor the work log card renderer to use sectioned layout
 
 **Files:**
+
 - Modify: `apps/web/src/components/chat/MessagesTimeline.tsx:1-50` (imports)
 - Modify: `apps/web/src/components/chat/MessagesTimeline.tsx:306-354` (work log card renderer)
 
@@ -887,10 +858,7 @@ At the top of the file, add these imports alongside the existing ones:
 import { ChevronRightIcon, GitBranchIcon } from "lucide-react";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { WorkEntryRow } from "./WorkEntryRow";
-import {
-  groupWorkEntriesIntoSections,
-  computeWorkLogHeaderStats,
-} from "./workLogHelpers";
+import { groupWorkEntriesIntoSections, computeWorkLogHeaderStats } from "./workLogHelpers";
 ```
 
 Note: `ChevronRightIcon` and `GitBranchIcon` may already be transitively available but we need them in imports. Keep all existing imports — only add new ones.
@@ -902,85 +870,83 @@ In `MessagesTimeline.tsx`, find the block inside `renderRowContent` that handles
 Replace the entire `{row.kind === "work" && (() => { ... })()}` block with:
 
 ```tsx
-{row.kind === "work" &&
-  (() => {
-    const groupId = row.id;
-    const groupedEntries = row.groupedEntries;
-    const isExpanded = expandedWorkGroups[groupId] ?? false;
-    const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-    const visibleEntries =
-      hasOverflow && !isExpanded
-        ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-        : groupedEntries;
-    const hiddenCount = groupedEntries.length - visibleEntries.length;
+{
+  row.kind === "work" &&
+    (() => {
+      const groupId = row.id;
+      const groupedEntries = row.groupedEntries;
+      const isExpanded = expandedWorkGroups[groupId] ?? false;
+      const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
+      const visibleEntries =
+        hasOverflow && !isExpanded
+          ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+          : groupedEntries;
+      const hiddenCount = groupedEntries.length - visibleEntries.length;
 
-    // New: compute header stats and sections
-    const headerStats = computeWorkLogHeaderStats(groupedEntries);
-    const sections = groupWorkEntriesIntoSections(visibleEntries);
+      // New: compute header stats and sections
+      const headerStats = computeWorkLogHeaderStats(groupedEntries);
+      const sections = groupWorkEntriesIntoSections(visibleEntries);
 
-    // Determine if this is the last work group and the AI is still working
-    // (used for auto-opening the last reasoning block)
-    const isLastWorkGroup =
-      isWorking &&
-      rows.indexOf(
-        rows.findLast((r) => r.kind === "work") as typeof rows[number],
-      ) === rows.indexOf(row as typeof rows[number]);
+      // Determine if this is the last work group and the AI is still working
+      // (used for auto-opening the last reasoning block)
+      const isLastWorkGroup =
+        isWorking &&
+        rows.indexOf(rows.findLast((r) => r.kind === "work") as (typeof rows)[number]) ===
+          rows.indexOf(row as (typeof rows)[number]);
 
-    return (
-      <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
-        {/* Header: always shown now */}
-        <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-          <div className="flex items-center gap-2">
-            {isWorking && isLastWorkGroup && (
-              <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400/60" />
-            )}
-            {headerStats.length > 0 ? (
-              <p className="text-[9px] tracking-wide text-muted-foreground/50">
-                {headerStats.map((s) => s.label).join(" · ")}
-              </p>
-            ) : (
-              <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/50">
-                Work log ({groupedEntries.length})
-              </p>
+      return (
+        <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
+          {/* Header: always shown now */}
+          <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+            <div className="flex items-center gap-2">
+              {isWorking && isLastWorkGroup && (
+                <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400/60" />
+              )}
+              {headerStats.length > 0 ? (
+                <p className="text-[9px] tracking-wide text-muted-foreground/50">
+                  {headerStats.map((s) => s.label).join(" · ")}
+                </p>
+              ) : (
+                <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/50">
+                  Work log ({groupedEntries.length})
+                </p>
+              )}
+            </div>
+            {hasOverflow && (
+              <button
+                type="button"
+                className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/75"
+                onClick={() => onToggleWorkGroup(groupId)}
+              >
+                {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+              </button>
             )}
           </div>
-          {hasOverflow && (
-            <button
-              type="button"
-              className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/75"
-              onClick={() => onToggleWorkGroup(groupId)}
-            >
-              {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
-            </button>
-          )}
-        </div>
 
-        {/* Sectioned content */}
-        <div className="space-y-0.5">
-          {sections.map((section, sectionIndex) => {
-            if (section.kind === "reasoning") {
-              return (
-                <ReasoningBlock
-                  key={`reasoning:${section.entries[0]!.id}`}
-                  entries={section.entries}
-                  isActivelyWorking={isWorking && isLastWorkGroup}
-                  isLastSection={sectionIndex === sections.length - 1}
-                />
-              );
-            }
+          {/* Sectioned content */}
+          <div className="space-y-0.5">
+            {sections.map((section, sectionIndex) => {
+              if (section.kind === "reasoning") {
+                return (
+                  <ReasoningBlock
+                    key={`reasoning:${section.entries[0]!.id}`}
+                    entries={section.entries}
+                    isActivelyWorking={isWorking && isLastWorkGroup}
+                    isLastSection={sectionIndex === sections.length - 1}
+                  />
+                );
+              }
 
-            // Tool section: render each entry with per-type styling
-            return section.entries.map((workEntry) => (
-              <WorkEntryRow
-                key={`work-row:${workEntry.id}`}
-                entry={workEntry}
-              />
-            ));
-          })}
+              // Tool section: render each entry with per-type styling
+              return section.entries.map((workEntry) => (
+                <WorkEntryRow key={`work-row:${workEntry.id}`} entry={workEntry} />
+              ));
+            })}
+          </div>
         </div>
-      </div>
-    );
-  })()}
+      );
+    })();
+}
 ```
 
 - [ ] **Step 3: Verify it compiles and renders**
@@ -1005,6 +971,7 @@ git commit -m "feat(web): refactor work log card to use sectioned layout with re
 ### Task 5: Update height estimation for new layout
 
 **Files:**
+
 - Modify: `apps/web/src/components/chat/MessagesTimeline.logic.ts:160-175` (`estimateWorkRowHeight`)
 
 The new layout has different height characteristics: reasoning blocks are either collapsed (single row ~28px) or expanded (varies), and tool entries might have a secondary line. Update the height estimator.
@@ -1036,13 +1003,13 @@ function estimateWorkRowHeight(
   let toolEntryCount = 0;
   let inReasoningRun = false;
 
-  const visibleSlice = hasOverflow && !isExpanded
-    ? row.groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-    : row.groupedEntries;
+  const visibleSlice =
+    hasOverflow && !isExpanded
+      ? row.groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+      : row.groupedEntries;
 
   for (const entry of visibleSlice) {
-    const isReasoning =
-      entry.tone === "thinking" || entry.label.startsWith("Reasoning update");
+    const isReasoning = entry.tone === "thinking" || entry.label.startsWith("Reasoning update");
     if (isReasoning) {
       if (!inReasoningRun) {
         reasoningBlockCount++;
@@ -1082,6 +1049,7 @@ git commit -m "fix(web): update work row height estimation for sectioned layout"
 ### Task 6: Clean up — remove unused SimpleWorkEntryRow and old helpers
 
 **Files:**
+
 - Modify: `apps/web/src/components/chat/MessagesTimeline.tsx` (remove `SimpleWorkEntryRow`, `workToneIcon`, `workToneClass`, `workEntryPreview`, `workEntryIcon`, `toolWorkEntryHeading`, `capitalizePhrase` if no longer used)
 
 - [ ] **Step 1: Check which functions are still referenced**
@@ -1093,6 +1061,7 @@ Keep any function that is still imported or used elsewhere.
 - [ ] **Step 2: Remove unused functions**
 
 Remove the following from `MessagesTimeline.tsx` (only if confirmed unused):
+
 - `SimpleWorkEntryRow` component (~lines 840-896)
 - `workToneIcon` function (~lines 752-778)
 - `workToneClass` function (~lines 780-784)
@@ -1144,6 +1113,7 @@ Expected: All tests pass
 - [ ] **Step 5: Visual verification**
 
 Start the dev server with `bun dev` and verify:
+
 1. Work log cards render with the new sectioned layout
 2. Reasoning entries appear as collapsible "Thought for Xs" blocks
 3. Reasoning blocks auto-open when AI is working, collapse when done

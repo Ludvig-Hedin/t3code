@@ -6,6 +6,7 @@ import type {
   ServerProviderAuth,
   ServerProviderState,
 } from "@t3tools/contracts";
+import { APP_NAME } from "@t3tools/shared/branding";
 import { Cache, Duration, Effect, Equal, Layer, Option, Result, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
@@ -463,7 +464,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Claude is disabled in T3 Code settings.",
+        message: `Claude is disabled in ${APP_NAME} settings.`,
       },
     });
   }

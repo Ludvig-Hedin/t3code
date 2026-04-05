@@ -123,8 +123,7 @@ function deriveLabels(
     case "command": {
       // Show the raw command in mono; surface the AI rationale as secondary
       const primary = entry.command ?? normalizeCompactToolLabel(entry.label);
-      const secondary =
-        entry.detail && entry.detail !== primary ? entry.detail : null;
+      const secondary = entry.detail && entry.detail !== primary ? entry.detail : null;
       return { primary, secondary };
     }
 
@@ -182,9 +181,7 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
 
   // Use HammerIcon for dynamic_tool_call instead of the default WrenchIcon
   const Icon: LucideIcon =
-    category === "tool-call" && entry.itemType === "dynamic_tool_call"
-      ? HammerIcon
-      : config.icon;
+    category === "tool-call" && entry.itemType === "dynamic_tool_call" ? HammerIcon : config.icon;
 
   // For file-write, show extra changed file badges when more than one file changed
   const extraChangedFiles =
@@ -212,18 +209,11 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
             title={secondary ? `${primary} — ${secondary}` : primary}
           >
             {/* Command entries use mono font for the command text itself */}
-            <span
-              className={cn(
-                resolvedTextClass,
-                category === "command" && "font-mono",
-              )}
-            >
+            <span className={cn(resolvedTextClass, category === "command" && "font-mono")}>
               {primary}
             </span>
             {/* Secondary line (rationale / detail) in a softer muted tone */}
-            {secondary && (
-              <span className="text-muted-foreground/45"> — {secondary}</span>
-            )}
+            {secondary && <span className="text-muted-foreground/45"> — {secondary}</span>}
           </p>
         </div>
       </div>

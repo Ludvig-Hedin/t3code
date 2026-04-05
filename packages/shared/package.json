@@ -55,6 +55,10 @@
     "./orchestrationMobile": {
       "types": "./src/orchestrationMobile.ts",
       "import": "./src/orchestrationMobile.ts"
+    },
+    "./branding": {
+      "types": "./src/branding.ts",
+      "import": "./src/branding.ts"
     }
   },
   "scripts": {

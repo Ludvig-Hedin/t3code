@@ -1,5 +1,7 @@
 # Release Checklist
 
+**New here?** Start with the short guide: [`desktop-release-simple.md`](./desktop-release-simple.md) (versions, local builds, how to publish).
+
 This document covers how to run desktop releases from one tag, first without signing, then with signing.
 
 ## What the workflow does

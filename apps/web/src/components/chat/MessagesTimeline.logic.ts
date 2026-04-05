@@ -177,13 +177,13 @@ function estimateWorkRowHeight(
   let toolEntryCount = 0;
   let inReasoningRun = false;
 
-  const visibleSlice = hasOverflow && !isExpanded
-    ? row.groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-    : row.groupedEntries;
+  const visibleSlice =
+    hasOverflow && !isExpanded
+      ? row.groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+      : row.groupedEntries;
 
   for (const entry of visibleSlice) {
-    const isReasoning =
-      entry.tone === "thinking" || entry.label.startsWith("Reasoning update");
+    const isReasoning = entry.tone === "thinking" || entry.label.startsWith("Reasoning update");
     if (isReasoning) {
       if (!inReasoningRun) {
         reasoningBlockCount++;

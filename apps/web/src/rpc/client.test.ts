@@ -134,6 +134,9 @@ describe("WsRpcAtomClient", () => {
           ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent,
           enabled: false,
         },
+        gemini: {
+          ...DEFAULT_SERVER_SETTINGS.providers.gemini,
+        },
       },
     };
     const requestPromise = runRpc((client) => client(WS_METHODS.serverGetSettings, {}));
@@ -183,6 +186,9 @@ describe("WsRpcAtomClient", () => {
         claudeAgent: {
           ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent,
           enabled: false,
+        },
+        gemini: {
+          ...DEFAULT_SERVER_SETTINGS.providers.gemini,
         },
       },
     };

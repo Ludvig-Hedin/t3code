@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: package.json
+          node-version-file: .nvmrc
 
       - name: Cache Bun and Turbo
         uses: actions/cache@v5
@@ -88,7 +88,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version-file: package.json
+          node-version-file: .nvmrc
 
       - name: Exercise release-only workflow steps
         run: node scripts/release-smoke.ts

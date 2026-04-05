@@ -1,6 +1,6 @@
 # Gemini CLI Provider Checklist
 
-Source of truth for adding Gemini CLI as a first-class provider in T3 Code.
+Source of truth for adding Gemini CLI as a first-class provider in Bird Code.
 
 ## Execution Order
 
