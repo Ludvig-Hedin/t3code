@@ -142,9 +142,9 @@ describe("categorizeWorkEntry", () => {
   });
 
   it("does NOT return 'skill' for a label that just mentions skill casually", () => {
-    expect(
-      categorizeWorkEntry(makeEntry({ label: "Reading skill documentation" })),
-    ).toBe("tool-call");
+    expect(categorizeWorkEntry(makeEntry({ label: "Reading skill documentation" }))).toBe(
+      "tool-call",
+    );
   });
 });
 
@@ -154,21 +154,21 @@ describe("categorizeWorkEntry", () => {
 
 describe("parseSkillName", () => {
   it("extracts and title-cases the skill name from a full Skill tool label", () => {
-    expect(
-      parseSkillName('Tool call — Skill: {"skill":"code-review:code-review"}'),
-    ).toBe("Code Review");
+    expect(parseSkillName('Tool call — Skill: {"skill":"code-review:code-review"}')).toBe(
+      "Code Review",
+    );
   });
 
   it("uses only the segment after the last colon in a namespaced skill", () => {
-    expect(
-      parseSkillName('Tool call — Skill: {"skill":"superpowers:brainstorming"}'),
-    ).toBe("Brainstorming");
+    expect(parseSkillName('Tool call — Skill: {"skill":"superpowers:brainstorming"}')).toBe(
+      "Brainstorming",
+    );
   });
 
   it("handles multi-word slugs separated by dashes", () => {
-    expect(
-      parseSkillName('Tool call — Skill: {"skill":"superpowers:writing-plans"}'),
-    ).toBe("Writing Plans");
+    expect(parseSkillName('Tool call — Skill: {"skill":"superpowers:writing-plans"}')).toBe(
+      "Writing Plans",
+    );
   });
 
   it("falls back to 'Skill' when label contains no parseable JSON", () => {

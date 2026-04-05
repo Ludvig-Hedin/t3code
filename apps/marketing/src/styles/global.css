@@ -70,8 +70,10 @@
 }
 
 @layer base {
+  /* Tailwind v3 has no outline-ring/50; web app uses v4. Match intent with token + color-mix. */
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+    outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
   }
   body {
     @apply min-h-screen bg-background text-foreground antialiased;

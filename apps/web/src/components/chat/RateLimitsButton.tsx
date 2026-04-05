@@ -1,13 +1,20 @@
 /**
  * RateLimitsButton — shows a per-provider rate-limit popover in the BranchToolbar.
  *
- * On mount it subscribes to `subscribeProviderRateLimits`. The server side:
- *  1. Proactively calls `account/rateLimits/read` on all active Codex sessions.
- *  2. Emits the cached snapshot immediately so the client gets data on open.
- *  3. Keeps streaming live updates as providers push new rate-limit events.
+ * Data shapes (verified against server source / Codex app-server protocol):
+ *
+ * Codex entry.rateLimits:
+ *   { rateLimits: { primary: { usedPercent, windowDurationMins, resetsAt (Unix s) },
+ *                   secondary: RateLimitWindow | null,
+ *                   planType: string | null,
+ *                   limitId: string | null } }
+ *
+ * Claude entry.rateLimits (entire SDKRateLimitEvent):
+ *   { type: "rate_limit_event",
+ *     rate_limit_info: { status, utilization (0–1), rateLimitType, resetsAt (Unix s) } }
  */
 import { type ProviderKind, type ProviderRateLimitEntry } from "@t3tools/contracts";
-import { GaugeCircleIcon, RefreshCwIcon } from "lucide-react";
+import { GaugeCircleIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
 import { getWsRpcClient } from "../../wsRpcClient";
@@ -16,85 +23,128 @@ import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 
 // ---------------------------------------------------------------------------
-// Provider-specific payload types (parsed client-side via type guards)
+// Actual wire-format types (do NOT guess — verified against protocol schema)
 // ---------------------------------------------------------------------------
 
+/** Codex app-server `RateLimitWindow` */
 interface CodexRateLimitWindow {
-  usedPercent: number;
-  windowMinutes: number;
-  resetsAt: string;
-}
-interface CodexRateLimits {
-  primaryLimit?: CodexRateLimitWindow;
-  secondaryLimit?: CodexRateLimitWindow;
-  [key: string]: unknown;
+  usedPercent: number; // integer 0–100
+  windowDurationMins: number | null; // 300 = 5-hour session, 10080 = 7-day
+  resetsAt: number | null; // Unix timestamp seconds
 }
 
-interface ClaudeRateLimits {
+/** Codex app-server `RateLimitSnapshot` (nested under `rateLimits.rateLimits`) */
+interface CodexRateLimitSnapshot {
+  primary: CodexRateLimitWindow | null;
+  secondary: CodexRateLimitWindow | null;
+  planType: string | null;
+  limitId: string | null;
+  limitName?: string | null;
+  credits?: unknown;
+}
+
+/**
+ * What `ProviderRateLimitEntry.rateLimits` contains for Codex:
+ *   { rateLimits: RateLimitSnapshot, rateLimitsByLimitId?: ... }
+ */
+interface CodexRateLimitsPayload {
+  rateLimits: CodexRateLimitSnapshot;
+  rateLimitsByLimitId?: Record<string, CodexRateLimitSnapshot> | null;
+}
+
+/**
+ * Claude SDK `SDKRateLimitInfo` — what lives inside `rate_limit_info`
+ */
+interface SDKRateLimitInfo {
+  status: "allowed" | "allowed_warning" | "rejected";
+  rateLimitType?: "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "overage";
+  utilization?: number; // 0–1 float
+  resetsAt?: number; // Unix timestamp seconds
+  overageStatus?: string;
+  isUsingOverage?: boolean;
+}
+
+/**
+ * What `ProviderRateLimitEntry.rateLimits` contains for Claude:
+ *   the entire SDKRateLimitEvent
+ */
+interface ClaudeRateLimitsPayload {
   type: "rate_limit_event";
-  requests_limit?: number;
-  requests_remaining?: number;
-  requests_reset?: string;
-  tokens_limit?: number;
-  tokens_remaining?: number;
-  tokens_reset?: string;
-  input_tokens_limit?: number;
-  input_tokens_remaining?: number;
-  input_tokens_reset?: string;
-  output_tokens_limit?: number;
-  output_tokens_remaining?: number;
-  output_tokens_reset?: string;
+  rate_limit_info: SDKRateLimitInfo;
+  uuid?: string;
+  session_id?: string;
 }
 
-// Claude events are discriminated by the `type` field; everything else is Codex.
-function isClaudeRateLimits(raw: unknown): raw is ClaudeRateLimits {
-  return (
-    typeof raw === "object" &&
-    raw !== null &&
-    (raw as Record<string, unknown>)["type"] === "rate_limit_event"
-  );
+// ---------------------------------------------------------------------------
+// Type guards
+// ---------------------------------------------------------------------------
+
+function isCodexRateLimitsPayload(raw: unknown): raw is CodexRateLimitsPayload {
+  if (typeof raw !== "object" || raw === null) return false;
+  const r = raw as Record<string, unknown>;
+  return typeof r["rateLimits"] === "object" && r["rateLimits"] !== null;
 }
 
-function isCodexRateLimits(raw: unknown): raw is CodexRateLimits {
-  return typeof raw === "object" && raw !== null && !Array.isArray(raw);
+function isClaudeRateLimitsPayload(raw: unknown): raw is ClaudeRateLimitsPayload {
+  if (typeof raw !== "object" || raw === null) return false;
+  return (raw as Record<string, unknown>)["type"] === "rate_limit_event";
 }
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
-/** "resets in 2m" / "resets in 3h 5m" / "resets in 2d 4h" from ISO date */
-function formatResetsIn(isoDate: string): string {
-  const ms = new Date(isoDate).getTime() - Date.now();
+/** Unix timestamp seconds → "resets in 2m" / "3h 5m" / "2d 4h" */
+function formatResetsIn(unixSecs: number): string {
+  const ms = unixSecs * 1000 - Date.now();
   if (ms <= 0) return "now";
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ${minutes % 60}m`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ${hours % 24}h`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
 }
 
-/** "resets at 4:32 PM" */
-function formatResetsAt(isoDate: string): string {
+/** Unix timestamp seconds → "resets at 4:32 PM" */
+function formatResetsAt(unixSecs: number): string {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
-    new Date(isoDate),
+    new Date(unixSecs * 1000),
   );
 }
 
-/** Human-readable window label: "Session", "1h window", "Weekly", etc. */
-function windowLabel(windowMinutes: number): string {
-  if (windowMinutes < 60) return `${windowMinutes}m session`;
-  const hours = windowMinutes / 60;
-  if (hours < 24) return `${hours}h window`;
-  const days = hours / 24;
-  return days === 7 ? "Weekly" : `${days}d window`;
+/** windowDurationMins → "5h session", "Weekly", etc. */
+function windowLabel(mins: number | null): string {
+  if (mins === null) return "Window";
+  if (mins < 60) return `${mins}m session`;
+  const h = mins / 60;
+  if (h < 24) return `${h}h session`;
+  const d = h / 24;
+  return d === 7 ? "Weekly" : `${d}d window`;
+}
+
+/** rateLimitType → display label */
+function claudeWindowLabel(type: string | undefined): string {
+  switch (type) {
+    case "five_hour":
+      return "5h session";
+    case "seven_day":
+      return "Weekly";
+    case "seven_day_opus":
+      return "Opus (weekly)";
+    case "seven_day_sonnet":
+      return "Sonnet (weekly)";
+    case "overage":
+      return "Overage";
+    default:
+      return "Usage";
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Progress bar
+// Progress bar component
 // ---------------------------------------------------------------------------
 
 function RateLimitBar({
@@ -142,156 +192,151 @@ function RateLimitBar({
 }
 
 // ---------------------------------------------------------------------------
-// Provider sections
+// Codex section
 // ---------------------------------------------------------------------------
 
 function CodexSection({ entry }: { entry: ProviderRateLimitEntry }) {
   const raw = entry.rateLimits;
-  if (!isCodexRateLimits(raw)) {
-    return <p className="text-xs text-muted-foreground/70 italic">Unrecognized payload format.</p>;
+
+  if (!isCodexRateLimitsPayload(raw)) {
+    return <p className="text-xs text-muted-foreground/70 italic">Unexpected payload format.</p>;
   }
 
+  const snapshot = raw.rateLimits;
   const windows: Array<{ win: CodexRateLimitWindow; label: string }> = [];
-  if (raw.primaryLimit) {
-    windows.push({ win: raw.primaryLimit, label: windowLabel(raw.primaryLimit.windowMinutes) });
-  }
-  if (raw.secondaryLimit) {
+
+  if (snapshot.primary) {
     windows.push({
-      win: raw.secondaryLimit,
-      label: windowLabel(raw.secondaryLimit.windowMinutes),
+      win: snapshot.primary,
+      label: windowLabel(snapshot.primary.windowDurationMins),
+    });
+  }
+  if (snapshot.secondary) {
+    windows.push({
+      win: snapshot.secondary,
+      label: windowLabel(snapshot.secondary.windowDurationMins),
     });
   }
 
   if (windows.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground/70 italic">
-        No active rate-limit windows reported.
-      </p>
-    );
+    return <p className="text-xs text-muted-foreground/70 italic">No windows reported yet.</p>;
   }
 
   return (
     <div className="space-y-3">
+      {snapshot.planType && (
+        <p className="text-[10px] text-muted-foreground/60 uppercase tracking-[0.06em]">
+          {snapshot.planType}
+        </p>
+      )}
       {windows.map(({ win, label }) => (
         <RateLimitBar
           key={label}
           usedPercent={win.usedPercent}
           label={label}
-          sublabel={`Resets in ${formatResetsIn(win.resetsAt)}`}
+          sublabel={
+            win.resetsAt != null
+              ? `Resets in ${formatResetsIn(win.resetsAt)}`
+              : "Reset time unknown"
+          }
         />
       ))}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Claude section
+// ---------------------------------------------------------------------------
+
 function ClaudeSection({ entry }: { entry: ProviderRateLimitEntry }) {
   const raw = entry.rateLimits;
-  if (!isClaudeRateLimits(raw)) {
-    return <p className="text-xs text-muted-foreground/70 italic">Unrecognized payload format.</p>;
+
+  if (!isClaudeRateLimitsPayload(raw)) {
+    return <p className="text-xs text-muted-foreground/70 italic">Unexpected payload format.</p>;
   }
 
-  const rows: Array<{ label: string; remaining: number; limit: number; reset?: string }> = [];
-
-  if (raw.requests_limit != null && raw.requests_remaining != null) {
-    rows.push({
-      label: "Requests",
-      remaining: raw.requests_remaining,
-      limit: raw.requests_limit,
-      ...(raw.requests_reset !== undefined ? { reset: raw.requests_reset } : {}),
-    });
-  }
-  if (raw.tokens_limit != null && raw.tokens_remaining != null) {
-    rows.push({
-      label: "Tokens",
-      remaining: raw.tokens_remaining,
-      limit: raw.tokens_limit,
-      ...(raw.tokens_reset !== undefined ? { reset: raw.tokens_reset } : {}),
-    });
-  }
-  if (raw.input_tokens_limit != null && raw.input_tokens_remaining != null) {
-    rows.push({
-      label: "Input tokens",
-      remaining: raw.input_tokens_remaining,
-      limit: raw.input_tokens_limit,
-      ...(raw.input_tokens_reset !== undefined ? { reset: raw.input_tokens_reset } : {}),
-    });
-  }
-  if (raw.output_tokens_limit != null && raw.output_tokens_remaining != null) {
-    rows.push({
-      label: "Output tokens",
-      remaining: raw.output_tokens_remaining,
-      limit: raw.output_tokens_limit,
-      ...(raw.output_tokens_reset !== undefined ? { reset: raw.output_tokens_reset } : {}),
-    });
-  }
-
-  if (rows.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground/70 italic">
-        Available after the next Claude API call.
-      </p>
-    );
-  }
+  const info = raw.rate_limit_info;
+  // SDK utilization is 0–1; multiply by 100 for display
+  const usedPercent = (info.utilization ?? 0) * 100;
+  const label = claudeWindowLabel(info.rateLimitType);
+  const statusColor =
+    info.status === "rejected"
+      ? "text-destructive"
+      : info.status === "allowed_warning"
+        ? "text-warning-foreground"
+        : "text-success-foreground";
 
   return (
     <div className="space-y-3">
-      {rows.map(({ label, remaining, limit, reset }) => {
-        const usedPercent = limit > 0 ? ((limit - remaining) / limit) * 100 : 0;
-        const sublabel = reset
-          ? `Resets at ${formatResetsAt(reset)} · ${remaining.toLocaleString()} / ${limit.toLocaleString()} remaining`
-          : `${remaining.toLocaleString()} / ${limit.toLocaleString()} remaining`;
-        return (
-          <RateLimitBar key={label} usedPercent={usedPercent} label={label} sublabel={sublabel} />
-        );
-      })}
+      <div className="flex items-center gap-2">
+        <span className={cn("text-[10px] font-medium uppercase tracking-[0.06em]", statusColor)}>
+          {info.status === "rejected"
+            ? "Rate limited"
+            : info.status === "allowed_warning"
+              ? "Approaching limit"
+              : "OK"}
+        </span>
+      </div>
+      <RateLimitBar
+        usedPercent={usedPercent}
+        label={label}
+        sublabel={
+          info.resetsAt != null
+            ? `Resets at ${formatResetsAt(info.resetsAt)} · ${Math.round(100 - usedPercent)}% remaining`
+            : `${Math.round(100 - usedPercent)}% remaining`
+        }
+      />
+      {info.isUsingOverage && (
+        <p className="text-[10px] text-warning-foreground">Using overage credits.</p>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Provider config — drives which sections are rendered
+// Provider config registry
 // ---------------------------------------------------------------------------
 
-const PROVIDER_CONFIG: ReadonlyArray<{
+interface ProviderConfig {
   kind: ProviderKind;
   label: string;
   iconClassName?: string;
+  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   Section: (props: { entry: ProviderRateLimitEntry }) => React.ReactElement;
-  noDataMessage: string;
-}> = [
+  noDataNote: string;
+}
+
+const PROVIDER_CONFIGS: ReadonlyArray<ProviderConfig> = [
   {
     kind: "codex",
     label: "OpenAI Codex",
     iconClassName: "text-muted-foreground/80",
+    Icon: OpenAI,
     Section: CodexSection,
-    noDataMessage: "No active session.",
+    noDataNote: "No active session.",
   },
   {
     kind: "claudeAgent",
     label: "Anthropic Claude",
     iconClassName: "text-[#d97757]",
+    Icon: ClaudeAI,
     Section: ClaudeSection,
-    noDataMessage: "Available after the next API call.",
+    noDataNote: "Rate limits appear after the first API call.",
   },
   {
     kind: "gemini",
     label: "Google Gemini",
     iconClassName: "text-muted-foreground/80",
-    // Gemini doesn't report rate limits — render a static message.
+    Icon: Gemini,
     Section: () => (
       <p className="text-xs text-muted-foreground/70 italic">
-        Rate limit reporting not yet available for Gemini.
+        Rate limit data not yet available for Gemini.
       </p>
     ),
-    noDataMessage: "No active session.",
+    noDataNote: "No active session.",
   },
 ];
-
-const PROVIDER_ICONS: Record<ProviderKind, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
-  codex: OpenAI,
-  claudeAgent: ClaudeAI,
-  gemini: Gemini,
-};
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -299,18 +344,16 @@ const PROVIDER_ICONS: Record<ProviderKind, React.ComponentType<React.SVGProps<SV
 
 export function RateLimitsButton() {
   const [limits, setLimits] = useState<Map<ProviderKind, ProviderRateLimitEntry>>(new Map());
-  // Track whether the server has replied at all (first event OR brief timeout).
   const [ready, setReady] = useState(false);
   const readyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const client = getWsRpcClient();
 
-    // Mark ready after 2 s even if no events arrive (e.g. no active sessions).
-    readyTimerRef.current = setTimeout(() => setReady(true), 2000);
+    // Mark ready after 3 s even if no events arrive (no active sessions).
+    readyTimerRef.current = setTimeout(() => setReady(true), 3000);
 
     const unsub = client.provider.onRateLimitUpdate((entry) => {
-      // First event means the server responded — cancel the fallback timer.
       if (readyTimerRef.current) {
         clearTimeout(readyTimerRef.current);
         readyTimerRef.current = null;
@@ -325,8 +368,7 @@ export function RateLimitsButton() {
     };
   }, []);
 
-  // Providers that have sent at least one rate-limit entry.
-  const activeProviders = PROVIDER_CONFIG.filter((p) => limits.has(p.kind));
+  const activeProviders = PROVIDER_CONFIGS.filter((p) => limits.has(p.kind));
 
   return (
     <Popover>
@@ -347,47 +389,33 @@ export function RateLimitsButton() {
 
       <PopoverPopup side="top" align="start" sideOffset={6} className="w-72">
         <div className="space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Rate Limits
-            </p>
-          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Rate Limits
+          </p>
 
-          {/* Loading state */}
-          {!ready && (
-            <div className="flex items-center gap-2 py-1">
-              <RefreshCwIcon className="size-3 animate-spin text-muted-foreground/60" />
-              <p className="text-xs text-muted-foreground/70">Fetching rate limits…</p>
-            </div>
-          )}
+          {!ready && <p className="text-xs text-muted-foreground/60 animate-pulse">Fetching…</p>}
 
-          {/* No active sessions */}
           {ready && activeProviders.length === 0 && (
             <p className="text-xs text-muted-foreground/70 italic">
-              No active sessions detected. Start a Codex or Claude session to see rate limits.
+              No active sessions. Start a Codex or Claude session to see rate limits.
             </p>
           )}
 
-          {/* One section per provider that has reported data */}
           {activeProviders.map((config, idx) => {
             const entry = limits.get(config.kind);
-            const ProviderIcon = PROVIDER_ICONS[config.kind];
             return (
               <div key={config.kind}>
                 {idx > 0 && <div className="mb-4 border-t border-border/50" />}
                 <div className="space-y-2.5">
                   <div className="flex items-center gap-2">
-                    <ProviderIcon
+                    <config.Icon
                       aria-hidden="true"
                       className={cn("size-3.5 shrink-0", config.iconClassName)}
                     />
                     <span className="text-xs font-semibold text-foreground/90">{config.label}</span>
                   </div>
                   {entry == null ? (
-                    <p className="text-xs text-muted-foreground/70 italic">
-                      {config.noDataMessage}
-                    </p>
+                    <p className="text-xs text-muted-foreground/70 italic">{config.noDataNote}</p>
                   ) : (
                     <config.Section entry={entry} />
                   )}

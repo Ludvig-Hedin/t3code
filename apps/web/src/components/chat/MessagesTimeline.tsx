@@ -19,7 +19,8 @@ import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "../../chat-scroll";
 import { type TurnDiffSummary } from "../../types";
 import { summarizeTurnDiffStats } from "../../lib/turnDiffTree";
 import ChatMarkdown from "../ChatMarkdown";
-import { Undo2Icon } from "lucide-react";
+import { ChevronRightIcon, Undo2Icon } from "lucide-react";
+import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { clamp } from "effect/Number";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -492,56 +493,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   if (!turnSummary) return null;
                   const checkpointFiles = turnSummary.files;
                   if (checkpointFiles.length === 0) return null;
-                  const summaryStat = summarizeTurnDiffStats(checkpointFiles);
-                  const changedFileCountLabel = String(checkpointFiles.length);
                   const allDirectoriesExpanded =
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
                   return (
-                    <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-                          <span>Changed files ({changedFileCountLabel})</span>
-                          {hasNonZeroStat(summaryStat) && (
-                            <>
-                              <span className="mx-1">•</span>
-                              <DiffStatLabel
-                                additions={summaryStat.additions}
-                                deletions={summaryStat.deletions}
-                              />
-                            </>
-                          )}
-                        </p>
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            data-scroll-anchor-ignore
-                            onClick={() => onToggleAllDirectories(turnSummary.turnId)}
-                          >
-                            {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            onClick={() =>
-                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                            }
-                          >
-                            View diff
-                          </Button>
-                        </div>
-                      </div>
-                      <ChangedFilesTree
-                        key={`changed-files-tree:${turnSummary.turnId}`}
-                        turnId={turnSummary.turnId}
-                        files={checkpointFiles}
-                        allDirectoriesExpanded={allDirectoriesExpanded}
-                        resolvedTheme={resolvedTheme}
-                        onOpenTurnDiff={onOpenTurnDiff}
-                      />
-                    </div>
+                    <ChangedFilesBox
+                      key={`changed-files-box:${turnSummary.turnId}`}
+                      turnId={turnSummary.turnId}
+                      files={checkpointFiles}
+                      allDirectoriesExpanded={allDirectoriesExpanded}
+                      resolvedTheme={resolvedTheme}
+                      onOpenTurnDiff={onOpenTurnDiff}
+                      onToggleAllDirectories={onToggleAllDirectories}
+                    />
                   );
                 })()}
                 <p className="mt-1.5 text-[10px] text-muted-foreground/30">
@@ -681,6 +644,94 @@ const UserMessageTerminalContextInlineLabel = memo(
     return <TerminalContextInlineChip label={props.context.header} tooltipText={tooltipText} />;
   },
 );
+
+/** Collapsible wrapper around ChangedFilesTree — collapsed by default. */
+const ChangedFilesBox = memo(function ChangedFilesBox(props: {
+  turnId: TurnId;
+  files: ReadonlyArray<import("../../types").TurnDiffFileChange>;
+  allDirectoriesExpanded: boolean;
+  resolvedTheme: "light" | "dark";
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onToggleAllDirectories: (turnId: TurnId) => void;
+}) {
+  const {
+    turnId,
+    files,
+    allDirectoriesExpanded,
+    resolvedTheme,
+    onOpenTurnDiff,
+    onToggleAllDirectories,
+  } = props;
+  // Collapsed by default so the tree doesn't dominate every assistant message
+  const [isOpen, setIsOpen] = useState(false);
+  const summaryStat = summarizeTurnDiffStats(files);
+  const changedFileCountLabel = String(files.length);
+
+  return (
+    <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        {/* Clickable header toggles the tree open/closed */}
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-left"
+          onClick={() => setIsOpen((v) => !v)}
+        >
+          <ChevronRightIcon
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground/50 transition-transform",
+              isOpen && "rotate-90",
+            )}
+          />
+          <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+            <span>Changed files ({changedFileCountLabel})</span>
+            {hasNonZeroStat(summaryStat) && (
+              <>
+                <span className="mx-1">•</span>
+                <DiffStatLabel
+                  additions={summaryStat.additions}
+                  deletions={summaryStat.deletions}
+                />
+              </>
+            )}
+          </p>
+        </button>
+        <div className="flex items-center gap-1.5">
+          {isOpen && (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              data-scroll-anchor-ignore
+              onClick={() => onToggleAllDirectories(turnId)}
+            >
+              {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={() => onOpenTurnDiff(turnId, files[0]?.path)}
+          >
+            View diff
+          </Button>
+        </div>
+      </div>
+      {isOpen && (
+        <div className="mt-1.5">
+          <ChangedFilesTree
+            key={`changed-files-tree:${turnId}`}
+            turnId={turnId}
+            files={files}
+            allDirectoriesExpanded={allDirectoriesExpanded}
+            resolvedTheme={resolvedTheme}
+            onOpenTurnDiff={onOpenTurnDiff}
+          />
+        </div>
+      )}
+    </div>
+  );
+});
 
 const UserMessageBody = memo(function UserMessageBody(props: {
   text: string;

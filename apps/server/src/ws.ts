@@ -850,17 +850,18 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           }),
           { "rpc.aggregate": "server" },
         ),
-      // Rate-limit subscription: proactively fetches fresh data from adapters
-      // that support on-demand reads (Codex), emits the updated cache as an
-      // initial snapshot, then streams live updates as they arrive.
+      // Rate-limit subscription:
+      //  1. Emit currently cached snapshot so the client sees stale-but-present data instantly.
+      //  2. Fork a background refresh (Codex calls account/rateLimits/read; others are no-ops).
+      //     Forking — not awaiting — ensures the PubSub subscription is established before
+      //     refresh events are published, avoiding a race where events fire before the consumer
+      //     is ready.
+      //  3. Stream live updates indefinitely.
       [WS_METHODS.subscribeProviderRateLimits]: (_input) =>
         observeRpcStreamEffect(
           WS_METHODS.subscribeProviderRateLimits,
           Effect.gen(function* () {
             const providerService = yield* ProviderService;
-            // Trigger eager refresh so the client gets up-to-date data even if
-            // no turn has been dispatched since server start. Errors are ignored.
-            yield* providerService.refreshRateLimits().pipe(Effect.orElseSucceed(() => {}));
             const cached = yield* providerService.getRateLimits();
             const initialStream = Stream.fromIterable(cached);
             const liveStream = providerService.streamEvents.pipe(
@@ -870,6 +871,10 @@ const WsRpcLayer = WsRpcGroup.toLayer(
                 rateLimits: (e.payload as { rateLimits: unknown }).rateLimits,
                 updatedAt: e.createdAt,
               })),
+            );
+            // Fork refresh so the live stream subscription is already active when events arrive.
+            yield* Effect.forkScoped(
+              providerService.refreshRateLimits().pipe(Effect.orElseSucceed(() => {})),
             );
             return Stream.merge(initialStream, liveStream);
           }),

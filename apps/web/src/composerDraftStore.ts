@@ -407,7 +407,8 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
 }
 
 function normalizeProviderKind(value: unknown): ProviderKind | null {
-  return value === "codex" || value === "claudeAgent" ? value : null;
+  // "gemini" must be included here or Gemini model selections are silently dropped
+  return value === "codex" || value === "claudeAgent" || value === "gemini" ? value : null;
 }
 
 function normalizeProviderModelOptions(
@@ -528,7 +529,13 @@ function normalizeModelSelection(
     provider,
     provider === "codex" ? legacy?.legacyCodex : undefined,
   );
-  const options = provider === "codex" ? modelOptions?.codex : modelOptions?.claudeAgent;
+  // Resolve provider-specific options; gemini has an empty options struct so this resolves to undefined
+  const options =
+    provider === "codex"
+      ? modelOptions?.codex
+      : provider === "claudeAgent"
+        ? modelOptions?.claudeAgent
+        : modelOptions?.gemini;
   return {
     provider,
     model,
