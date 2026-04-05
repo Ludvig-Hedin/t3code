@@ -6,6 +6,7 @@ import {
   computeReasoningDuration,
   computeWorkLogHeaderStats,
   groupWorkEntriesIntoSections,
+  parseSkillName,
   parseSubAgentDescription,
 } from "./workLogHelpers";
 
@@ -118,6 +119,64 @@ describe("categorizeWorkEntry", () => {
     expect(categorizeWorkEntry(makeEntry({ tone: "thinking", label: "Agent: thinking" }))).toBe(
       "reasoning",
     );
+  });
+
+  it("returns 'skill' for a Skill tool invocation label", () => {
+    expect(
+      categorizeWorkEntry(
+        makeEntry({ label: 'Tool call — Skill: {"skill":"code-review:code-review"}' }),
+      ),
+    ).toBe("skill");
+  });
+
+  it("returns 'skill' when toolTitle is 'Skill'", () => {
+    expect(categorizeWorkEntry(makeEntry({ toolTitle: "Skill" }))).toBe("skill");
+  });
+
+  it("returns 'skill' for dashed-separator variant", () => {
+    expect(
+      categorizeWorkEntry(
+        makeEntry({ label: 'Tool call - Skill: {"skill":"superpowers:brainstorming"}' }),
+      ),
+    ).toBe("skill");
+  });
+
+  it("does NOT return 'skill' for a label that just mentions skill casually", () => {
+    expect(
+      categorizeWorkEntry(makeEntry({ label: "Reading skill documentation" })),
+    ).toBe("tool-call");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseSkillName
+// ---------------------------------------------------------------------------
+
+describe("parseSkillName", () => {
+  it("extracts and title-cases the skill name from a full Skill tool label", () => {
+    expect(
+      parseSkillName('Tool call — Skill: {"skill":"code-review:code-review"}'),
+    ).toBe("Code Review");
+  });
+
+  it("uses only the segment after the last colon in a namespaced skill", () => {
+    expect(
+      parseSkillName('Tool call — Skill: {"skill":"superpowers:brainstorming"}'),
+    ).toBe("Brainstorming");
+  });
+
+  it("handles multi-word slugs separated by dashes", () => {
+    expect(
+      parseSkillName('Tool call — Skill: {"skill":"superpowers:writing-plans"}'),
+    ).toBe("Writing Plans");
+  });
+
+  it("falls back to 'Skill' when label contains no parseable JSON", () => {
+    expect(parseSkillName("Tool call — Skill: something")).toBe("Skill");
+  });
+
+  it("falls back to 'Skill' for an empty label", () => {
+    expect(parseSkillName("")).toBe("Skill");
   });
 });
 

@@ -15,6 +15,7 @@ import {
   GitBranchIcon,
   GlobeIcon,
   HammerIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   WrenchIcon,
@@ -24,6 +25,7 @@ import { cn } from "~/lib/utils";
 import type { WorkLogEntry } from "../../session-logic";
 import {
   categorizeWorkEntry,
+  parseSkillName,
   parseSubAgentDescription,
   type WorkEntryCategory,
 } from "./workLogHelpers";
@@ -82,6 +84,12 @@ const CATEGORY_CONFIG: Record<WorkEntryCategory, CategoryConfig> = {
     icon: GitBranchIcon,
     // Blue accent to visually distinguish sub-agent activity
     iconClass: "text-blue-400/70 dark:text-blue-400/70",
+    textClass: "text-muted-foreground/80",
+  },
+  skill: {
+    icon: SparklesIcon,
+    // Amber/gold accent — distinct from sub-agents (blue) and regular tools (muted)
+    iconClass: "text-amber-400/75 dark:text-amber-400/75",
     textClass: "text-muted-foreground/80",
   },
   "tool-call": {
@@ -153,6 +161,13 @@ function deriveLabels(
       return { primary: `Sub-agent: ${description}`, secondary: null };
     }
 
+    case "skill": {
+      // Parse the skill name from the JSON in the label and present it cleanly.
+      // e.g. 'Tool call — Skill: {"skill":"code-review:code-review"}' → "Code Review"
+      const name = parseSkillName(entry.label);
+      return { primary: `Skill: ${name}`, secondary: null };
+    }
+
     case "tool-call":
     case "reasoning":
     default: {
@@ -193,8 +208,10 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
     <div
       className={cn(
         "rounded-lg px-1 py-1",
-        // Sub-agent entries get a subtle left border accent for visual hierarchy
+        // Sub-agent entries get a subtle blue left border for visual hierarchy
         category === "sub-agent" && "border-l-2 border-blue-400/30 pl-2",
+        // Skill entries get a subtle amber left border to distinguish from sub-agents
+        category === "skill" && "border-l-2 border-amber-400/35 pl-2",
       )}
     >
       <div className="flex items-center gap-2 transition-[opacity,translate] duration-200">

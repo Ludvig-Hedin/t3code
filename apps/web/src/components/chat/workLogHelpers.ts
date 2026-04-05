@@ -20,6 +20,7 @@ export type WorkEntryCategory =
   | "file-write"
   | "web-search"
   | "sub-agent"
+  | "skill"
   | "tool-call";
 
 /** A run of consecutive entries that belong to the same high-level section. */
@@ -41,7 +42,7 @@ export interface WorkLogStat {
  * Maps a WorkLogEntry to one of the semantic WorkEntryCategory values.
  *
  * Priority order is important: reasoning > sub-agent > command > file-read >
- * file-write > web-search > tool-call (catch-all).
+ * file-write > web-search > skill > tool-call (catch-all).
  */
 export function categorizeWorkEntry(entry: WorkLogEntry): WorkEntryCategory {
   // 1. Reasoning: explicit "thinking" tone or label prefix
@@ -83,9 +84,18 @@ export function categorizeWorkEntry(entry: WorkLogEntry): WorkEntryCategory {
     return "web-search";
   }
 
-  // 7. Catch-all: generic tool call
+  // 7. Skill: Skill tool invocation — label contains '— Skill: {' pattern with a "skill" key.
+  //    e.g. 'Tool call — Skill: {"skill":"code-review:code-review"}'
+  if (SKILL_LABEL_RE.test(entry.label) || entry.toolTitle === "Skill") {
+    return "skill";
+  }
+
+  // 8. Catch-all: generic tool call
   return "tool-call";
 }
+
+/** Matches labels produced by the Skill tool: "… Skill: {"skill":"..."}" */
+const SKILL_LABEL_RE = /[—-]\s*Skill:\s*\{[^}]*"skill"\s*:/;
 
 // ---------------------------------------------------------------------------
 // groupWorkEntriesIntoSections
@@ -159,6 +169,7 @@ const CATEGORY_LABEL: Partial<Record<WorkEntryCategory, (count: number) => strin
   "file-write": (n) => `Edited ${n} ${n === 1 ? "file" : "files"}`,
   "web-search": (n) => `${n === 1 ? "1 search" : `${n} searches`}`,
   "sub-agent": (n) => `${n === 1 ? "1 sub-agent" : `${n} sub-agents`}`,
+  skill: (n) => `${n === 1 ? "1 skill" : `${n} skills`}`,
   "tool-call": (n) => `${n === 1 ? "1 tool call" : `${n} tool calls`}`,
 };
 
@@ -220,6 +231,56 @@ function extractDescriptionFromJson(text: string): string | null {
  * 3. Fall back to a stripped version of the label (remove JSON-like noise).
  * 4. Ultimate fallback: "Running sub-agent".
  */
+// ---------------------------------------------------------------------------
+// parseSkillName
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts a clean, human-readable skill name from a Skill tool invocation label.
+ *
+ * The raw label looks like: 'Tool call — Skill: {"skill":"code-review:code-review"}'
+ * We extract the "skill" value and convert the slug into a readable title.
+ *
+ * Strategy:
+ * 1. Parse the JSON portion and read the "skill" key.
+ * 2. Regex fallback if full JSON parse fails.
+ * 3. Convert slug (e.g. "code-review:code-review") → "Code Review".
+ * 4. Ultimate fallback: "Skill".
+ */
+export function parseSkillName(label: string): string {
+  // Extract the JSON-like fragment after "Skill: "
+  const jsonMatch = /Skill:\s*(\{[^}]+\})/.exec(label);
+  const jsonFragment = jsonMatch?.[1];
+
+  let slug: string | null = null;
+
+  if (jsonFragment) {
+    try {
+      const parsed: unknown = JSON.parse(jsonFragment);
+      if (parsed && typeof parsed === "object" && "skill" in parsed) {
+        const raw = (parsed as Record<string, unknown>)["skill"];
+        if (typeof raw === "string" && raw.trim().length > 0) {
+          slug = raw.trim();
+        }
+      }
+    } catch {
+      // Regex fallback
+      const match = /"skill"\s*:\s*"([^"]+)"/.exec(jsonFragment);
+      if (match?.[1]) slug = match[1];
+    }
+  }
+
+  if (!slug) return "Skill";
+
+  // Convert "namespace:name" → use only the name segment after the last ":"
+  const namePart = slug.split(":").at(-1) ?? slug;
+  // Convert slug-style (dashes) to Title Case: "code-review" → "Code Review"
+  return namePart
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export function parseSubAgentDescription(label: string, detail?: string): string {
   const fromLabel = extractDescriptionFromJson(label);
   if (fromLabel) return fromLabel;
