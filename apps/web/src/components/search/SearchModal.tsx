@@ -1,4 +1,10 @@
-import { FileIcon, FolderIcon, MessageSquareIcon, SearchIcon } from "lucide-react";
+import {
+  FileIcon,
+  FolderIcon,
+  LoaderCircleIcon,
+  MessageSquareIcon,
+  SearchIcon,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -10,10 +16,13 @@ import {
 } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
+import { useQueries } from "@tanstack/react-query";
 import { useStore } from "../../store";
+import { projectSearchEntriesQueryOptions } from "../../lib/projectReactQuery";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { cn } from "../../lib/utils";
 import { CommandDialog, CommandDialogPopup, CommandFooter, CommandShortcut } from "../ui/command";
+import { ProjectId } from "@t3tools/contracts";
 import type { Project, SidebarThreadSummary } from "../../types";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -43,8 +52,11 @@ interface FileResult {
   id: string;
   title: string;
   subtitle: string;
-  threadId: string;
-  threadTitle: string;
+  /** Project that owns this file */
+  projectId: string;
+  projectName: string;
+  /** Thread that most recently changed this file, if known */
+  threadId: string | null;
   timestamp: string | null;
 }
 
@@ -65,7 +77,6 @@ function matchesQuery(text: string, query: string): boolean {
   return text.toLowerCase().includes(query.toLowerCase());
 }
 
-/** Score a result by how well the title matches the query (higher = better). */
 function matchScore(title: string, query: string): number {
   if (!query) return 0;
   const lower = title.toLowerCase();
@@ -86,10 +97,24 @@ function sortByAz(a: SearchResult, b: SearchResult): number {
   return a.title.localeCompare(b.title);
 }
 
+/** Deduplicate file results by subtitle (full path + projectId) keeping most recent. */
+function deduplicateFiles(files: FileResult[]): FileResult[] {
+  const seen = new Map<string, FileResult>();
+  for (const f of files) {
+    const key = `${f.projectId}:${f.subtitle}`;
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, f);
+    } else if (f.timestamp && (!existing.timestamp || f.timestamp > existing.timestamp)) {
+      seen.set(key, f);
+    }
+  }
+  return Array.from(seen.values());
+}
+
 // ── Standalone sub-components ─────────────────────────────────────────
 
-/** Group header + items for the "All" grouped view. Lives outside the modal
- *  to avoid being recreated on each render (consistent-function-scoping). */
+/** Group header + items for the "All" grouped view. */
 function GroupSection({
   label,
   items,
@@ -120,20 +145,39 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("recent");
+  // Project filter pill — only active on "threads" and "files" tabs
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // Debounced query sent to the filesystem search API (300 ms delay)
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Reset state when modal opens/closes
+  // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setQuery("");
+      setDebouncedQuery("");
       setFilter("all");
       setSortOrder("recent");
+      setSelectedProjectId(null);
       setSelectedIndex(0);
     }
   }, [open]);
+
+  // Debounce query for the file search API
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  // Clear project filter when switching away from tabs that show it
+  useEffect(() => {
+    if (filter === "all" || filter === "projects") {
+      setSelectedProjectId(null);
+    }
+  }, [filter]);
 
   // ── Data sources ──────────────────────────────────────────────────
 
@@ -146,50 +190,111 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
 
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
 
-  // Build file results: unique paths across all threads, keyed by path
-  const fileResults = useMemo<FileResult[]>(() => {
-    // Map: path → most-recent occurrence (by turn completedAt)
-    const byPath = new Map<
-      string,
-      { threadId: string; threadTitle: string; timestamp: string | null }
+  // Build "file path → most-recent thread" index from turnDiffSummaries.
+  // This may be sparse/empty if the server hasn't sent checkpoint data yet —
+  // it's used only as a best-effort thread-link for filesystem search results.
+  const fileThreadIndex = useMemo(() => {
+    const index = new Map<
+      string, // "projectId:path"
+      { threadId: string; timestamp: string | null }
     >();
-
     for (const thread of threads) {
-      for (const diffSummary of thread.turnDiffSummaries) {
-        for (const file of diffSummary.files) {
-          const existing = byPath.get(file.path);
-          const ts = diffSummary.completedAt ?? null;
-          const existingTs = existing?.timestamp ?? null;
-          if (!existing || (ts && (!existingTs || ts > existingTs))) {
-            byPath.set(file.path, {
-              threadId: thread.id,
-              threadTitle: thread.title || "Untitled thread",
-              timestamp: ts,
-            });
+      for (const diff of thread.turnDiffSummaries) {
+        for (const file of diff.files) {
+          const key = `${thread.projectId}:${file.path}`;
+          const existing = index.get(key);
+          const ts = diff.completedAt ?? null;
+          if (!existing || (ts && (!existing.timestamp || ts > existing.timestamp))) {
+            index.set(key, { threadId: thread.id, timestamp: ts });
           }
         }
       }
     }
-
-    return Array.from(byPath.entries()).map(([path, meta]) => ({
-      type: "file" as const,
-      id: `file:${path}`,
-      title: path.split("/").pop() ?? path,
-      subtitle: path,
-      threadId: meta.threadId,
-      threadTitle: meta.threadTitle,
-      timestamp: meta.timestamp,
-    }));
+    return index;
   }, [threads]);
+
+  // Recently-changed files built from the thread diff index (used in "All" tab).
+  const recentlyChangedFiles = useMemo<FileResult[]>(() => {
+    const results: FileResult[] = [];
+    for (const [key, meta] of fileThreadIndex.entries()) {
+      const colonIdx = key.indexOf(":");
+      const projectId = key.slice(0, colonIdx);
+      const path = key.slice(colonIdx + 1);
+      const project = projectsById.get(ProjectId.makeUnsafe(projectId));
+      results.push({
+        type: "file",
+        id: `diff:${key}`,
+        title: path.split("/").pop() ?? path,
+        subtitle: path,
+        projectId,
+        projectName: project?.name ?? projectId,
+        threadId: meta.threadId,
+        timestamp: meta.timestamp,
+      });
+    }
+    return results;
+  }, [fileThreadIndex, projectsById]);
+
+  // ── Filesystem file search via React Query ────────────────────────
+  //
+  // "Files" tab uses api.projects.searchEntries (same as the composer's "/" command).
+  // We run one query per project (or one per selected project) so each project's
+  // filesystem is searched independently. Queries are disabled unless the user has
+  // typed something and is on the "files" tab.
+
+  const fileSearchProjects = useMemo(
+    () => (selectedProjectId ? projects.filter((p) => p.id === selectedProjectId) : projects),
+    [projects, selectedProjectId],
+  );
+
+  const fileSearchQueries = useQueries({
+    queries: fileSearchProjects.map((project) => ({
+      ...projectSearchEntriesQueryOptions({
+        cwd: project.cwd,
+        query: debouncedQuery,
+        enabled: filter === "files" && debouncedQuery.length > 0,
+      }),
+    })),
+  });
+
+  const isFileSearchLoading =
+    filter === "files" && debouncedQuery.length > 0 && fileSearchQueries.some((q) => q.isFetching);
+
+  const fsFileResults = useMemo<FileResult[]>(() => {
+    if (filter !== "files" || debouncedQuery.length === 0) return [];
+    const results: FileResult[] = [];
+    for (let i = 0; i < fileSearchProjects.length; i++) {
+      const project = fileSearchProjects[i];
+      const data = fileSearchQueries[i]?.data;
+      if (!project || !data) continue;
+      for (const entry of data.entries) {
+        if (entry.kind !== "file") continue;
+        // Cross-reference with thread diff index for a best-effort thread link
+        const meta = fileThreadIndex.get(`${project.id}:${entry.path}`);
+        results.push({
+          type: "file",
+          id: `fs:${project.id}:${entry.path}`,
+          title: entry.path.split("/").pop() ?? entry.path,
+          subtitle: entry.path,
+          projectId: project.id,
+          projectName: project.name,
+          threadId: meta?.threadId ?? null,
+          timestamp: meta?.timestamp ?? null,
+        });
+      }
+    }
+    return deduplicateFiles(results);
+  }, [filter, debouncedQuery, fileSearchProjects, fileSearchQueries, fileThreadIndex]);
 
   // ── Search & filter ───────────────────────────────────────────────
 
   const results = useMemo<SearchResult[]>(() => {
     const threadEntries = Object.values(sidebarThreadsById) as SidebarThreadSummary[];
 
-    // Build results per type
+    // Threads
     const threadResults: ThreadResult[] = threadEntries
       .filter((t) => !t.archivedAt)
+      .filter((t) => !selectedProjectId || t.projectId === selectedProjectId)
       .filter((t) => matchesQuery(t.title || "Untitled", query))
       .map((t) => ({
         type: "thread" as const,
@@ -200,6 +305,7 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
         timestamp: t.latestUserMessageAt ?? t.createdAt,
       }));
 
+    // Projects
     const projectResults: ProjectResult[] = projects
       .filter((p) => matchesQuery(p.name, query))
       .map((p) => ({
@@ -210,29 +316,31 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
         timestamp: p.updatedAt ?? p.createdAt ?? null,
       }));
 
-    const matchedFiles: FileResult[] = fileResults.filter(
-      (f) =>
-        matchesQuery(f.title, query) ||
-        matchesQuery(f.subtitle, query) ||
-        matchesQuery(f.threadTitle, query),
-    );
+    // Files — "files" tab uses filesystem search results; "all" tab uses
+    // the thread-diff index as a best-effort "recently changed" list.
+    const fileResults: FileResult[] =
+      filter === "files"
+        ? fsFileResults
+        : recentlyChangedFiles
+            .filter((f) => matchesQuery(f.title, query) || matchesQuery(f.subtitle, query))
+            .filter((f) => !selectedProjectId || f.projectId === selectedProjectId);
 
-    // Apply type filter
-    let combined: SearchResult[] = [];
+    // Apply tab filter
+    let combined: SearchResult[];
     if (filter === "all") {
-      combined = [...threadResults, ...projectResults, ...matchedFiles];
+      combined = [...threadResults, ...projectResults, ...fileResults];
     } else if (filter === "threads") {
       combined = threadResults;
     } else if (filter === "projects") {
       combined = projectResults;
     } else {
-      combined = matchedFiles;
+      // "files" tab — already filtered above
+      combined = fileResults;
     }
 
-    // Sort (toSorted returns a new array without mutating the original)
+    // Sort
     if (sortOrder === "recent") {
       if (query) {
-        // When searching: rank by match quality first, then recency
         combined = combined.toSorted((a, b) => {
           const scoreDiff = matchScore(b.title, query) - matchScore(a.title, query);
           if (scoreDiff !== 0) return scoreDiff;
@@ -246,7 +354,17 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
     }
 
     return combined;
-  }, [sidebarThreadsById, projects, fileResults, query, filter, sortOrder, projectsById]);
+  }, [
+    sidebarThreadsById,
+    projects,
+    fsFileResults,
+    recentlyChangedFiles,
+    query,
+    filter,
+    sortOrder,
+    selectedProjectId,
+    projectsById,
+  ]);
 
   // Keep selectedIndex in bounds
   useEffect(() => {
@@ -261,7 +379,7 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
       if (result.type === "thread") {
         void navigate({ to: "/$threadId", params: { threadId: result.id } });
       } else if (result.type === "project") {
-        // Navigate to the first thread of this project, or root
+        // Navigate to the project's most recent active thread, or root
         const firstThreadId = Object.values(sidebarThreadsById).find(
           (t) => t.projectId === result.id && !t.archivedAt,
         )?.id;
@@ -271,8 +389,24 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
           void navigate({ to: "/" });
         }
       } else {
-        // Navigate to the thread that owns this file
-        void navigate({ to: "/$threadId", params: { threadId: result.threadId } });
+        // File result — use the linked thread if available; otherwise fall back to
+        // the project's most recent thread so the user lands somewhere useful
+        if (result.threadId) {
+          void navigate({ to: "/$threadId", params: { threadId: result.threadId } });
+        } else {
+          const recentThread = Object.values(sidebarThreadsById)
+            .filter((t) => t.projectId === result.projectId && !t.archivedAt)
+            .toSorted((a, b) => {
+              const ta = a.latestUserMessageAt ?? a.createdAt;
+              const tb = b.latestUserMessageAt ?? b.createdAt;
+              return tb.localeCompare(ta);
+            })[0];
+          if (recentThread) {
+            void navigate({ to: "/$threadId", params: { threadId: recentThread.id } });
+          } else {
+            void navigate({ to: "/" });
+          }
+        }
       }
     },
     [navigate, onOpenChange, sidebarThreadsById],
@@ -311,12 +445,10 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
 
   const grouped = useMemo(() => {
     if (filter !== "all") return null;
-
-    const threads = results.filter((r): r is ThreadResult => r.type === "thread");
-    const projs = results.filter((r): r is ProjectResult => r.type === "project");
-    const files = results.filter((r): r is FileResult => r.type === "file");
-
-    return { threads, projects: projs, files };
+    const threadItems = results.filter((r): r is ThreadResult => r.type === "thread");
+    const projectItems = results.filter((r): r is ProjectResult => r.type === "project");
+    const fileItems = results.filter((r): r is FileResult => r.type === "file");
+    return { threads: threadItems, projects: projectItems, files: fileItems };
   }, [results, filter]);
 
   // ── Render helpers ────────────────────────────────────────────────
@@ -333,12 +465,15 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
         <FileIcon className="size-4 shrink-0 text-muted-foreground" />
       );
 
+    // For files on the Files tab, show project name; otherwise show path
     const subtitle =
       result.type === "thread"
         ? result.projectName
         : result.type === "project"
           ? result.subtitle
-          : result.subtitle;
+          : filter === "files" && projects.length > 1
+            ? `${result.projectName} · ${result.subtitle}`
+            : result.subtitle;
 
     return (
       <button
@@ -372,10 +507,25 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
   const shortcutLabel = isMac ? "⌘K" : "Ctrl+K";
 
+  // Whether to show the project filter pill row
+  const showProjectPills = (filter === "threads" || filter === "files") && projects.length > 1;
+
+  // Determine the empty state message for the Files tab
+  const filesEmptyMessage =
+    filter === "files"
+      ? debouncedQuery.length === 0
+        ? "Type to search files in your projects…"
+        : isFileSearchLoading
+          ? null // loading spinner shown instead
+          : `No files matching "${debouncedQuery}"`
+      : query
+        ? `No results for "${query}"`
+        : "No items found";
+
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandDialogPopup className="max-h-[560px]">
-        {/* Search input */}
+      <CommandDialogPopup className="max-h-[580px]">
+        {/* ── Search input ── */}
         <div className="flex items-center gap-2 border-b px-3 py-2.5">
           <SearchIcon className="size-4 shrink-0 text-muted-foreground/60" />
           <input
@@ -406,7 +556,7 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
           )}
         </div>
 
-        {/* Filter + Sort bar */}
+        {/* ── Filter tabs + sort ── */}
         <div className="flex items-center justify-between border-b px-3 py-1.5">
           <div className="flex items-center gap-0.5">
             {(["all", "threads", "projects", "files"] as FilterType[]).map((f) => (
@@ -452,18 +602,66 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
           </div>
         </div>
 
-        {/* Results */}
+        {/* ── Project filter pills — visible on Threads and Files tabs ── */}
+        {showProjectPills && (
+          <div className="flex items-center gap-1 overflow-x-auto border-b px-3 py-1.5 scrollbar-none">
+            <button
+              type="button"
+              className={cn(
+                "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+                selectedProjectId === null
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+              )}
+              onClick={() => {
+                setSelectedProjectId(null);
+                setSelectedIndex(0);
+                inputRef.current?.focus();
+              }}
+            >
+              All projects
+            </button>
+            {projects.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                className={cn(
+                  "shrink-0 max-w-[140px] truncate rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+                  selectedProjectId === project.id
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                )}
+                title={project.name}
+                onClick={() => {
+                  setSelectedProjectId(selectedProjectId === project.id ? null : project.id);
+                  setSelectedIndex(0);
+                  inputRef.current?.focus();
+                }}
+              >
+                {project.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Results ── */}
         <div
           ref={listRef}
           className="min-h-0 flex-1 overflow-y-auto p-2"
           style={{ maxHeight: "380px" }}
         >
-          {results.length === 0 ? (
+          {/* Loading spinner for filesystem file search */}
+          {isFileSearchLoading && results.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground text-sm">
+              <LoaderCircleIcon className="size-4 animate-spin" />
+              Searching files…
+            </div>
+          ) : results.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground text-sm">
-              {query ? `No results for "${query}"` : "No items found"}
+              {filesEmptyMessage}
             </div>
           ) : grouped ? (
-            // Grouped "All" view
+            // ── Grouped "All" view ──
             <>
               <GroupSection
                 label="Threads"
@@ -478,15 +676,22 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
                 renderItem={(item, idx) => <ResultItem key={item.id} result={item} index={idx} />}
               />
               <GroupSection
-                label="Files"
+                label="Recently changed files"
                 items={grouped.files}
                 startIndex={grouped.threads.length + grouped.projects.length}
                 renderItem={(item, idx) => <ResultItem key={item.id} result={item} index={idx} />}
               />
             </>
           ) : (
-            // Flat filtered view
+            // ── Flat filtered view ──
             results.map((result, i) => <ResultItem key={result.id} result={result} index={i} />)
+          )}
+          {/* Inline loading indicator when search is in progress but we already have stale results */}
+          {isFileSearchLoading && results.length > 0 && (
+            <div className="flex items-center justify-center gap-1.5 pb-2 pt-1 text-muted-foreground/60 text-xs">
+              <LoaderCircleIcon className="size-3 animate-spin" />
+              Searching…
+            </div>
           )}
         </div>
 

@@ -434,7 +434,11 @@ export function PreviewPanel(props: PreviewPanelProps) {
   // resetKey bumps to unmount/remount the inner panel after an error boundary reset
   const resetKey = useRef(0);
   return (
-    <PreviewErrorBoundary onReset={() => { resetKey.current += 1; }}>
+    <PreviewErrorBoundary
+      onReset={() => {
+        resetKey.current += 1;
+      }}
+    >
       <PreviewPanelInner key={resetKey.current} {...props} />
     </PreviewErrorBoundary>
   );

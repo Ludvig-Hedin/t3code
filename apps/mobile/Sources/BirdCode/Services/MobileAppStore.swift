@@ -11,6 +11,8 @@ final class MobileAppStore {
     static let deviceName = "birdcode.mobile.deviceName"
     static let pairCode = "birdcode.mobile.pairCode"
     static let lastSnapshot = "birdcode.mobile.lastSnapshot"
+    /// Persisted so WKWebView can inject window.__BC_WS_TOKEN__ after app restarts.
+    static let desktopAuthToken = "birdcode.mobile.desktopAuthToken"
   }
 
   private let apiClient: MobileAPIClient
@@ -33,7 +35,9 @@ final class MobileAppStore {
   var lastPairCode: String?
 
   @ObservationIgnored private var refreshTask: Task<Void, Never>?
-  @ObservationIgnored private(set) var deviceToken: String?
+  // NOT @ObservationIgnored — deviceToken must be observable so hasPairedSession
+  // and pairedServerURL (computed from it) trigger SwiftUI re-renders on change.
+  private(set) var deviceToken: String?
 
   init(apiClient: MobileAPIClient = MobileAPIClient()) {
     self.apiClient = apiClient
@@ -41,16 +45,32 @@ final class MobileAppStore {
     self.deviceNameInput = UserDefaults.standard.string(forKey: StorageKey.deviceName)
       ?? UIDevice.current.name
     self.deviceToken = KeychainStore.readString(account: StorageKey.deviceToken)
+    // Restore desktopAuthToken so WKWebView can inject __BC_WS_TOKEN__ after an app restart.
+    self.desktopAuthTokenInput = KeychainStore.readString(account: StorageKey.desktopAuthToken) ?? ""
     if let token = self.deviceToken, !token.isEmpty {
       self.lastPairCode = KeychainStore.readString(account: StorageKey.pairCode)
-    }
-    if let cachedEnvelope = Self.readCachedSnapshotEnvelope() {
-      applySnapshotEnvelope(cachedEnvelope)
     }
   }
 
   var hasPairedSession: Bool {
     deviceToken != nil
+  }
+
+  /// The resolved server URL for the WKWebView once the device is paired.
+  var pairedServerURL: URL? {
+    guard hasPairedSession else { return nil }
+    return normalizeServerURL(serverURLInput)
+  }
+
+  /// The desktop auth token to inject into WKWebView as window.__BC_WS_TOKEN__.
+  var pairedDesktopAuthToken: String? {
+    desktopAuthTokenInput.isEmpty ? nil : desktopAuthTokenInput
+  }
+
+  /// The mobile device token to inject into WKWebView as window.__BC_MOBILE_DEVICE_TOKEN__.
+  /// Used by the web app to call /api/mobile/heartbeat so the desktop sees "Live now".
+  var pairedMobileDeviceToken: String? {
+    deviceToken
   }
 
   var isConnected: Bool {
@@ -103,12 +123,8 @@ final class MobileAppStore {
   }
 
   func restoreSessionIfPossible() async {
-    if !serverURLInput.isEmpty, deviceToken != nil {
-      errorMessage = nil
-      await refreshSnapshot()
-      await refreshDevices()
-      startPolling()
-    }
+    // The WKWebView owns the WebSocket connection and handles reconnection automatically.
+    // Nothing to do here — pairedServerURL drives the routing to MobileWebView on launch.
   }
 
   func saveConnectionPreferences() {
@@ -132,18 +148,18 @@ final class MobileAppStore {
         deviceName: deviceNameInput,
         desktopAuthToken: desktopAuthTokenInput.isEmpty ? nil : desktopAuthTokenInput,
       )
-      if let deviceToken = response.deviceToken {
-        self.deviceToken = deviceToken
-        KeychainStore.writeString(deviceToken, account: StorageKey.deviceToken)
-        KeychainStore.writeString(response.device.pairCode, account: StorageKey.pairCode)
-        lastPairCode = response.device.pairCode
+      self.deviceToken = response.deviceToken
+      KeychainStore.writeString(response.deviceToken, account: StorageKey.deviceToken)
+      KeychainStore.writeString(response.device.pairCode, account: StorageKey.pairCode)
+      lastPairCode = response.device.pairCode
+      pairedDevice = response.device
+      // Persist desktopAuthToken so WKWebView can inject it as __BC_WS_TOKEN__ after restart.
+      if !desktopAuthTokenInput.isEmpty {
+        KeychainStore.writeString(desktopAuthTokenInput, account: StorageKey.desktopAuthToken)
       }
-      applySnapshotEnvelope(response)
       errorMessage = nil
       saveConnectionPreferences()
-      statusMessage = "Paired with \(response.device.deviceName)"
-      await refreshDevices()
-      startPolling()
+      // Navigation to MobileWebView is driven by hasPairedSession becoming true.
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -186,11 +202,12 @@ final class MobileAppStore {
       if let deviceName = payload.deviceName, !deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         KeychainStore.writeString(deviceName, account: StorageKey.deviceName)
       }
-      await refreshSnapshot()
-      await refreshDevices()
-      startPolling()
+      // Persist desktopAuthToken so WKWebView injection survives restarts.
+      if !desktopAuthTokenInput.isEmpty {
+        KeychainStore.writeString(desktopAuthTokenInput, account: StorageKey.desktopAuthToken)
+      }
       errorMessage = nil
-      statusMessage = "Imported pairing code."
+      // Navigation to MobileWebView is driven by hasPairedSession becoming true.
       return
     }
 
@@ -433,6 +450,7 @@ final class MobileAppStore {
     stopPolling()
     KeychainStore.deleteString(account: StorageKey.deviceToken)
     KeychainStore.deleteString(account: StorageKey.pairCode)
+    KeychainStore.deleteString(account: StorageKey.desktopAuthToken)
     UserDefaults.standard.removeObject(forKey: StorageKey.lastSnapshot)
   }
 

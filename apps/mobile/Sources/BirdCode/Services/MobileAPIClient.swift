@@ -39,7 +39,7 @@ final class MobileAPIClient {
     baseURL: URL,
     deviceName: String,
     desktopAuthToken: String?,
-  ) async throws -> MobileSnapshotEnvelope {
+  ) async throws -> MobilePairResponse {
     let body = MobilePairRequestBody(deviceName: deviceName, desktopAuthToken: desktopAuthToken)
     return try await post(baseURL: baseURL, path: "/api/mobile/pair", deviceToken: nil, body: body)
   }

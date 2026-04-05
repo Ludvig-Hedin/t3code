@@ -11,6 +11,7 @@ import type {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { type ChildProcess as NodeChildProcess } from "node:child_process";
 import { Effect, Layer, PubSub, Ref, Stream } from "effect";
 
 import { ProviderAdapterSessionNotFoundError } from "../Errors.ts";
@@ -36,6 +37,19 @@ interface GeminiSessionState {
 }
 
 const PROVIDER = "gemini" as const satisfies ProviderKind;
+
+/**
+ * SIGTERM a child process handle, silently ignoring errors in case it has
+ * already exited. Defined as a plain function (not inside an Effect.gen) to
+ * avoid the no-try/catch-in-generator lint rule.
+ */
+function safeKillProcess(handle: NodeChildProcess): void {
+  try {
+    handle.kill("SIGTERM");
+  } catch {
+    // Process may have already exited
+  }
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -87,7 +101,14 @@ function promptFromSession(
   return parts.join("\n");
 }
 
-async function readJsonResponse(stdout: string): Promise<{ response: string; error?: string }> {
+/**
+ * Parse Gemini CLI stdout into a { response, error? } envelope.
+ *
+ * Supports both --output-format text (plain text, returned as-is) and
+ * --output-format json (structured JSON, extracts `.response` field).
+ * Falls back to returning raw text if JSON parsing fails.
+ */
+async function readCliResponse(stdout: string): Promise<{ response: string; error?: string }> {
   const trimmed = stdout.trim();
   if (!trimmed) {
     return { response: "" };
@@ -101,6 +122,7 @@ async function readJsonResponse(stdout: string): Promise<{ response: string; err
         : {}),
     };
   } catch {
+    // Plain text output — return as-is
     return { response: trimmed };
   }
 }
@@ -113,6 +135,11 @@ export const GeminiAdapterLive = Layer.effect(
       PubSub.unbounded<ProviderRuntimeEvent>(),
       PubSub.shutdown,
     );
+
+    // Plain Map (not Effect-managed) of active child processes keyed by turnId.
+    // Populated via onSpawn callback in runProcess; used by interruptTurn to actually kill
+    // the subprocess rather than just setting a flag.
+    const activeProcessHandles = new Map<TurnId, NodeChildProcess>();
 
     const emitEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
       PubSub.publish(eventsPubSub, event).pipe(Effect.asVoid);
@@ -220,21 +247,39 @@ export const GeminiAdapterLive = Layer.effect(
         );
 
         const execution = yield* Effect.promise(() =>
-          runProcess("gemini", ["-p", prompt, "--output-format", "json", "--model", model], {
-            cwd: sessionState.session.cwd,
-            env: process.env,
-            timeoutMs: 10 * 60_000,
-            allowNonZeroExit: true,
-            outputMode: "truncate",
-          }),
+          runProcess(
+            "gemini",
+            [
+              "-p", prompt,
+              "--model", model,
+              // Use text format: simpler to parse, avoids JSON schema drift between CLI versions
+              "--output-format", "text",
+              // Auto-approve all tool actions — without this the CLI hangs waiting for
+              // interactive approval that can never arrive (stdin is closed by processRunner)
+              "--yolo",
+            ],
+            {
+              cwd: sessionState.session.cwd,
+              env: process.env,
+              timeoutMs: 10 * 60_000,
+              allowNonZeroExit: true,
+              outputMode: "truncate",
+              // Capture the child process handle so interruptTurn can actually kill it
+              onSpawn: (child) => {
+                activeProcessHandles.set(turnId, child);
+              },
+            },
+          ),
         );
+        // Process has exited — remove the handle regardless of outcome
+        activeProcessHandles.delete(turnId);
 
         const interrupted = yield* Ref.get(sessionsRef).pipe(
           Effect.map(
             (sessions) => sessions.get(input.threadId)?.interruptedTurns.has(turnId) ?? false,
           ),
         );
-        const parsed = yield* Effect.promise(() => readJsonResponse(execution.stdout));
+        const parsed = yield* Effect.promise(() => readCliResponse(execution.stdout));
         const response = parsed.response.trim();
         const turnState: GeminiTurnState =
           interrupted || execution.signal !== null
@@ -323,6 +368,14 @@ export const GeminiAdapterLive = Layer.effect(
         if (!targetTurnId) {
           return;
         }
+
+        // Kill the actual child process — without this the stop button was a no-op.
+        // The process handle was registered via onSpawn in sendTurn.
+        const processHandle = activeProcessHandles.get(targetTurnId);
+        if (processHandle) {
+          safeKillProcess(processHandle);
+        }
+
         yield* updateSessionState(threadId, (current) => ({
           ...current,
           interruptedTurns: new Set([...current.interruptedTurns, targetTurnId]),

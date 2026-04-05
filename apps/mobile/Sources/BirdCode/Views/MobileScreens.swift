@@ -27,8 +27,18 @@ struct MobileRootView: View {
   var body: some View {
     ZStack {
       MobileTheme.background.ignoresSafeArea()
-      if store.hasPairedSession {
-        MobileShellView(store: store)
+      if let serverURL = store.pairedServerURL {
+        // Post-pairing: load the full Bird Code web app in a WKWebView.
+        // The web app handles the WebSocket connection, session state, and all UI.
+        MobileWebView(
+          serverURL: serverURL,
+          desktopAuthToken: store.pairedDesktopAuthToken,
+          mobileDeviceToken: store.pairedMobileDeviceToken,
+          onDisconnect: {
+            store.clearSession()
+          },
+        )
+        .ignoresSafeArea()
       } else {
         MobilePairingView(store: store)
       }
@@ -114,9 +124,10 @@ struct MobilePairingView: View {
                     .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
+              }
+              .buttonStyle(MobilePrimaryButtonStyle())
+              .disabled(store.isPairing)
             }
-            .buttonStyle(MobilePrimaryButtonStyle())
-            .disabled(store.isPairing)
           }
         }
       }
@@ -125,8 +136,12 @@ struct MobilePairingView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .scrollIndicators(.visible)
-    .scrollDismissesKeyboard(.interactively)
-    .sheet(isPresented: $isShowingScanner) {
+    // .interactively causes a main-thread freeze on iOS 17+ when a TextField
+    // inside this ScrollView gains focus with @Observable driving the parent view.
+    .scrollDismissesKeyboard(.immediately)
+    // fullScreenCover avoids the drag-animation vs DataScannerViewController
+    // camera-layer race that freezes the UI with a .sheet presentation.
+    .fullScreenCover(isPresented: $isShowingScanner) {
       MobileQRCodeScannerSheet { scannedText in
         pairingCodeInput = scannedText
         isShowingScanner = false
@@ -135,7 +150,6 @@ struct MobilePairingView: View {
         }
       }
     }
-    .presentationBackground(.clear)
     .fontDesign(.default)
   }
 }
@@ -1397,7 +1411,7 @@ private struct MobileBulletRow: View {
   }
 }
 
-private struct MobilePrimaryButtonStyle: ButtonStyle {
+struct MobilePrimaryButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .font(.callout.weight(.semibold))
@@ -1411,7 +1425,7 @@ private struct MobilePrimaryButtonStyle: ButtonStyle {
   }
 }
 
-private struct MobileSecondaryButtonStyle: ButtonStyle {
+struct MobileSecondaryButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .font(.callout.weight(.semibold))

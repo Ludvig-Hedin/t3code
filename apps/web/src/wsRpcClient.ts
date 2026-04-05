@@ -143,10 +143,7 @@ export interface WsRpcClient {
       appId: string;
       patch: { label?: string; command?: string; cwd?: string; type?: "browser" | "logs" };
     }) => Promise<PreviewApp>;
-    readonly onEvent: (
-      projectId: ProjectId,
-      listener: (event: PreviewEvent) => void,
-    ) => () => void;
+    readonly onEvent: (projectId: ProjectId, listener: (event: PreviewEvent) => void) => () => void;
   };
 }
 
@@ -313,10 +310,8 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport
           .request((client) => client[WS_METHODS.previewDetectApps](input))
           .then((apps) => [...apps]),
-      start: (input) =>
-        transport.request((client) => client[WS_METHODS.previewStart](input)),
-      stop: (input) =>
-        transport.request((client) => client[WS_METHODS.previewStop](input)),
+      start: (input) => transport.request((client) => client[WS_METHODS.previewStart](input)),
+      stop: (input) => transport.request((client) => client[WS_METHODS.previewStop](input)),
       getSessions: (input) =>
         transport
           .request((client) => client[WS_METHODS.previewGetSessions](input))

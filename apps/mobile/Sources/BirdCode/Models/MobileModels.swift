@@ -271,6 +271,15 @@ struct MobilePairRequestBody: Codable, Hashable {
   let desktopAuthToken: String?
 }
 
+/// Slim response returned by POST /api/mobile/pair.
+/// The previous full-snapshot response was replaced to fix iOS decode failures
+/// caused by optional nested types in the OrchestrationReadModel.
+struct MobilePairResponse: Codable, Hashable {
+  let paired: Bool
+  let deviceToken: String
+  let device: MobileDevice
+}
+
 struct BirdCodePairingPayload: Codable, Hashable {
   static let kindValue = "birdcode-pairing"
   static let versionValue = 1

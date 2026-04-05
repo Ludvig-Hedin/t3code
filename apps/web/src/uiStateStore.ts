@@ -421,7 +421,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => reorderProjects(state, draggedProjectId, targetProjectId)),
   setPreviewOpen: (open) => set((state) => ({ ...state, previewOpen: open })),
   setPreviewDetached: (detached) => set((state) => ({ ...state, previewDetached: detached })),
-  setPreviewFloatingBounds: (bounds) => set((state) => ({ ...state, previewFloatingBounds: bounds })),
+  setPreviewFloatingBounds: (bounds) =>
+    set((state) => ({ ...state, previewFloatingBounds: bounds })),
 }));
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));

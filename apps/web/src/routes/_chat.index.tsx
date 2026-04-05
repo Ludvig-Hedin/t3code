@@ -204,11 +204,9 @@ function ChatIndexRouteView() {
         </header>
       )}
 
-      {isElectron && (
-        <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-          <span className="text-xs text-muted-foreground/50">No active thread</span>
-        </div>
-      )}
+      <AppPageHeader>
+        <span className="text-xs text-muted-foreground/50">No active thread</span>
+      </AppPageHeader>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-12 px-6">
         {/* Title + project picker */}

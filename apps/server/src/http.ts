@@ -121,7 +121,20 @@ export const staticAndDevRouteLayer = HttpRouter.add(
 
     const config = yield* ServerConfig;
     if (config.devUrl) {
-      return HttpServerResponse.redirect(config.devUrl.href, { status: 302 });
+      // In dev mode the Vite dev server only listens on localhost, so a redirect
+      // to config.devUrl would send mobile clients (WKWebView on a phone) to
+      // localhost on the *phone*, where nothing is listening.
+      // Proxy the request through the desktop server instead so mobile clients
+      // get the correct HTML/JS/CSS without knowing about the Vite dev server.
+      const targetUrl = new URL(url.value.pathname + url.value.search, config.devUrl.href);
+      // Proxy failures are infrastructure defects — callers cannot recover from them.
+      const proxied = yield* Effect.tryPromise(() => fetch(targetUrl.href)).pipe(Effect.orDie);
+      const body = yield* Effect.tryPromise(() => proxied.arrayBuffer()).pipe(Effect.orDie);
+      const contentType = proxied.headers.get("content-type") ?? "application/octet-stream";
+      return HttpServerResponse.uint8Array(new Uint8Array(body), {
+        status: proxied.status,
+        contentType,
+      });
     }
 
     if (!config.staticDir) {

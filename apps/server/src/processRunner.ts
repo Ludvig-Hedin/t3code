@@ -8,6 +8,8 @@ export interface ProcessRunOptions {
   allowNonZeroExit?: boolean | undefined;
   maxBufferBytes?: number | undefined;
   outputMode?: "error" | "truncate" | undefined;
+  /** Called synchronously right after spawn, before any I/O. Use to hold a reference for killing. */
+  onSpawn?: (child: ChildProcessHandle) => void;
 }
 
 export interface ProcessRunResult {
@@ -141,6 +143,9 @@ export async function runProcess(
       stdio: "pipe",
       shell: process.platform === "win32",
     });
+
+    // Notify caller of the handle immediately so they can kill it later if needed
+    options.onSpawn?.(child);
 
     let stdout = "";
     let stderr = "";

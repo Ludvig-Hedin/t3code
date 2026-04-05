@@ -9,7 +9,13 @@ import { DEFAULT_RUNTIME_MODE } from "@t3tools/contracts";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { ChevronDownIcon, CloudUploadIcon, GitCommitIcon, InfoIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CloudUploadIcon,
+  GitCommitIcon,
+  InfoIcon,
+  LoaderCircleIcon,
+} from "lucide-react";
 import { GitHubIcon } from "./Icons";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import {
@@ -264,6 +270,10 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null);
   const activeGitActionProgressRef = useRef<ActiveGitActionProgress | null>(null);
+  // Tracks whether the progress toast is currently showing in the viewport.
+  // Set to false when the user clicks "Minimize" on the toast, so the dropdown
+  // can offer a "Restore notification" option.
+  const [isProgressToastVisible, setIsProgressToastVisible] = useState(false);
 
   // ── Auto-review-before-push state ──────────────────────────────────
   const codeReviewSettings = useSettings();
@@ -314,9 +324,28 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
       title: progress.title,
       description: resolveProgressDescription(progress),
       timeout: 0,
-      data: progress.toastData,
+      data: { ...progress.toastData, minimizable: true },
     });
   }, []);
+
+  /**
+   * Re-opens the progress toast after the user has minimized it.
+   * Uses useEffectEvent so the latest progress ref is always read.
+   */
+  const restoreProgressToast = useEffectEvent(() => {
+    const progress = activeGitActionProgressRef.current;
+    if (!progress) return;
+    // Re-add a new toast and wire it up to the active progress tracker
+    const newToastId = toastManager.add({
+      type: "loading",
+      title: progress.title,
+      description: resolveProgressDescription(progress),
+      timeout: 0,
+      data: { ...progress.toastData, minimizable: true },
+    });
+    progress.toastId = newToastId;
+    setIsProgressToastVisible(true);
+  });
 
   const persistThreadBranchSync = useCallback(
     (branch: string | null) => {
@@ -606,7 +635,8 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
           action === "create_pr" &&
           (!actionStatus?.hasUpstream || (actionStatus?.aheadCount ?? 0) > 0),
       });
-      const scopedToastData = threadToastData ? { ...threadToastData } : undefined;
+      // minimizable: true so the toast shows a "Minimize" button instead of close
+      const scopedToastData = { ...threadToastData, minimizable: true };
       const actionId = randomUUID();
       const resolvedProgressToastId =
         progressToastId ??
@@ -617,6 +647,8 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
           timeout: 0,
           data: scopedToastData,
         });
+
+      setIsProgressToastVisible(true);
 
       activeGitActionProgressRef.current = {
         toastId: resolvedProgressToastId,
@@ -708,6 +740,7 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
       try {
         const result = await promise;
         activeGitActionProgressRef.current = null;
+        setIsProgressToastVisible(false);
         syncThreadBranchAfterGitAction(result);
         const closeResultToast = () => {
           toastManager.close(resolvedProgressToastId);
@@ -751,20 +784,22 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
           },
         } as const;
 
-        if (toastActionProps) {
-          toastManager.update(resolvedProgressToastId, {
-            ...successToastBase,
-            actionProps: toastActionProps,
-          });
-        } else {
-          toastManager.update(resolvedProgressToastId, successToastBase);
-        }
+        // If the toast was minimized (closed), add a fresh one for the result.
+        // update() on a closed toast is a no-op in base-ui, so we always add a new one.
+        const resultToastOptions = toastActionProps
+          ? { ...successToastBase, actionProps: toastActionProps }
+          : successToastBase;
+        toastManager.close(resolvedProgressToastId);
+        toastManager.add(resultToastOptions);
       } catch (err) {
         activeGitActionProgressRef.current = null;
+        setIsProgressToastVisible(false);
         const fullErrorMessage = err instanceof Error ? err.message : "An error occurred.";
         // Show a concise summary as the title; full message is available via "Show details"
         const errorSummary = summarizeGitError(err);
-        toastManager.update(resolvedProgressToastId, {
+        // Always add a fresh error toast — the progress toast may have been minimized/closed
+        toastManager.close(resolvedProgressToastId);
+        toastManager.add({
           type: "error",
           title: errorSummary,
           // Full message in description so "Show details" / copy button have full context
@@ -989,11 +1024,39 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
           >
             <MenuTrigger
               render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
-              disabled={isGitActionRunning}
             >
-              <ChevronDownIcon aria-hidden="true" className="size-4" />
+              {isGitActionRunning ? (
+                <LoaderCircleIcon aria-hidden="true" className="size-3.5 animate-spin opacity-70" />
+              ) : (
+                <ChevronDownIcon aria-hidden="true" className="size-4" />
+              )}
             </MenuTrigger>
             <MenuPopup align="end" className="w-full">
+              {/* Active git action progress — shown when an action is running */}
+              {isGitActionRunning && activeGitActionProgressRef.current && (
+                <div className="border-b border-border px-2 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <LoaderCircleIcon className="size-3 shrink-0 animate-spin text-muted-foreground" />
+                    <span className="min-w-0 truncate text-xs font-medium">
+                      {activeGitActionProgressRef.current.title}
+                    </span>
+                  </div>
+                  {activeGitActionProgressRef.current.lastOutputLine && (
+                    <p className="mt-0.5 truncate pl-5 text-xs text-muted-foreground">
+                      {activeGitActionProgressRef.current.lastOutputLine}
+                    </p>
+                  )}
+                  {!isProgressToastVisible && (
+                    <button
+                      className="mt-1 pl-5 text-xs text-muted-foreground underline-offset-2 hover:underline cursor-pointer"
+                      onClick={restoreProgressToast}
+                      type="button"
+                    >
+                      Restore notification
+                    </button>
+                  )}
+                </div>
+              )}
               {gitActionMenuItems.map((item) => {
                 const disabledReason = getMenuActionDisabledReason({
                   item,

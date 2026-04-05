@@ -97,6 +97,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
+  BugIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -105,10 +106,16 @@ import {
   ListTodoIcon,
   MessageSquareIcon,
   PaperclipIcon,
+  SearchCodeIcon,
+  SparklesIcon,
+  WrenchIcon,
   XIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { orderItemsByPreferredIds } from "./Sidebar.logic";
 import { cn, randomUUID } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { toastManager } from "./ui/toast";
@@ -586,6 +593,36 @@ function PersistentThreadTerminalDrawer({
   );
 }
 
+/** Prompt suggestion cards shown inside an empty/draft thread — same set as the index page */
+const CHAT_VIEW_PROMPT_SUGGESTIONS = [
+  {
+    title: "Code review",
+    description: "Review recent changes for issues",
+    icon: SearchCodeIcon,
+    prompt:
+      "Review the recent changes in this project for bugs, security issues, and code quality improvements.",
+  },
+  {
+    title: "New feature",
+    description: "Plan and build something new",
+    icon: SparklesIcon,
+    prompt: "Help me plan and implement a new feature. I want to add ",
+  },
+  {
+    title: "Fix a bug",
+    description: "Debug and resolve an issue",
+    icon: BugIcon,
+    prompt: "Help me debug and fix an issue I'm experiencing. ",
+  },
+  {
+    title: "Refactor",
+    description: "Improve code quality",
+    icon: WrenchIcon,
+    prompt:
+      "Analyze this codebase and suggest refactoring improvements for better maintainability, performance, and code organization.",
+  },
+] as const;
+
 export default function ChatView({ threadId }: ChatViewProps) {
   const serverThread = useThreadById(threadId);
   const setStoreThreadError = useStore((store) => store.setError);
@@ -905,6 +942,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [activeThreadId, existingOpenTerminalThreadIds, terminalState.terminalOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProject = useProjectById(activeThread?.projectId);
+
+  // For the empty-thread prompt card UI — project list and switcher
+  const allProjects = useStore((store) => store.projects);
+  const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const orderedProjects = useMemo(
+    () =>
+      orderItemsByPreferredIds({
+        items: allProjects,
+        preferredIds: projectOrder,
+        getId: (p) => p.id,
+      }),
+    [allProjects, projectOrder],
+  );
+  const { handleNewThread } = useHandleNewThread();
+
   const previewOpen = useUiStateStore((store) => store.previewOpen);
   const setPreviewOpen = useUiStateStore((store) => store.setPreviewOpen);
   // previewDetached controls whether the panel floats as an overlay window vs. docking inline
@@ -4283,30 +4335,90 @@ export default function ChatView({ threadId }: ChatViewProps) {
               onTouchEnd={onMessagesTouchEnd}
               onTouchCancel={onMessagesTouchEnd}
             >
-              <MessagesTimeline
-                key={activeThread.id}
-                hasMessages={timelineEntries.length > 0}
-                isWorking={isWorking}
-                activeTurnInProgress={isWorking || !latestTurnSettled}
-                activeTurnStartedAt={activeWorkStartedAt}
-                scrollContainer={messagesScrollElement}
-                timelineEntries={timelineEntries}
-                completionDividerBeforeEntryId={completionDividerBeforeEntryId}
-                completionSummary={completionSummary}
-                turnDiffSummaryByAssistantMessageId={displayTurnDiffSummaryByAssistantMessageId}
-                nowIso={nowIso}
-                expandedWorkGroups={expandedWorkGroups}
-                onToggleWorkGroup={onToggleWorkGroup}
-                onOpenTurnDiff={onOpenTurnDiff}
-                revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
-                onRevertUserMessage={onRevertUserMessage}
-                isRevertingCheckpoint={isRevertingCheckpoint}
-                onImageExpand={onExpandTimelineImage}
-                markdownCwd={gitCwd ?? undefined}
-                resolvedTheme={resolvedTheme}
-                timestampFormat={timestampFormat}
-                workspaceRoot={activeProject?.cwd ?? undefined}
-              />
+              {timelineEntries.length === 0 ? (
+                /* Empty/draft thread — show prompt suggestion cards + project switcher
+                   above the real composer so the user can kick off a conversation quickly. */
+                <div className="flex min-h-full flex-col items-center justify-center gap-10 px-2 py-8">
+                  {/* "New thread in [Project]" heading with project switcher */}
+                  <div className="flex flex-col items-center gap-1 text-center">
+                    <h1 className="text-3xl font-semibold text-foreground">New thread in</h1>
+                    <Menu>
+                      <MenuTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-3xl font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            {activeProject?.name ?? "Select project"}
+                            <ChevronRightIcon className="size-6 opacity-50" />
+                          </button>
+                        }
+                      />
+                      <MenuPopup align="start" side="bottom" sideOffset={6}>
+                        {orderedProjects.map((project) => (
+                          <MenuItem
+                            key={project.id}
+                            onClick={() => void handleNewThread(project.id)}
+                          >
+                            {project.name}
+                          </MenuItem>
+                        ))}
+                      </MenuPopup>
+                    </Menu>
+                  </div>
+
+                  {/* Prompt suggestion cards — clicking pre-fills the real composer below */}
+                  <div className="grid w-full max-w-lg grid-cols-2 gap-3">
+                    {CHAT_VIEW_PROMPT_SUGGESTIONS.map((suggestion) => (
+                      <button
+                        key={suggestion.title}
+                        type="button"
+                        className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-border bg-card p-4 text-left shadow-xs/5 transition-colors hover:bg-accent"
+                        onClick={() => {
+                          // Pre-fill the real composer with the suggestion text and focus it
+                          setPrompt(suggestion.prompt);
+                          composerEditorRef.current?.focusAtEnd();
+                        }}
+                      >
+                        <suggestion.icon className="size-5 text-muted-foreground" />
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-medium text-foreground">
+                            {suggestion.title}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {suggestion.description}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <MessagesTimeline
+                  key={activeThread.id}
+                  hasMessages={timelineEntries.length > 0}
+                  isWorking={isWorking}
+                  activeTurnInProgress={isWorking || !latestTurnSettled}
+                  activeTurnStartedAt={activeWorkStartedAt}
+                  scrollContainer={messagesScrollElement}
+                  timelineEntries={timelineEntries}
+                  completionDividerBeforeEntryId={completionDividerBeforeEntryId}
+                  completionSummary={completionSummary}
+                  turnDiffSummaryByAssistantMessageId={displayTurnDiffSummaryByAssistantMessageId}
+                  nowIso={nowIso}
+                  expandedWorkGroups={expandedWorkGroups}
+                  onToggleWorkGroup={onToggleWorkGroup}
+                  onOpenTurnDiff={onOpenTurnDiff}
+                  revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
+                  onRevertUserMessage={onRevertUserMessage}
+                  isRevertingCheckpoint={isRevertingCheckpoint}
+                  onImageExpand={onExpandTimelineImage}
+                  markdownCwd={gitCwd ?? undefined}
+                  resolvedTheme={resolvedTheme}
+                  timestampFormat={timestampFormat}
+                  workspaceRoot={activeProject?.cwd ?? undefined}
+                />
+              )}
             </div>
 
             {/* scroll to bottom pill — shown when user has scrolled away from the bottom */}

@@ -949,11 +949,13 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       [WS_METHODS.previewStart]: ({ projectId, appId }) =>
         observeRpcEffect(
           WS_METHODS.previewStart,
-          previewManager.startApp(projectId, appId).pipe(
-            Effect.mapError(
-              (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+          previewManager
+            .startApp(projectId, appId)
+            .pipe(
+              Effect.mapError(
+                (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+              ),
             ),
-          ),
           { "rpc.aggregate": "preview" },
         ),
 

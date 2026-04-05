@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import ThreadSidebar from "./Sidebar";
 import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
 import { isElectron, isMobileWebView } from "../env";
+import { useMobileHeartbeat } from "../hooks/useMobileHeartbeat";
 
 const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
 const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
@@ -11,6 +12,8 @@ const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  // Keeps the mobile device's lastSeenAt alive so the desktop shows "Live now".
+  useMobileHeartbeat();
 
   useEffect(() => {
     const onMenuAction = window.desktopBridge?.onMenuAction;

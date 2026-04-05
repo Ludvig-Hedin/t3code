@@ -468,6 +468,25 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
       }),
     );
 
+    // Lightweight heartbeat called by the WKWebView web app every ~30 s.
+    // The only purpose is to update lastSeenAt so the desktop panel shows "Live now".
+    const heartbeatRoute = HttpRouter.add(
+      "POST",
+      "/api/mobile/heartbeat",
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const token = getBearerToken(request);
+        if (!token) {
+          return unauthorized("Missing device token.");
+        }
+        const device = yield* authorizeRequestDevice(token);
+        if (Option.isNone(device)) {
+          return unauthorized("Unknown or revoked device token.");
+        }
+        return HttpServerResponse.jsonUnsafe({ ok: true, device: device.value });
+      }),
+    );
+
     return Layer.mergeAll(
       pairRoute,
       snapshotRoute,
@@ -475,6 +494,7 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
       diffRoute,
       devicesRoute,
       revokeRoute,
+      heartbeatRoute,
     );
   }),
 );

@@ -13,6 +13,7 @@ import {
   CopyIcon,
   InfoIcon,
   LoaderCircleIcon,
+  Minimize2Icon,
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
@@ -26,6 +27,8 @@ export type ThreadToastData = {
   threadId?: ThreadId | null;
   tooltipStyle?: boolean;
   dismissAfterVisibleMs?: number;
+  /** When true, a Minimize button is shown that closes the toast without cancelling the action */
+  minimizable?: boolean;
 };
 
 const toastManager = Toast.createToastManager<ThreadToastData>();
@@ -342,17 +345,17 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
               />
               <Toast.Content
                 className={cn(
-                  "pointer-events-auto flex max-h-[80vh] flex-col gap-1.5 overflow-y-auto px-3.5 py-3 text-sm transition-opacity duration-250 data-expanded:opacity-100",
+                  "pointer-events-auto flex max-h-[80vh] flex-col gap-1 overflow-y-auto px-3 py-2 text-xs transition-opacity duration-250 data-expanded:opacity-100",
                   hideCollapsedContent &&
                     "not-data-expanded:pointer-events-none not-data-expanded:opacity-0",
                 )}
               >
-                {/* Top row: icon + title + copy button + close button */}
+                {/* Top row: icon + title + utility buttons */}
                 <div className="flex items-start gap-1.5">
-                  <div className="flex min-w-0 flex-1 gap-2">
+                  <div className="flex min-w-0 flex-1 gap-1.5">
                     {Icon && (
                       <div
-                        className="[&>svg]:h-lh [&>svg]:w-4 [&_svg]:pointer-events-none [&_svg]:shrink-0"
+                        className="[&>svg]:h-lh [&>svg]:w-3.5 [&_svg]:pointer-events-none [&_svg]:shrink-0"
                         data-slot="toast-icon"
                       >
                         <Icon className="in-data-[type=loading]:animate-spin in-data-[type=error]:text-destructive in-data-[type=info]:text-info in-data-[type=success]:text-success in-data-[type=warning]:text-warning in-data-[type=loading]:opacity-80" />
@@ -361,7 +364,7 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <div className="flex items-center justify-between gap-1">
                         <Toast.Title
-                          className="min-w-0 break-words font-medium"
+                          className="min-w-0 break-words font-medium leading-snug"
                           data-slot="toast-title"
                         />
                         {toast.type === "error" && typeof toast.description === "string" && (
@@ -379,19 +382,30 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
                       )}
                     </div>
                   </div>
-                  {/* Close button — always visible so the user can dismiss stuck/error toasts */}
-                  <Toast.Close
-                    className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
-                    title="Dismiss"
-                  >
-                    <XIcon className="size-3.5" />
-                  </Toast.Close>
+                  {/* Minimize (loading only) — closes toast without cancelling the action */}
+                  {toast.data?.minimizable && toast.type === "loading" && (
+                    <Toast.Close
+                      className="shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground opacity-50 transition-opacity hover:opacity-100"
+                      title="Minimize — action keeps running"
+                    >
+                      <Minimize2Icon className="size-3" />
+                    </Toast.Close>
+                  )}
+                  {/* Close / dismiss — for non-loading or non-minimizable toasts */}
+                  {!(toast.data?.minimizable && toast.type === "loading") && (
+                    <Toast.Close
+                      className="shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground opacity-50 transition-opacity hover:opacity-100"
+                      title="Dismiss"
+                    >
+                      <XIcon className="size-3" />
+                    </Toast.Close>
+                  )}
                 </div>
                 {/* Action button row */}
                 {toast.actionProps && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end pt-0.5">
                     <Toast.Action
-                      className={cn(buttonVariants({ size: "xs" }), "shrink-0")}
+                      className={cn(buttonVariants({ size: "xs" }), "h-6 shrink-0 text-xs")}
                       data-slot="toast-action"
                     >
                       {toast.actionProps.children}

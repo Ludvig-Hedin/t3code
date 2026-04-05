@@ -490,6 +490,17 @@ body[data-mobile-webview] {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/*
+ * The sidebar uses `position: fixed; inset-y: 0` on both desktop (sidebar-container)
+ * and mobile (Sheet with data-mobile="true"). Fixed elements ignore body padding, so
+ * we apply the safe-area insets directly to these containers.
+ */
+body[data-mobile-webview] [data-slot="sidebar-container"],
+body[data-mobile-webview] [data-slot="sidebar"][data-mobile="true"] {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* The Electron drag-region must not interfere with touch input on mobile */
 body[data-mobile-webview] .drag-region {
   -webkit-app-region: none;
