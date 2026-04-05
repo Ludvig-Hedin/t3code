@@ -83,6 +83,18 @@ import {
   SkillGenerateResult,
   SkillInfo,
 } from "./skills";
+import {
+  PreviewApp,
+  PreviewDetectAppsInput,
+  PreviewError,
+  PreviewEvent,
+  PreviewGetSessionsInput,
+  PreviewSession,
+  PreviewStartInput,
+  PreviewStopInput,
+  PreviewSubscribeInput,
+  PreviewUpdateAppInput,
+} from "./preview";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -137,6 +149,14 @@ export const WS_METHODS = {
   subscribeServerConfig: "subscribeServerConfig",
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeProviderRateLimits: "subscribeProviderRateLimits",
+
+  // Preview / dev-server methods
+  previewDetectApps: "preview.detectApps",
+  previewStart: "preview.start",
+  previewStop: "preview.stop",
+  previewGetSessions: "preview.getSessions",
+  previewUpdateApp: "preview.updateApp",
+  subscribePreviewEvents: "preview.subscribe",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -389,6 +409,43 @@ export const WsSkillsGenerateRpc = Rpc.make(WS_METHODS.skillsGenerate, {
   error: SkillError,
 });
 
+// --- Preview RPCs ---
+
+export const WsPreviewDetectAppsRpc = Rpc.make(WS_METHODS.previewDetectApps, {
+  payload: PreviewDetectAppsInput,
+  success: Schema.Array(PreviewApp),
+  error: PreviewError,
+});
+
+export const WsPreviewStartRpc = Rpc.make(WS_METHODS.previewStart, {
+  payload: PreviewStartInput,
+  success: PreviewSession,
+  error: PreviewError,
+});
+
+export const WsPreviewStopRpc = Rpc.make(WS_METHODS.previewStop, {
+  payload: PreviewStopInput,
+  error: PreviewError,
+});
+
+export const WsPreviewGetSessionsRpc = Rpc.make(WS_METHODS.previewGetSessions, {
+  payload: PreviewGetSessionsInput,
+  success: Schema.Array(PreviewSession),
+  error: PreviewError,
+});
+
+export const WsPreviewUpdateAppRpc = Rpc.make(WS_METHODS.previewUpdateApp, {
+  payload: PreviewUpdateAppInput,
+  success: PreviewApp,
+  error: PreviewError,
+});
+
+export const WsSubscribePreviewEventsRpc = Rpc.make(WS_METHODS.subscribePreviewEvents, {
+  payload: PreviewSubscribeInput,
+  success: PreviewEvent,
+  stream: true,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -431,4 +488,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsSkillsSaveRpc,
   WsSkillsDeleteRpc,
   WsSkillsGenerateRpc,
+  WsPreviewDetectAppsRpc,
+  WsPreviewStartRpc,
+  WsPreviewStopRpc,
+  WsPreviewGetSessionsRpc,
+  WsPreviewUpdateAppRpc,
+  WsSubscribePreviewEventsRpc,
 );
