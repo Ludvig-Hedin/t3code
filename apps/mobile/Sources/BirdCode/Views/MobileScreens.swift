@@ -217,7 +217,9 @@ struct MobileSidebarView: View {
           MobileEmptyStateCard(
             title: "No active threads",
             subtitle: store.pairedDevice == nil
-              ? "Bird Code is still syncing with the desktop session. If it stays empty, check Local Network access and confirm the desktop app is running."
+              ? (store.deviceToken == nil
+                ? "Bird Code is still syncing with the desktop session. If it stays empty, check Local Network access and confirm the desktop app is running."
+                : "Bird Code has a saved connection but it is not syncing yet. Open Settings and disconnect, then pair again.")
               : "Start a turn from the desktop or pair with a server that already has threads.",
             symbol: "bubble.left.and.bubble.right",
           )
@@ -654,6 +656,13 @@ struct MobileSettingsSheet: View {
             Text("The desktop QR already carries the hidden auth token. No extra token entry is needed.")
               .font(.callout)
               .foregroundStyle(MobileTheme.muted)
+
+            if store.deviceToken != nil {
+              Button("Disconnect and clear connection") {
+                store.clearSession()
+              }
+              .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.danger))
+            }
           }
         }
       }
@@ -1058,12 +1067,8 @@ private struct MobileConnectionSummaryCard: View {
           }
           Spacer(minLength: 12)
           MobileStatusPill(
-            text: store.pairedDevice == nil
-              ? (store.isRefreshing ? "Syncing" : "Connecting")
-              : (store.isRefreshing ? "Syncing" : "Connected"),
-            tint: store.pairedDevice == nil
-              ? MobileTheme.warning
-              : (store.isRefreshing ? MobileTheme.warning : MobileTheme.success),
+            text: connectionStateText,
+            tint: connectionStateTint,
           )
         }
 
@@ -1085,8 +1090,32 @@ private struct MobileConnectionSummaryCard: View {
             )
           }
         }
+
+        if store.deviceToken != nil {
+          Button("Disconnect") {
+            store.clearSession()
+          }
+          .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.danger))
+        }
       }
     }
+  }
+
+  private var connectionStateText: String {
+    if store.pairedDevice == nil {
+      if store.deviceToken == nil {
+        return "Not paired"
+      }
+      return store.isRefreshing ? "Syncing" : "Reconnecting"
+    }
+    return store.isRefreshing ? "Syncing" : "Connected"
+  }
+
+  private var connectionStateTint: Color {
+    if store.pairedDevice == nil {
+      return store.deviceToken == nil ? MobileTheme.muted : MobileTheme.warning
+    }
+    return store.isRefreshing ? MobileTheme.warning : MobileTheme.success
   }
 }
 

@@ -28,6 +28,32 @@ type DesktopMobileDevice = {
 
 const APP_PAIRING_KIND = "birdcode-pairing" as const;
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function resolveDesktopPairingUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const desktopPairingUrl = window.desktopBridge?.getPairingUrl?.();
+  if (typeof desktopPairingUrl !== "string") return null;
+
+  const trimmed = desktopPairingUrl.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (isLoopbackHost(parsed.hostname)) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 function buildPairingPayload(serverURL: string): PairingPayload {
   const desktopAuthToken = window.desktopBridge?.getDesktopAuthToken?.();
   return {
@@ -59,20 +85,9 @@ function buildPairingCode(payload: PairingPayload): string {
 }
 
 export function BirdCodeMobileCompanionPanel() {
-  const serverURL = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const desktopPairingUrl = window.desktopBridge?.getPairingUrl?.();
-    if (typeof desktopPairingUrl === "string" && desktopPairingUrl.length > 0) {
-      return desktopPairingUrl;
-    }
-    return window.location.origin;
-  }, []);
+  const serverURL = useMemo(() => resolveDesktopPairingUrl(), []);
   const pairingCode = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const desktopPairingCode = window.desktopBridge?.getPairingCode?.();
-    if (typeof desktopPairingCode === "string" && desktopPairingCode.length > 0) {
-      return desktopPairingCode;
-    }
+    if (!serverURL) return "";
     return buildPairingCode(buildPairingPayload(serverURL));
   }, [serverURL]);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -139,6 +154,15 @@ export function BirdCodeMobileCompanionPanel() {
   }, []);
 
   const handleCopy = async () => {
+    if (!pairingCode) {
+      toastManager.add({
+        title: "Pairing code unavailable",
+        description: "Open Bird Code in the desktop app to generate a reachable QR.",
+        type: "info",
+      });
+      return;
+    }
+
     if (typeof navigator === "undefined" || navigator.clipboard == null) {
       toastManager.add({
         title: "Copy unavailable",
@@ -174,11 +198,11 @@ export function BirdCodeMobileCompanionPanel() {
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Open this tab on the desktop, scan the QR from Bird Code on your phone, or copy the
           pairing code into another device. The QR now points at the desktop&apos;s pairable server
-          address, not localhost.
+          address.
         </p>
       </div>
 
-      <div className="grid gap-4 pb-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <div className="flex flex-col gap-4 pb-8">
         <Card>
           <CardHeader className="border-b">
             <CardTitle>Desktop pairing QR</CardTitle>
@@ -188,46 +212,55 @@ export function BirdCodeMobileCompanionPanel() {
             </CardDescription>
           </CardHeader>
           <CardPanel className="space-y-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-6">
-              <div className="flex min-w-0 flex-1 flex-col gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <SmartphoneIcon className="size-4 text-muted-foreground" />
-                  <span>Scan from another device</span>
-                </div>
-                <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                  Bird Code will read the QR, take the server URL and hidden desktop auth token from
-                  it, and then pair without asking you to hunt for anything.
-                </p>
-                <div className="rounded-lg border bg-background/72 p-2.5">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    Pairing code
-                  </div>
-                  <div className="mt-1 break-all font-mono text-[11px] text-foreground">
-                    {pairingCode}
-                  </div>
-                </div>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <SmartphoneIcon className="size-4 text-muted-foreground" />
+                <span>Scan from another device</span>
               </div>
-
-              <div
-                className={cn("flex items-center justify-center", isGenerating && "animate-pulse")}
-              >
-                {qrDataUrl ? (
-                  <img
-                    alt="Bird Code desktop pairing QR"
-                    className="h-[10.5rem] w-[10.5rem] rounded-lg border bg-background p-2 object-contain shadow-xs/5"
-                    src={qrDataUrl}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-3 text-center">
-                    <QrCodeIcon className="size-9 text-muted-foreground" />
-                    <div className="text-sm text-muted-foreground">Generating QR code…</div>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                Bird Code will read the QR, take the server URL and hidden desktop auth token from
+                it, and then pair without asking you to hunt for anything.
+              </p>
+              {serverURL ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div
+                    className={cn(
+                      "flex items-center justify-center",
+                      isGenerating && "animate-pulse",
+                    )}
+                  >
+                    {qrDataUrl ? (
+                      <img
+                        alt="Bird Code desktop pairing QR"
+                        className="h-[9.75rem] w-[9.75rem] rounded-xl border bg-background p-2 object-contain shadow-xs/5"
+                        src={qrDataUrl}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 text-center">
+                        <QrCodeIcon className="size-9 text-muted-foreground" />
+                        <div className="text-sm text-muted-foreground">Generating QR code…</div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                  <div className="w-full rounded-xl border bg-background/72 p-3">
+                    <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      Pairing code
+                    </div>
+                    <div className="mt-1 break-all font-mono text-[11px] text-foreground">
+                      {pairingCode}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-4 text-sm text-muted-foreground">
+                  Open Bird Code in the desktop app to generate a reachable pairing code. The
+                  browser fallback was disabled so it can&apos;t emit a localhost QR by mistake.
+                </div>
+              )}
             </div>
           </CardPanel>
           <CardFooter className="border-t">
-            <Button variant="outline" onClick={handleCopy}>
+            <Button variant="outline" disabled={!pairingCode} onClick={handleCopy}>
               <CopyIcon className="size-4" />
               Copy pairing code
             </Button>
