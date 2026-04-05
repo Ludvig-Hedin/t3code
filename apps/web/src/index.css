@@ -479,3 +479,18 @@ label:has(> select#reasoning-effort) select {
   -webkit-background-clip: text;
   animation: ultrathink-rainbow 10s linear infinite;
 }
+
+/* ─── Bird Code iOS WKWebView — safe area & layout overrides ─────────────── */
+/* body[data-mobile-webview] is set by main.tsx when isMobileWebView is true.  */
+
+body[data-mobile-webview] {
+  /* Respect iPhone notch / Dynamic Island at the top */
+  padding-top: env(safe-area-inset-top, 0px);
+  /* Respect home indicator at the bottom */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* The Electron drag-region must not interfere with touch input on mobile */
+body[data-mobile-webview] .drag-region {
+  -webkit-app-region: none;
+}
