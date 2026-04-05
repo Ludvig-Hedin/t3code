@@ -8,14 +8,15 @@
  * access to localhost ports.
  */
 import * as nodeHttp from "node:http";
-import { Effect, Layer, Option } from "effect";
-import {
-  HttpRouter,
-  HttpServerRequest,
-  HttpServerResponse,
-} from "effect/unstable/http";
+import { Data, Effect, Layer, Option } from "effect";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
 import { PreviewServerManager } from "./Services/PreviewServerManager";
+
+/** Tagged error for upstream proxy connection failures */
+class ProxyError extends Data.TaggedError("PreviewProxyError")<{
+  readonly cause?: unknown;
+}> {}
 
 /** Extract projectId, appId, and the remaining path from a /preview/:p/:a/* URL */
 function parsePreviewPath(pathname: string): {
@@ -77,12 +78,14 @@ const previewProxyHandler = Effect.gen(function* () {
   // Reconstruct the upstream path including query string
   const upstreamPath = rest + (url.search ?? "");
 
-  // Read the request body (returns empty ArrayBuffer for GET requests)
+  // Read the request body (returns empty ArrayBuffer for GET requests).
+  // Using Effect.catch (v4 API) to swallow any body-read errors gracefully.
   const bodyBuffer = yield* request.arrayBuffer.pipe(
-    Effect.catchAll(() => Effect.succeed(new ArrayBuffer(0))),
+    Effect.catch(() => Effect.succeed(new ArrayBuffer(0))),
   );
 
-  // Forward the request to the upstream dev server via node:http
+  // Forward the request to the upstream dev server via node:http.
+  // The error channel is typed as ProxyError so Effect.catch can handle it.
   const result = yield* Effect.tryPromise({
     try: () =>
       new Promise<{
@@ -118,13 +121,8 @@ const previewProxyHandler = Effect.gen(function* () {
               // Rewrite Location headers that reference the upstream port so
               // redirects stay within the Bird Code proxy namespace.
               if (responseHeaders["location"]) {
-                responseHeaders["location"] = responseHeaders[
-                  "location"
-                ].replace(
-                  new RegExp(
-                    `http://(?:127\\.0\\.0\\.1|localhost):${port}`,
-                    "g",
-                  ),
+                responseHeaders["location"] = responseHeaders["location"].replace(
+                  new RegExp(`http://(?:127\\.0\\.0\\.1|localhost):${port}`, "g"),
                   `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(appId)}`,
                 );
               }
@@ -148,9 +146,10 @@ const previewProxyHandler = Effect.gen(function* () {
 
         proxyReq.end();
       }),
-    catch: (e) => e as Error,
+    // Wrap as a tagged error class so Effect.catch can handle it
+    catch: (cause) => new ProxyError({ cause }),
   }).pipe(
-    Effect.catchAll(() =>
+    Effect.catch(() =>
       Effect.succeed({
         status: 502,
         headers: { "content-type": "application/json" },
