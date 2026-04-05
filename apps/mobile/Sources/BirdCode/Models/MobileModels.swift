@@ -82,6 +82,21 @@ struct MobileThreadSummary: Codable, Identifiable, Hashable {
   let updatedAt: Date
   let branch: String?
   let worktreePath: String?
+
+  enum CodingKeys: String, CodingKey {
+    case id = "threadId"
+    case projectId
+    case projectTitle
+    case title
+    case statusLabel
+    case subtitle
+    case latestMessageAt
+    case latestMessagePreview
+    case pendingApprovals
+    case updatedAt
+    case branch
+    case worktreePath
+  }
 }
 
 struct MobileThreadActivityPayload: Codable, Hashable {

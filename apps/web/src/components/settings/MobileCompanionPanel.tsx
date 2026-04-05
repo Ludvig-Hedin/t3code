@@ -130,7 +130,7 @@ export function BirdCodeMobileCompanionPanel() {
   };
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-6 px-4 py-5 sm:px-6 sm:py-6">
+    <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           Mobile devices
@@ -143,7 +143,7 @@ export function BirdCodeMobileCompanionPanel() {
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <div className="grid gap-4 pb-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <Card>
           <CardHeader className="border-b">
             <CardTitle>Desktop pairing QR</CardTitle>
@@ -163,7 +163,7 @@ export function BirdCodeMobileCompanionPanel() {
                   Bird Code will read the QR, take the server URL and hidden desktop auth token from
                   it, and then pair without asking you to hunt for anything.
                 </p>
-                <div className="rounded-2xl border bg-background/72 p-3">
+                <div className="rounded-xl border bg-background/72 p-3">
                   <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                     Pairing code
                   </div>
@@ -174,15 +174,12 @@ export function BirdCodeMobileCompanionPanel() {
               </div>
 
               <div
-                className={cn(
-                  "flex min-h-[18rem] min-w-[18rem] items-center justify-center rounded-[1.5rem] border bg-background p-4 shadow-xs/5",
-                  isGenerating && "animate-pulse",
-                )}
+                className={cn("flex items-center justify-center", isGenerating && "animate-pulse")}
               >
                 {qrDataUrl ? (
                   <img
                     alt="Bird Code desktop pairing QR"
-                    className="h-full w-full rounded-2xl object-contain"
+                    className="h-[12rem] w-[12rem] rounded-xl border bg-background p-2 object-contain shadow-xs/5"
                     src={qrDataUrl}
                   />
                 ) : (
