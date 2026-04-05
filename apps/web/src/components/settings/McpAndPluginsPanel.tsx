@@ -9,7 +9,7 @@ import {
   ServerIcon,
   Trash2Icon,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type McpServer,
   type McpServerInput,
@@ -19,7 +19,6 @@ import {
   PROVIDER_DISPLAY_NAMES,
 } from "@t3tools/contracts";
 
-import { cn } from "../../lib/utils";
 import { getWsRpcClient } from "../../wsRpcClient";
 import { useSettings, useUpdateSettings } from "../../hooks/useSettings";
 import { Button } from "../ui/button";
@@ -28,63 +27,46 @@ import { Switch } from "../ui/switch";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { toastManager } from "../ui/toast";
+import { SettingsPageContainer, SettingsRow, SettingsSection } from "./SettingsLayout";
 
-// ── Local helper components (mirrors SettingsPanels.tsx internals) ──────────
+// ── MCP provider buckets ──────────────────────────────────────────────────────
 
-function SettingsSection({
-  title,
-  icon,
-  headerAction,
-  children,
-}: {
-  title: string;
-  icon?: ReactNode;
-  headerAction?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {icon}
-          {title}
-        </h2>
-        {headerAction}
-      </div>
-      <div className="relative overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-xs/5 not-dark:bg-clip-padding before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]">
-        {children}
-      </div>
-    </section>
-  );
-}
+/**
+ * Providers that support MCP config management via RPC.
+ * Must be a strict subset of ProviderKind so that all RPC calls are type-safe.
+ */
+const MCP_RPC_PROVIDERS: readonly ProviderKind[] = ["codex", "claudeAgent"];
 
-function SettingsRow({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn("border-t border-border px-4 py-4 first:border-t-0 sm:px-5", className)}>
-      {children}
-    </div>
-  );
-}
-
-function SettingsPageContainer({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">{children}</div>
-    </div>
-  );
-}
+/**
+ * Providers to display in the MCP section but WITHOUT RPC support.
+ * These render a static "not yet supported" notice instead of a live server list.
+ * Kept as a plain string tuple so we never accidentally pass them to RPC methods.
+ */
+const MCP_DISPLAY_ONLY_PROVIDERS = ["gemini"] as const;
+type McpDisplayOnlyProvider = (typeof MCP_DISPLAY_ONLY_PROVIDERS)[number];
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-// Per-provider state for MCP servers list
+// Per-provider state for MCP servers list (RPC providers only)
 interface ProviderMcpState {
   servers: McpServer[];
   loading: boolean;
   // null means no error, string means an error message
   error: string | null;
-  // Whether this provider supports MCP (codex and gemini do not yet)
-  unsupported: boolean;
 }
+
+// ── Discriminated union for the inline add/edit form ─────────────────────────
+
+/**
+ * Three unambiguous states for the inline form:
+ * - "none"  → no form visible
+ * - "add"   → adding a new server
+ * - "edit"  → editing the server identified by `name`
+ *
+ * Previously this used `string | null | "add"` which conflates "no form" (null)
+ * with "add mode" ("add") and would misroute a server literally named "add".
+ */
+type EditState = { mode: "none" } | { mode: "add" } | { mode: "edit"; name: string };
 
 // Inline add/edit form state
 interface McpFormState {
@@ -103,7 +85,7 @@ const EMPTY_FORM: McpFormState = {
   url: "",
 };
 
-// ── MCP Provider Accordion ───────────────────────────────────────────────────
+// ── MCP Provider Accordion (RPC-backed) ──────────────────────────────────────
 
 function McpProviderSection({
   provider,
@@ -112,25 +94,27 @@ function McpProviderSection({
 }: {
   provider: ProviderKind;
   state: ProviderMcpState;
-  onRefresh: (provider: ProviderKind) => void;
+  onRefresh: (provider: ProviderKind) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  // editingName = null means "add mode", string means "edit mode for that server"
-  const [editingName, setEditingName] = useState<string | null | "add">(null);
+  const [editState, setEditState] = useState<EditState>({ mode: "none" });
   const [form, setForm] = useState<McpFormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const displayName = PROVIDER_DISPLAY_NAMES[provider];
 
+  // Unique prefix for input IDs to avoid clashes when multiple accordions are open
+  const idPrefix = `mcp-${provider}`;
+
   function openAddForm() {
-    setEditingName("add");
+    setEditState({ mode: "add" });
     setForm(EMPTY_FORM);
     setFormError(null);
   }
 
   function openEditForm(server: McpServer) {
-    setEditingName(server.name);
+    setEditState({ mode: "edit", name: server.name });
     setForm({
       name: server.name,
       transport: server.transport,
@@ -142,7 +126,7 @@ function McpProviderSection({
   }
 
   function cancelForm() {
-    setEditingName(null);
+    setEditState({ mode: "none" });
     setForm(EMPTY_FORM);
     setFormError(null);
   }
@@ -182,17 +166,18 @@ function McpProviderSection({
     setFormError(null);
     try {
       const client = getWsRpcClient();
-      if (editingName === "add") {
+      if (editState.mode === "add") {
         await client.mcp.addServer({ provider, name: form.name.trim(), server: serverInput });
-      } else if (editingName !== null) {
+      } else if (editState.mode === "edit") {
         await client.mcp.updateServer({
           provider,
-          name: editingName,
+          name: editState.name,
           patch: serverInput,
         });
       }
       cancelForm();
-      onRefresh(provider);
+      // Re-fetch to reflect the saved change
+      await onRefresh(provider);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setFormError(message);
@@ -206,7 +191,8 @@ function McpProviderSection({
     if (!window.confirm(`Delete MCP server "${serverName}"?`)) return;
     try {
       await getWsRpcClient().mcp.deleteServer({ provider, name: serverName });
-      onRefresh(provider);
+      // Re-fetch after deletion so the list stays in sync
+      await onRefresh(provider);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toastManager.add({
@@ -234,8 +220,7 @@ function McpProviderSection({
             )}
           </CollapsibleTrigger>
 
-          {/* Only show Add button for supported providers */}
-          {!state.unsupported && !state.loading && (
+          {!state.loading && (
             <Button
               size="xs"
               variant="outline"
@@ -253,78 +238,74 @@ function McpProviderSection({
 
         <CollapsiblePanel>
           <div className="mt-3 space-y-2">
-            {/* Unsupported provider notice */}
-            {state.unsupported && (
-              <p className="text-xs text-muted-foreground">
-                MCP configuration for this provider is not yet supported.
-              </p>
-            )}
-
             {/* Error state */}
-            {!state.unsupported && state.error && (
-              <p className="text-xs text-destructive">{state.error}</p>
-            )}
+            {state.error && <p className="text-xs text-destructive">{state.error}</p>}
 
             {/* Empty state */}
-            {!state.unsupported && !state.loading && !state.error && state.servers.length === 0 && (
+            {!state.loading && !state.error && state.servers.length === 0 && (
               <p className="text-xs text-muted-foreground">No MCP servers configured.</p>
             )}
 
             {/* Server list */}
-            {!state.unsupported &&
-              state.servers.map((server) => (
-                <div
-                  key={server.name}
-                  className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">{server.name}</span>
-                      {/* Transport badge */}
-                      <span className="rounded bg-muted px-1.5 text-xs text-muted-foreground">
-                        {server.transport}
-                      </span>
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {server.transport === "stdio"
-                        ? [server.command, ...(server.args ?? [])].filter(Boolean).join(" ")
-                        : server.url}
-                    </p>
+            {state.servers.map((server) => (
+              <div
+                key={server.name}
+                className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{server.name}</span>
+                    {/* Transport badge */}
+                    <span className="rounded bg-muted px-1.5 text-xs text-muted-foreground">
+                      {server.transport}
+                    </span>
                   </div>
-                  <div className="ml-2 flex shrink-0 items-center gap-1">
-                    <Button
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label={`Edit ${server.name}`}
-                      onClick={() => openEditForm(server)}
-                    >
-                      <EditIcon className="size-3.5" />
-                    </Button>
-                    <Button
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label={`Delete ${server.name}`}
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => void handleDelete(server.name)}
-                    >
-                      <Trash2Icon className="size-3.5" />
-                    </Button>
-                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {server.transport === "stdio"
+                      ? [server.command, ...(server.args ?? [])].filter(Boolean).join(" ")
+                      : server.url}
+                  </p>
                 </div>
-              ))}
+                <div className="ml-2 flex shrink-0 items-center gap-1">
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={`Edit ${server.name}`}
+                    onClick={() => openEditForm(server)}
+                  >
+                    <EditIcon className="size-3.5" />
+                  </Button>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={`Delete ${server.name}`}
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => void handleDelete(server.name)}
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
 
-            {/* Inline add/edit form */}
-            {!state.unsupported && editingName !== null && (
+            {/* Inline add/edit form — only visible when editState is not "none" */}
+            {editState.mode !== "none" && (
               <div className="space-y-3 rounded-lg border border-border bg-card px-3 py-3">
                 <p className="text-xs font-medium text-foreground">
-                  {editingName === "add" ? "Add MCP Server" : `Edit "${editingName}"`}
+                  {editState.mode === "add" ? "Add MCP Server" : `Edit "${editState.name}"`}
                 </p>
 
                 {/* Name field — only shown in add mode */}
-                {editingName === "add" && (
+                {editState.mode === "add" && (
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Name</label>
+                    <label
+                      htmlFor={`${idPrefix}-name-input`}
+                      className="text-xs text-muted-foreground"
+                    >
+                      Name
+                    </label>
                     <Input
+                      id={`${idPrefix}-name-input`}
                       size="sm"
                       placeholder="my-server"
                       value={form.name}
@@ -333,9 +314,10 @@ function McpProviderSection({
                   </div>
                 )}
 
-                {/* Transport selector */}
+                {/* Transport selector — label is descriptive but not linked via htmlFor
+                    because the trigger renders as <button>, not <input>. */}
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Transport</label>
+                  <span className="text-xs text-muted-foreground">Transport</span>
                   <Select
                     value={form.transport}
                     onValueChange={(v) =>
@@ -356,8 +338,14 @@ function McpProviderSection({
                 {form.transport === "stdio" && (
                   <>
                     <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Command</label>
+                      <label
+                        htmlFor={`${idPrefix}-command-input`}
+                        className="text-xs text-muted-foreground"
+                      >
+                        Command
+                      </label>
                       <Input
+                        id={`${idPrefix}-command-input`}
                         size="sm"
                         placeholder="npx"
                         value={form.command}
@@ -365,10 +353,14 @@ function McpProviderSection({
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">
+                      <label
+                        htmlFor={`${idPrefix}-args-input`}
+                        className="text-xs text-muted-foreground"
+                      >
                         Args <span className="text-muted-foreground/60">(comma-separated)</span>
                       </label>
                       <Input
+                        id={`${idPrefix}-args-input`}
                         size="sm"
                         placeholder="-y, @modelcontextprotocol/server-filesystem, /path"
                         value={form.args}
@@ -381,8 +373,14 @@ function McpProviderSection({
                 {/* sse fields */}
                 {form.transport === "sse" && (
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">URL</label>
+                    <label
+                      htmlFor={`${idPrefix}-url-input`}
+                      className="text-xs text-muted-foreground"
+                    >
+                      URL
+                    </label>
                     <Input
+                      id={`${idPrefix}-url-input`}
                       size="sm"
                       placeholder="http://localhost:3000/sse"
                       value={form.url}
@@ -404,6 +402,40 @@ function McpProviderSection({
                 </div>
               </div>
             )}
+          </div>
+        </CollapsiblePanel>
+      </Collapsible>
+    </SettingsRow>
+  );
+}
+
+// ── Display-only accordion for providers without MCP RPC support ──────────────
+
+function McpDisplayOnlyProviderSection({ provider }: { provider: McpDisplayOnlyProvider }) {
+  const [open, setOpen] = useState(false);
+  // Display name is not in PROVIDER_DISPLAY_NAMES because provider is not a ProviderKind,
+  // so we derive a readable label here directly.
+  const displayName = provider === "gemini" ? "Gemini" : provider;
+
+  return (
+    <SettingsRow>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="flex items-center justify-between">
+          <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-foreground">
+            {open ? (
+              <ChevronDownIcon className="size-4 text-muted-foreground" />
+            ) : (
+              <ChevronRightIcon className="size-4 text-muted-foreground" />
+            )}
+            {displayName}
+          </CollapsibleTrigger>
+        </div>
+
+        <CollapsiblePanel>
+          <div className="mt-3">
+            <p className="text-xs text-muted-foreground">
+              MCP configuration for {displayName} is not yet supported.
+            </p>
           </div>
         </CollapsiblePanel>
       </Collapsible>
@@ -462,7 +494,8 @@ function PluginsSection() {
     if (!window.confirm(`Remove plugin "${plugin.name}"?`)) return;
     try {
       await getWsRpcClient().plugins.remove({ location: plugin.location });
-      void fetchPlugins();
+      // Await re-fetch so errors are surfaced and the list stays in sync
+      await fetchPlugins();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toastManager.add({ type: "error", title: "Failed to remove plugin", description: message });
@@ -475,7 +508,8 @@ function PluginsSection() {
     try {
       await getWsRpcClient().plugins.install({ source: installSource.trim() });
       setInstallSource("");
-      void fetchPlugins();
+      // Await re-fetch so errors are surfaced and the list stays in sync
+      await fetchPlugins();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toastManager.add({ type: "error", title: "Failed to install plugin", description: message });
@@ -591,38 +625,16 @@ function PluginsSection() {
 
 // ── MCP Servers Section ──────────────────────────────────────────────────────
 
-// Providers in the order we want to display them.
-// Cast needed because some web-app types still derive ProviderKind from an older
-// two-provider subset; the contracts have three providers.
-const MCP_PROVIDERS = ["codex", "claudeAgent", "gemini"] as ProviderKind[];
-
-// Providers that don't yet support MCP config — show a notice instead of the list
-const UNSUPPORTED_MCP_PROVIDERS = new Set<string>(["codex", "gemini"]);
-
 function McpServersSection() {
   const [providerState, setProviderState] = useState<Record<ProviderKind, ProviderMcpState>>(() => {
     const initial: Partial<Record<ProviderKind, ProviderMcpState>> = {};
-    for (const p of MCP_PROVIDERS) {
-      initial[p] = {
-        servers: [],
-        loading: true,
-        error: null,
-        unsupported: UNSUPPORTED_MCP_PROVIDERS.has(p),
-      };
+    for (const p of MCP_RPC_PROVIDERS) {
+      initial[p] = { servers: [], loading: true, error: null };
     }
     return initial as Record<ProviderKind, ProviderMcpState>;
   });
 
   const fetchProvider = useCallback(async (provider: ProviderKind) => {
-    // Skip network call for unsupported providers — just mark as loaded
-    if (UNSUPPORTED_MCP_PROVIDERS.has(provider)) {
-      setProviderState((prev) => ({
-        ...prev,
-        [provider]: { ...prev[provider], loading: false, unsupported: true },
-      }));
-      return;
-    }
-
     setProviderState((prev) => ({
       ...prev,
       [provider]: { ...prev[provider], loading: true, error: null },
@@ -631,20 +643,20 @@ function McpServersSection() {
       const servers = await getWsRpcClient().mcp.listServers({ provider });
       setProviderState((prev) => ({
         ...prev,
-        [provider]: { servers: [...servers], loading: false, error: null, unsupported: false },
+        [provider]: { servers: [...servers], loading: false, error: null },
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setProviderState((prev) => ({
         ...prev,
-        [provider]: { servers: [], loading: false, error: message, unsupported: false },
+        [provider]: { servers: [], loading: false, error: message },
       }));
     }
   }, []);
 
   useEffect(() => {
-    // Fetch all providers in parallel on mount
-    void Promise.all(MCP_PROVIDERS.map(fetchProvider));
+    // Fetch all RPC-backed providers in parallel on mount
+    void Promise.all(MCP_RPC_PROVIDERS.map(fetchProvider));
   }, [fetchProvider]);
 
   return (
@@ -657,14 +669,19 @@ function McpServersSection() {
         </p>
       </SettingsRow>
 
-      {/* One accordion per provider */}
-      {MCP_PROVIDERS.map((provider) => (
+      {/* RPC-backed provider accordions */}
+      {MCP_RPC_PROVIDERS.map((provider) => (
         <McpProviderSection
           key={provider}
           provider={provider}
           state={providerState[provider]}
           onRefresh={fetchProvider}
         />
+      ))}
+
+      {/* Display-only provider accordions (no RPC support yet) */}
+      {MCP_DISPLAY_ONLY_PROVIDERS.map((provider) => (
+        <McpDisplayOnlyProviderSection key={provider} provider={provider} />
       ))}
     </SettingsSection>
   );
