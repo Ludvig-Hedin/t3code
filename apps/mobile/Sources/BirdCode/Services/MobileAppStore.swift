@@ -100,6 +100,7 @@ final class MobileAppStore {
 
   func restoreSessionIfPossible() async {
     if !serverURLInput.isEmpty, deviceToken != nil {
+      errorMessage = nil
       await refreshSnapshot()
       await refreshDevices()
       startPolling()
@@ -134,6 +135,7 @@ final class MobileAppStore {
         lastPairCode = response.device.pairCode
       }
       applySnapshotEnvelope(response)
+      errorMessage = nil
       saveConnectionPreferences()
       statusMessage = "Paired with \(response.device.deviceName)"
       await refreshDevices()
@@ -183,6 +185,7 @@ final class MobileAppStore {
       await refreshSnapshot()
       await refreshDevices()
       startPolling()
+      errorMessage = nil
       statusMessage = "Imported pairing code."
       return
     }
@@ -201,8 +204,14 @@ final class MobileAppStore {
     do {
       let response = try await apiClient.fetchSnapshot(baseURL: baseURL, deviceToken: deviceToken)
       applySnapshotEnvelope(response)
+      errorMessage = nil
       saveConnectionPreferences()
     } catch {
+      if shouldSuppressConnectedNetworkIssue(error) {
+        statusMessage = "Connected. Waiting for desktop."
+        errorMessage = nil
+        return
+      }
       errorMessage = error.localizedDescription
     }
   }
@@ -216,7 +225,13 @@ final class MobileAppStore {
       let response = try await apiClient.listDevices(baseURL: baseURL, deviceToken: deviceToken)
       devices = response.devices
       pairedDevice = response.device
+      errorMessage = nil
     } catch {
+      if shouldSuppressConnectedNetworkIssue(error) {
+        statusMessage = "Connected. Waiting for desktop."
+        errorMessage = nil
+        return
+      }
       errorMessage = error.localizedDescription
     }
   }
@@ -272,6 +287,7 @@ final class MobileAppStore {
         ),
       )
       draftMessage = ""
+      errorMessage = nil
       statusMessage = "Prompt sent to \(thread.title)"
       await refreshDevices()
     } catch {
@@ -312,6 +328,7 @@ final class MobileAppStore {
           paired: nil,
         ),
       )
+      errorMessage = nil
       statusMessage = "Approval updated."
       await refreshDevices()
     } catch {
@@ -369,6 +386,7 @@ final class MobileAppStore {
         selectedThreadID = nil
         stopPolling()
       }
+      errorMessage = nil
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -379,6 +397,8 @@ final class MobileAppStore {
   }
 
   func clearSession() {
+    errorMessage = nil
+    statusMessage = nil
     deviceToken = nil
     snapshot = nil
     threadSummaries = []
@@ -409,6 +429,20 @@ final class MobileAppStore {
     {
       selectedThreadID = envelope.threadSummaries.first?.id
     }
+  }
+
+  private func shouldSuppressConnectedNetworkIssue(_ error: Error) -> Bool {
+    guard hasPairedSession else {
+      return false
+    }
+
+    if let clientError = error as? MobileAPIClientError,
+      case .localNetworkUnavailable = clientError
+    {
+      return true
+    }
+
+    return false
   }
 
   private func startPolling() {

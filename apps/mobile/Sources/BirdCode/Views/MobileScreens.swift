@@ -11,8 +11,8 @@ enum MobileTheme {
   static let accent = Color(red: 0.18, green: 0.42, blue: 0.97)
   static let background = Color(uiColor: .systemBackground)
   static let backgroundAlt = Color(uiColor: .secondarySystemBackground)
-  static let card = Color(uiColor: .systemBackground)
-  static let border = Color(uiColor: .separator).opacity(0.18)
+  static let card = Color(uiColor: .secondarySystemBackground)
+  static let border = Color(uiColor: .separator).opacity(0.12)
   static let foreground = Color.primary
   static let muted = Color.secondary
   static let success = Color.green
@@ -81,8 +81,6 @@ struct MobilePairingView: View {
               TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .textContentType(.URL)
                 .font(.body)
                 .padding(.vertical, 12)
             }
@@ -481,7 +479,7 @@ struct MobileComposerCard: View {
     VStack(spacing: 0) {
       Divider()
       MobileCard(containerPadding: 12) {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
           HStack {
             MobileSectionHeading(
               title: "Composer",
@@ -495,12 +493,12 @@ struct MobileComposerCard: View {
           }
 
           TextEditor(text: $draftMessage)
-            .frame(minHeight: 96, alignment: .topLeading)
-            .padding(12)
+            .frame(minHeight: 88, alignment: .topLeading)
+            .padding(10)
             .background(MobileTheme.backgroundAlt)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
-              RoundedRectangle(cornerRadius: 18, style: .continuous)
+              RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(MobileTheme.border, lineWidth: 1),
             )
             .font(.body)
@@ -613,8 +611,6 @@ struct MobileSettingsSheet: View {
               TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .textContentType(.URL)
                 .font(.body)
                 .padding(.vertical, 12)
             }
@@ -862,9 +858,9 @@ private struct MobileThreadHeader: View {
         HStack(alignment: .top) {
           VStack(alignment: .leading, spacing: 6) {
             Text(thread.title)
-              .font(.system(.title2, weight: .semibold))
+              .font(.system(.title3, weight: .semibold))
             Text(summary?.subtitle ?? thread.projectId)
-              .font(.callout)
+              .font(.subheadline)
               .foregroundStyle(MobileTheme.muted)
           }
           Spacer(minLength: 12)
@@ -909,10 +905,10 @@ private struct MobileBrandHeader: View {
       MobileLogoMark()
       VStack(alignment: .leading, spacing: 8) {
         Text(title)
-          .font(.system(.largeTitle, weight: .bold))
+          .font(.system(.title, weight: .semibold))
           .foregroundStyle(MobileTheme.foreground)
         Text(subtitle)
-          .font(.callout)
+          .font(.subheadline)
           .foregroundStyle(MobileTheme.muted)
       }
     }
@@ -956,7 +952,7 @@ private struct MobileSectionHeading: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(title)
-        .font(.headline)
+        .font(.subheadline.weight(.semibold))
       Text(subtitle)
         .font(.caption)
         .foregroundStyle(MobileTheme.muted)
@@ -978,12 +974,12 @@ private struct MobileCard<Content: View>: View {
       .padding(containerPadding)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
-        RoundedRectangle(cornerRadius: 26, style: .continuous)
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
           .fill(MobileTheme.card)
-          .shadow(color: .black.opacity(0.05), radius: 16, x: 0, y: 6),
+          .shadow(color: .black.opacity(0.04), radius: 10, x: 0, y: 4),
       )
       .overlay(
-        RoundedRectangle(cornerRadius: 26, style: .continuous)
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
           .stroke(MobileTheme.border, lineWidth: 1),
       )
   }
@@ -1002,11 +998,12 @@ private struct MobileField<Content: View>: View {
         .tracking(0.8)
       content()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 2)
         .background(MobileTheme.backgroundAlt)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
+          RoundedRectangle(cornerRadius: 14, style: .continuous)
             .stroke(MobileTheme.border, lineWidth: 1),
         )
     }
@@ -1022,22 +1019,22 @@ private struct MobileBanner: View {
     HStack(alignment: .top, spacing: 12) {
       Circle()
         .fill(tint)
-        .frame(width: 10, height: 10)
+        .frame(width: 8, height: 8)
         .padding(.top, 5)
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
-          .font(.headline)
+          .font(.subheadline.weight(.semibold))
         Text(message)
           .font(.callout)
           .foregroundStyle(MobileTheme.muted)
       }
       Spacer(minLength: 0)
     }
-    .padding(14)
+    .padding(12)
     .background(tint.opacity(0.1))
-    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 20, style: .continuous)
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
         .stroke(tint.opacity(0.15), lineWidth: 1),
     )
   }
@@ -1048,28 +1045,30 @@ private struct MobileConnectionSummaryCard: View {
 
   var body: some View {
     MobileCard {
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 10) {
         HStack(alignment: .top) {
           VStack(alignment: .leading, spacing: 4) {
-            Text(store.pairedDevice?.deviceName ?? "Unpaired")
-              .font(.headline)
+            Text(store.pairedDevice?.deviceName ?? "Desktop session")
+              .font(.subheadline.weight(.semibold))
             Text(store.serverURLInput.isEmpty ? "No desktop server configured" : store.serverURLInput)
               .font(.caption)
               .foregroundStyle(MobileTheme.muted)
           }
           Spacer(minLength: 12)
           MobileStatusPill(
-            text: store.isRefreshing ? "Syncing" : "Connected",
-            tint: store.isRefreshing ? MobileTheme.warning : MobileTheme.success,
+            text: store.pairedDevice == nil ? "Not paired" : (store.isRefreshing ? "Syncing" : "Connected"),
+            tint: store.pairedDevice == nil
+              ? MobileTheme.muted
+              : (store.isRefreshing ? MobileTheme.warning : MobileTheme.success),
           )
         }
 
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .center, spacing: 14) {
           QRCodeView(
             payload: store.pairingShareCode() ?? store.serverURLInput,
             label: "Current Bird Code connection",
           )
-          .frame(width: 88, height: 88)
+          .frame(width: 76, height: 76)
 
           VStack(alignment: .leading, spacing: 8) {
             MobileMetaRow(
@@ -1094,11 +1093,11 @@ private struct MobileThreadSummaryCard: View {
 
   var body: some View {
     Button(action: onTap) {
-      VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: 9) {
         HStack(alignment: .top) {
           VStack(alignment: .leading, spacing: 4) {
             Text(summary.title)
-              .font(.headline)
+              .font(.subheadline.weight(.semibold))
               .foregroundStyle(MobileTheme.foreground)
               .multilineTextAlignment(.leading)
             Text(summary.subtitle)
@@ -1130,14 +1129,14 @@ private struct MobileThreadSummaryCard: View {
           }
         }
       }
-      .padding(14)
+      .padding(12)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(isSelected ? MobileTheme.accent.opacity(0.1) : MobileTheme.card)
+      .background(isSelected ? MobileTheme.accent.opacity(0.08) : MobileTheme.card)
       .overlay(
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-          .stroke(isSelected ? MobileTheme.accent.opacity(0.25) : MobileTheme.border, lineWidth: 1),
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .stroke(isSelected ? MobileTheme.accent.opacity(0.2) : MobileTheme.border, lineWidth: 1),
       )
-      .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
     .buttonStyle(.plain)
   }
@@ -1204,12 +1203,12 @@ private struct MobileMessageBubble: View {
         .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
         .textSelection(.enabled)
     }
-    .padding(14)
+    .padding(12)
     .frame(maxWidth: 320, alignment: bubbleFrameAlignment)
     .background(backgroundTint)
-    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 22, style: .continuous)
+      RoundedRectangle(cornerRadius: 18, style: .continuous)
         .stroke(badgeTint.opacity(0.2), lineWidth: 1),
     )
   }
@@ -1266,7 +1265,7 @@ private struct MobileActivityRow: View {
     HStack(alignment: .top, spacing: 12) {
       Circle()
         .fill(toneColor)
-        .frame(width: 10, height: 10)
+        .frame(width: 8, height: 8)
         .padding(.top, 6)
       VStack(alignment: .leading, spacing: 4) {
         HStack {

@@ -41,6 +41,7 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 - If you manually type a server URL, only then do you need the `Advanced` fields.
 - The pairing code is now a shareable payload, not a raw `localhost` URL, so Bird Code can reconnect without a manual token entry step.
 - On the first connection, iPhone will still prompt for Local Network access. Allow it so Bird Code can reach the desktop over your LAN.
+- Bird Code suppresses stale local-network warnings after a successful pair so the UI does not show a green connection state and a red connection failure at the same time.
 - The desktop settings panel is scrollable and the QR card is intentionally compact so the pairing controls stay usable on smaller screens.
 - The Bird Code logo is loaded from the bundled artwork derived from `assets/new/logo-dark.svg`.
 - The app icon now comes from `apps/mobile/Resources/Assets.xcassets/AppIcon.appiconset`.
