@@ -24,7 +24,9 @@ import { Schema } from "effect";
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
+// 85vw keeps the sidebar from spanning the full screen so the backdrop is
+// visible and tappable (clicking it closes the sheet via base-ui Dialog).
+const SIDEBAR_WIDTH_MOBILE = "85vw";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 

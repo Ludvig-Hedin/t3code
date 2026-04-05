@@ -505,3 +505,23 @@ body[data-mobile-webview] [data-slot="sidebar"][data-mobile="true"] {
 body[data-mobile-webview] .drag-region {
   -webkit-app-region: none;
 }
+
+/*
+ * The BranchToolbar sits at the very bottom of the chat layout inside an
+ * `h-dvh overflow-hidden` container. On iPhones, `dvh` includes the safe-area
+ * zone, so the toolbar content would sit behind the home indicator.
+ * Override pb-3 so that bottom padding is whichever is larger: the normal
+ * 0.75 rem gutter OR the home indicator safe-area inset.
+ */
+body[data-mobile-webview] [data-branch-toolbar="true"] {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+/*
+ * When there is no active project the BranchToolbar is not rendered; in that
+ * case the composer wrapper (`data-chat-composer-form`) is the last element.
+ * Give it bottom clearance too so the send button row is never clipped.
+ */
+body[data-mobile-webview] [data-chat-composer-form="true"] {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

@@ -280,6 +280,109 @@ async function fetchClaudeRateLimits(): Promise<ProviderRateLimitEntry | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Gemini  (reads ~/.gemini/oauth_creds.json)
+// ---------------------------------------------------------------------------
+
+interface GeminiOAuthCreds {
+  access_token?: string;
+  refresh_token?: string;
+  expiry_date?: number; // ms since epoch
+}
+
+interface GeminiLoadCodeAssistResponse {
+  cloudaicompanionProject?: string;
+  currentTier?: { id?: string; name?: string };
+}
+
+interface GeminiQuotaBucket {
+  modelId: string;
+  remainingFraction: number; // 0.0–1.0
+  resetTime: string; // ISO-8601
+  tokenType?: string;
+}
+
+interface GeminiQuotaResponse {
+  buckets?: GeminiQuotaBucket[];
+}
+
+/** Best bucket per model: lowest remainingFraction (i.e. most used). */
+function pickBestBucket(buckets: GeminiQuotaBucket[]): Map<string, GeminiQuotaBucket> {
+  const map = new Map<string, GeminiQuotaBucket>();
+  for (const b of buckets) {
+    const existing = map.get(b.modelId);
+    if (!existing || b.remainingFraction < existing.remainingFraction) {
+      map.set(b.modelId, b);
+    }
+  }
+  return map;
+}
+
+/** Display label for a Gemini modelId. */
+function geminiModelLabel(modelId: string): string {
+  if (modelId.includes("flash-lite") || modelId.includes("flash_lite")) return "Flash Lite";
+  if (modelId.includes("flash")) return "Flash";
+  if (modelId.includes("pro")) return "Pro";
+  return modelId;
+}
+
+async function fetchGeminiRateLimits(): Promise<ProviderRateLimitEntry | null> {
+  try {
+    const credsPath = join(homedir(), ".gemini", "oauth_creds.json");
+    const creds = JSON.parse(readFileSync(credsPath, "utf-8")) as GeminiOAuthCreds;
+    const accessToken = creds.access_token;
+    if (!accessToken) return null;
+
+    const authHeader = {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    };
+
+    // Step 1: get the managed project ID (needed for quota endpoint)
+    let projectId = "";
+    try {
+      const loadRes = await fetch("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist", {
+        method: "POST",
+        headers: authHeader,
+        body: "{}",
+      });
+      if (loadRes.ok) {
+        const loadData = (await loadRes.json()) as GeminiLoadCodeAssistResponse;
+        projectId = loadData.cloudaicompanionProject ?? "";
+      }
+    } catch {
+      /* non-fatal */
+    }
+
+    // Step 2: fetch per-model quota buckets
+    const quotaRes = await fetch(
+      "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota",
+      { method: "POST", headers: authHeader, body: JSON.stringify({ project: projectId }) },
+    );
+    if (!quotaRes.ok) return null;
+
+    const quotaData = (await quotaRes.json()) as GeminiQuotaResponse;
+    const buckets = quotaData.buckets ?? [];
+    if (buckets.length === 0) return null;
+
+    // One window per model (lowest remaining fraction = worst case)
+    const best = pickBestBucket(buckets);
+    const windows: RateLimitWindow[] = Array.from(best.values()).map((b) => ({
+      id: b.modelId,
+      label: geminiModelLabel(b.modelId),
+      usedPercent: (1 - b.remainingFraction) * 100,
+      resetsAt: isoToUnix(b.resetTime),
+    }));
+
+    if (windows.length === 0) return null;
+
+    const rateLimits: FetchedRateLimits = { _source: "api", windows };
+    return { provider: "gemini", rateLimits, updatedAt: new Date().toISOString() };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -289,13 +392,15 @@ async function fetchClaudeRateLimits(): Promise<ProviderRateLimitEntry | null> {
  * Errors are swallowed per-provider — absent credentials simply yield null.
  */
 export async function fetchAllRateLimits(): Promise<ProviderRateLimitEntry[]> {
-  const [codex, claude] = await Promise.allSettled([
+  const [codex, claude, gemini] = await Promise.allSettled([
     fetchCodexRateLimits(),
     fetchClaudeRateLimits(),
+    fetchGeminiRateLimits(),
   ]);
 
   const results: ProviderRateLimitEntry[] = [];
   if (codex.status === "fulfilled" && codex.value) results.push(codex.value);
   if (claude.status === "fulfilled" && claude.value) results.push(claude.value);
+  if (gemini.status === "fulfilled" && gemini.value) results.push(gemini.value);
   return results;
 }

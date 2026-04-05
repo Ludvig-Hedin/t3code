@@ -353,7 +353,12 @@ export const TraitsPicker = memo(function TraitsPicker({
 
   // Mirror the null-check in TraitsMenuContent — don't render the trigger button at all
   // when the model has no configurable traits (e.g. Gemini models with no effort levels).
-  if (effort === null && thinkingEnabled === null && contextWindowOptions.length <= 1 && !caps.supportsFastMode) {
+  if (
+    effort === null &&
+    thinkingEnabled === null &&
+    contextWindowOptions.length <= 1 &&
+    !caps.supportsFastMode
+  ) {
     return null;
   }
 

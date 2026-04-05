@@ -94,33 +94,38 @@ export const ChatHeader = memo(function ChatHeader({
         )}
       </div>
       <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
-        {activeProjectScripts && (
-          <ProjectScriptsControl
-            scripts={activeProjectScripts}
-            keybindings={keybindings}
-            projectCwd={activeProjectCwd}
-            preferredScriptId={preferredScriptId}
-            onRunScript={onRunProjectScript}
-            onAddScript={onAddProjectScript}
-            onUpdateScript={onUpdateProjectScript}
-            onDeleteScript={onDeleteProjectScript}
-          />
-        )}
-        {activeProjectName && (
-          <OpenInPicker
-            keybindings={keybindings}
-            availableEditors={availableEditors}
-            openInCwd={openInCwd}
-          />
-        )}
-        {activeProjectName && <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />}
-        {activeProjectName && (
-          <CodeReviewControl
-            gitCwd={gitCwd}
-            activeThreadId={activeThreadId}
-            isGitRepo={isGitRepo}
-          />
-        )}
+        {/* Secondary controls — hidden on mobile to avoid header overflow, visible md+ */}
+        <div className="hidden md:contents">
+          {activeProjectScripts && (
+            <ProjectScriptsControl
+              scripts={activeProjectScripts}
+              keybindings={keybindings}
+              projectCwd={activeProjectCwd}
+              preferredScriptId={preferredScriptId}
+              onRunScript={onRunProjectScript}
+              onAddScript={onAddProjectScript}
+              onUpdateScript={onUpdateProjectScript}
+              onDeleteScript={onDeleteProjectScript}
+            />
+          )}
+          {activeProjectName && (
+            <OpenInPicker
+              keybindings={keybindings}
+              availableEditors={availableEditors}
+              openInCwd={openInCwd}
+            />
+          )}
+          {activeProjectName && (
+            <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />
+          )}
+          {activeProjectName && (
+            <CodeReviewControl
+              gitCwd={gitCwd}
+              activeThreadId={activeThreadId}
+              isGitRepo={isGitRepo}
+            />
+          )}
+        </div>
         <Tooltip>
           <TooltipTrigger
             render={

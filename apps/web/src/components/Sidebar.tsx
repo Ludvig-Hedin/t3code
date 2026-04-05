@@ -13,6 +13,7 @@ import {
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
+  ZapIcon,
 } from "lucide-react";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { autoAnimate } from "@formkit/auto-animate";
@@ -789,7 +790,7 @@ export default function Sidebar() {
   const searchOpen = useSearchModalStore((s) => s.open);
   const setSearchOpen = useSearchModalStore((s) => s.setOpen);
   // Sidebar collapse state — toggled by button and Cmd+B shortcut
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const selectedThreadIds = useThreadSelectionStore((s) => s.selectedThreadIds);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
@@ -2060,8 +2061,9 @@ export default function Sidebar() {
   }, []);
 
   // Icon-only button style matching new thread / search sidebar buttons
+  // On mobile the buttons are slightly larger for better touch targets
   const sidebarIconButtonClass =
-    "flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground";
+    "flex shrink-0 items-center justify-center rounded-md p-2 md:p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground";
 
   // The toggle sidebar button — same icon size as new-thread/search buttons
   const toggleSidebarButton = (
@@ -2074,7 +2076,8 @@ export default function Sidebar() {
             className={sidebarIconButtonClass}
             onClick={toggleSidebar}
           >
-            <PanelLeftIcon className="size-3.5" />
+            {/* Slightly larger icon on mobile for easier tapping */}
+            <PanelLeftIcon className="size-5 md:size-3.5" />
           </button>
         }
       />
@@ -2086,7 +2089,12 @@ export default function Sidebar() {
 
   const wordmark = (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <SidebarTrigger className="shrink-0 md:hidden" />
+      {/*
+       * SidebarTrigger (shows PanelLeftCloseIcon when open) — rendered only on
+       * regular mobile web. In isMobileWebView the `toggleSidebarButton` above
+       * already covers sidebar toggling, so we skip this to avoid two buttons.
+       */}
+      {!isMobileWebView && <SidebarTrigger className="shrink-0 md:hidden" />}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -2139,13 +2147,19 @@ export default function Sidebar() {
           {projects.length > 0 && defaultProjectId && (
             <div className="px-2 py-1">
               {/* Creates a draft thread in the default project and navigates to it,
-                  where the real composer + prompt cards are shown for empty threads. */}
+                  where the real composer + prompt cards are shown for empty threads.
+                  On mobile the sidebar closes immediately so the user sees the new thread. */}
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-                onClick={() => void handleNewThread(defaultProjectId!)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-2 md:py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                onClick={() => {
+                  void handleNewThread(defaultProjectId!);
+                  // Close the mobile sheet so the new thread is immediately visible
+                  if (isMobile) setOpenMobile(false);
+                }}
               >
-                <SquarePenIcon className="size-3.5" />
+                {/* Larger icon on mobile for better touch targets */}
+                <SquarePenIcon className="size-5 md:size-3.5 shrink-0" />
                 <span className="flex-1 text-left">New thread</span>
                 {newThreadShortcutLabel && (
                   <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
@@ -2156,10 +2170,11 @@ export default function Sidebar() {
               {/* Search button — opens the search modal (also triggered by Cmd+K) */}
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-2 md:py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
                 onClick={() => setSearchOpen(true)}
               >
-                <SearchIcon className="size-3.5" />
+                {/* Larger icon on mobile for better touch targets */}
+                <SearchIcon className="size-5 md:size-3.5 shrink-0" />
                 <span className="flex-1 text-left">Search</span>
                 <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
                   {isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"}
@@ -2333,6 +2348,16 @@ export default function Sidebar() {
           <SidebarFooter className="p-2">
             <SidebarUpdatePill />
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  onClick={() => void navigate({ to: "/automations" })}
+                >
+                  <ZapIcon className="size-3.5" />
+                  <span className="text-xs">Automations</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="sm"

@@ -19,9 +19,12 @@ import { useShallow } from "zustand/react/shallow";
 import { useQueries } from "@tanstack/react-query";
 import { useStore } from "../../store";
 import { projectSearchEntriesQueryOptions } from "../../lib/projectReactQuery";
+import { openInPreferredEditor } from "../../editorPreferences";
+import { readNativeApi } from "../../nativeApi";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { cn } from "../../lib/utils";
 import { CommandDialog, CommandDialogPopup, CommandFooter, CommandShortcut } from "../ui/command";
+import { toastManager } from "../ui/toast";
 import { ProjectId } from "@t3tools/contracts";
 import type { Project, SidebarThreadSummary } from "../../types";
 
@@ -389,27 +392,33 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
           void navigate({ to: "/" });
         }
       } else {
-        // File result — use the linked thread if available; otherwise fall back to
-        // the project's most recent thread so the user lands somewhere useful
-        if (result.threadId) {
-          void navigate({ to: "/$threadId", params: { threadId: result.threadId } });
-        } else {
-          const recentThread = Object.values(sidebarThreadsById)
-            .filter((t) => t.projectId === result.projectId && !t.archivedAt)
-            .toSorted((a, b) => {
-              const ta = a.latestUserMessageAt ?? a.createdAt;
-              const tb = b.latestUserMessageAt ?? b.createdAt;
-              return tb.localeCompare(ta);
-            })[0];
-          if (recentThread) {
-            void navigate({ to: "/$threadId", params: { threadId: recentThread.id } });
-          } else {
-            void navigate({ to: "/" });
+        // File result — open in the user's preferred code editor.
+        // Build the absolute path from the project's cwd + the relative file path.
+        const project = projectsById.get(ProjectId.makeUnsafe(result.projectId));
+        const cwd = project?.cwd ?? "";
+        const absolutePath = cwd ? `${cwd.replace(/\/$/, "")}/${result.subtitle}` : result.subtitle;
+
+        const api = readNativeApi();
+        if (!api) return;
+
+        void openInPreferredEditor(api, absolutePath).catch(async (editorErr: unknown) => {
+          // No preferred editor configured — fall back to OS default (opens Finder/Explorer)
+          try {
+            await api.shell.openExternal(`file://${absolutePath}`);
+          } catch {
+            toastManager.add({
+              type: "error",
+              title: "Could not open file",
+              description:
+                editorErr instanceof Error
+                  ? editorErr.message
+                  : "No editor or file manager available.",
+            });
           }
-        }
+        });
       }
     },
-    [navigate, onOpenChange, sidebarThreadsById],
+    [navigate, onOpenChange, sidebarThreadsById, projectsById],
   );
 
   // ── Keyboard navigation ───────────────────────────────────────────

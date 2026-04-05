@@ -250,10 +250,13 @@ export const GeminiAdapterLive = Layer.effect(
           runProcess(
             "gemini",
             [
-              "-p", prompt,
-              "--model", model,
+              "-p",
+              prompt,
+              "--model",
+              model,
               // Use text format: simpler to parse, avoids JSON schema drift between CLI versions
-              "--output-format", "text",
+              "--output-format",
+              "text",
               // Auto-approve all tool actions — without this the CLI hangs waiting for
               // interactive approval that can never arrive (stdin is closed by processRunner)
               "--yolo",

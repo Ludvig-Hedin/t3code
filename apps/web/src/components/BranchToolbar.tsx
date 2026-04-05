@@ -119,7 +119,11 @@ export default function BranchToolbar({
   if (!activeThreadId || !activeProject) return null;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pb-3 pt-1">
+    // data-branch-toolbar: targeted by CSS for iOS safe-area-inset-bottom clearance
+    <div
+      data-branch-toolbar="true"
+      className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pb-3 pt-1"
+    >
       <div className="flex items-center gap-0.5">
         {/* Env-mode selector (Local / Worktree) — only relevant when in a git repo */}
         {isGitRepo && (
