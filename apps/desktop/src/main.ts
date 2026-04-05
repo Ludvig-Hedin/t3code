@@ -64,6 +64,7 @@ const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
 const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
 const GET_DESKTOP_AUTH_TOKEN_CHANNEL = "desktop:get-desktop-auth-token";
 const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
+const REVOKE_MOBILE_DEVICE_CHANNEL = "desktop:revoke-mobile-device";
 const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "t3";
@@ -294,7 +295,9 @@ function readDesktopMobileDevices(): DesktopMobileDevicesResult | null {
       const raw = FS.readFileSync(registryPath, "utf8");
       const parsed = JSON.parse(raw) as { devices?: DesktopMobileDevice[] };
       const result: DesktopMobileDevicesResult = {
-        devices: Array.isArray(parsed.devices) ? parsed.devices : [],
+        devices: Array.isArray(parsed.devices)
+          ? parsed.devices.filter((device) => device.revokedAt === null)
+          : [],
       };
       if (result.devices.length > 0) {
         return result;
@@ -305,6 +308,43 @@ function readDesktopMobileDevices(): DesktopMobileDevicesResult | null {
     }
   }
   return fallback ?? { devices: [] };
+}
+
+async function revokeDesktopMobileDevice(
+  deviceId: string,
+): Promise<DesktopMobileDevicesResult | null> {
+  let targetUrl: URL;
+  try {
+    targetUrl = new URL(backendWsUrl);
+  } catch {
+    return null;
+  }
+  targetUrl.protocol = "http:";
+  targetUrl.pathname = "/api/mobile/devices/revoke";
+  targetUrl.search = "";
+  try {
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${backendAuthToken}`,
+      },
+      body: JSON.stringify({ deviceId }),
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json().catch(() => null)) as DesktopMobileDevicesResult | null;
+    if (!data || !Array.isArray(data.devices)) {
+      return null;
+    }
+    return {
+      devices: data.devices.filter((device) => device.revokedAt === null),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function writeDesktopStreamChunk(
@@ -1299,6 +1339,18 @@ function registerIpcHandlers(): void {
   ipcMain.removeAllListeners(GET_MOBILE_DEVICES_CHANNEL);
   ipcMain.on(GET_MOBILE_DEVICES_CHANNEL, (event) => {
     event.returnValue = readDesktopMobileDevices();
+  });
+
+  ipcMain.removeHandler(REVOKE_MOBILE_DEVICE_CHANNEL);
+  ipcMain.handle(REVOKE_MOBILE_DEVICE_CHANNEL, async (_event, input: unknown) => {
+    if (typeof input !== "object" || input === null) {
+      return null;
+    }
+    const deviceId = (input as { deviceId?: unknown }).deviceId;
+    if (typeof deviceId !== "string" || !deviceId.trim()) {
+      return null;
+    }
+    return revokeDesktopMobileDevice(deviceId.trim());
   });
 
   ipcMain.removeHandler(PICK_FOLDER_CHANNEL);

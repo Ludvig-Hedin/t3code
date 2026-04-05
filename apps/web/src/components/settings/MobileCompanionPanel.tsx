@@ -2,7 +2,7 @@
 
 import { CopyIcon, QrCodeIcon, SmartphoneIcon } from "lucide-react";
 import QRCode from "qrcode";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
 import { Card, CardFooter, CardHeader, CardPanel, CardTitle, CardDescription } from "../ui/card";
@@ -93,6 +93,15 @@ export function BirdCodeMobileCompanionPanel() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
   const [pairedDevices, setPairedDevices] = useState<DesktopMobileDevice[]>([]);
+  const [disconnectingDeviceId, setDisconnectingDeviceId] = useState<string | null>(null);
+
+  const refreshDevices = useCallback(() => {
+    const result = window.desktopBridge?.getMobileDevices?.();
+    if (result == null) {
+      return;
+    }
+    setPairedDevices(result.devices ?? []);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,24 +143,45 @@ export function BirdCodeMobileCompanionPanel() {
   }, [pairingCode, serverURL]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadDevices = () => {
-      const result = window.desktopBridge?.getMobileDevices?.();
-      if (cancelled || result == null) {
-        return;
-      }
-      setPairedDevices(result.devices ?? []);
-    };
-
-    loadDevices();
-    const interval = window.setInterval(loadDevices, 4_000);
+    refreshDevices();
+    const interval = window.setInterval(refreshDevices, 4_000);
 
     return () => {
-      cancelled = true;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [refreshDevices]);
+
+  const handleDisconnect = async (device: DesktopMobileDevice) => {
+    const confirmed = await window.desktopBridge?.confirm?.(
+      `Disconnect ${device.deviceName} from Bird Code?`,
+    );
+    if (!confirmed) return;
+
+    setDisconnectingDeviceId(device.deviceId);
+    try {
+      const result = await window.desktopBridge?.revokeMobileDevice?.({
+        deviceId: device.deviceId,
+      });
+      if (result?.devices) {
+        setPairedDevices(result.devices);
+      } else {
+        refreshDevices();
+      }
+      toastManager.add({
+        title: "Device disconnected",
+        description: `${device.deviceName} is no longer paired with this desktop.`,
+        type: "success",
+      });
+    } catch {
+      toastManager.add({
+        title: "Disconnect failed",
+        description: "Try again from the desktop app.",
+        type: "error",
+      });
+    } finally {
+      setDisconnectingDeviceId(null);
+    }
+  };
 
   const handleCopy = async () => {
     if (!pairingCode) {
@@ -197,29 +227,27 @@ export function BirdCodeMobileCompanionPanel() {
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Pair Bird Code</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Open this tab on the desktop, scan the QR from Bird Code on your phone, or copy the
-          pairing code into another device. The QR now points at the desktop&apos;s pairable server
-          address.
+          pairing code into another device. The code always points at a reachable desktop address.
         </p>
       </div>
 
       <div className="flex flex-col gap-4 pb-8">
         <Card>
           <CardHeader className="border-b">
-            <CardTitle>Desktop pairing QR</CardTitle>
+            <CardTitle>Pair a phone</CardTitle>
             <CardDescription>
-              This QR points Bird Code at the desktop server running in this window and includes the
-              hidden pairing token automatically.
+              Scan this QR from Bird Code on iPhone or paste the pairing code into another device.
             </CardDescription>
           </CardHeader>
           <CardPanel className="space-y-4">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <SmartphoneIcon className="size-4 text-muted-foreground" />
-                <span>Scan from another device</span>
+                <span>Scan or paste</span>
               </div>
               <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Bird Code will read the QR, take the server URL and hidden desktop auth token from
-                it, and then pair without asking you to hunt for anything.
+                Bird Code will read the QR and connect without making you hunt for a server URL or
+                token.
               </p>
               {serverURL ? (
                 <div className="flex flex-col items-center gap-4">
@@ -269,9 +297,9 @@ export function BirdCodeMobileCompanionPanel() {
 
         <Card>
           <CardHeader className="border-b">
-            <CardTitle>Paired devices</CardTitle>
+            <CardTitle>Connected phones</CardTitle>
             <CardDescription>
-              Bird Code updates this list automatically when a phone pairs with the desktop.
+              Disconnect any phone you no longer want connected to this desktop.
             </CardDescription>
           </CardHeader>
           <CardPanel className="space-y-4">
@@ -302,11 +330,21 @@ export function BirdCodeMobileCompanionPanel() {
                             timeStyle: "short",
                           })}
                         </div>
-                        {device.revokedAt ? (
-                          <div className="mt-1 text-xs text-destructive">Revoked</div>
-                        ) : (
-                          <div className="mt-1 text-xs text-success">Paired</div>
-                        )}
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <div className="text-xs text-success">Paired</div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={disconnectingDeviceId === device.deviceId}
+                            onClick={() => {
+                              void handleDisconnect(device);
+                            }}
+                          >
+                            {disconnectingDeviceId === device.deviceId
+                              ? "Disconnecting…"
+                              : "Disconnect"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -314,59 +352,15 @@ export function BirdCodeMobileCompanionPanel() {
               </div>
             ) : (
               <div className="rounded-2xl border bg-muted/30 p-4">
-                <div className="text-sm font-medium text-foreground">No paired devices yet</div>
+                <div className="text-sm font-medium text-foreground">No connected devices yet</div>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  Pair Bird Code on iPhone, then come back here to see it listed.
+                  Pair Bird Code on iPhone, then come back here to manage the connection.
                 </p>
               </div>
             )}
           </CardPanel>
         </Card>
-
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle>How it works</CardTitle>
-            <CardDescription>Keep the flow simple and predictable.</CardDescription>
-          </CardHeader>
-          <CardPanel className="space-y-4">
-            <div className="space-y-3">
-              <Step number="1" title="Open Bird Code on iPhone">
-                Go to Settings and open the Pair tab.
-              </Step>
-              <Step number="2" title="Scan or paste">
-                Scan the desktop QR, or paste the pairing code into the app.
-              </Step>
-              <Step number="3" title="Pair automatically">
-                Bird Code stores the device token and reconnects on its own.
-              </Step>
-            </div>
-
-            <div className="rounded-2xl border bg-muted/30 p-4">
-              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                Desktop note
-              </div>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                The QR encodes the desktop server URL and pairing token in one shareable code so you
-                do not need to copy anything manually.
-              </p>
-            </div>
-          </CardPanel>
-        </Card>
       </div>
-    </div>
-  );
-}
-
-function Step({ number, title, children }: { number: string; title: string; children: string }) {
-  return (
-    <div className="rounded-2xl border bg-background/72 p-4">
-      <div className="flex items-center gap-3">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary">
-          {number}
-        </div>
-        <div className="text-sm font-medium text-foreground">{title}</div>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{children}</p>
     </div>
   );
 }

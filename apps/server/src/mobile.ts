@@ -194,6 +194,15 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
 
     const loadSnapshot = () => projectionSnapshotQuery.getSnapshot();
 
+    const revokeDeviceById = (deviceId: string) =>
+      replaceDevices((devices) =>
+        devices.map((entry) =>
+          entry.deviceId === deviceId && entry.revokedAt === null
+            ? { ...entry, revokedAt: nowIso() }
+            : entry,
+        ),
+      );
+
     const serializeSnapshot = (
       snapshot: OrchestrationReadModel,
       device: DevicePublic,
@@ -389,10 +398,7 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
         if (!token) {
           return unauthorized("Missing device token.");
         }
-        const device = yield* authorizeRequestDevice(token);
-        if (Option.isNone(device)) {
-          return unauthorized("Unknown or revoked device token.");
-        }
+        let actingDevice: DevicePublic | null = null;
         const decoded = yield* HttpServerRequest.schemaBodyJson(RevokeRequest).pipe(
           Effect.catch(() => Effect.succeed(null)),
         );
@@ -400,20 +406,39 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
           return badRequest("Invalid revoke payload.");
         }
 
-        yield* replaceDevices((devices) =>
-          devices.map((entry) =>
-            entry.deviceId === decoded.deviceId && entry.revokedAt === null
-              ? { ...entry, revokedAt: nowIso() }
-              : entry,
-          ),
-        );
+        if (config.authToken && token === config.authToken) {
+          yield* revokeDeviceById(decoded.deviceId);
+        } else {
+          const currentDevice = yield* authorizeRequestDevice(token);
+          if (Option.isNone(currentDevice)) {
+            return unauthorized("Unknown or revoked device token.");
+          }
+          actingDevice = currentDevice.value;
+          yield* revokeDeviceById(decoded.deviceId);
+        }
+
         const devices = yield* Ref.get(devicesRef);
+        const fallbackDeviceRecord: DeviceRecord = {
+          deviceId: "desktop",
+          deviceName: "Bird Code Desktop",
+          deviceToken: "desktop-admin",
+          pairCode: "DESK-ADM",
+          pairCodeExpiresAt: nowIso(),
+          pairedAt: nowIso(),
+          lastSeenAt: nowIso(),
+          revokedAt: null,
+        };
+        const responseDevice =
+          actingDevice ??
+          toPublicDevice(
+            devices.find((entry) => entry.revokedAt === null) ?? devices[0] ?? fallbackDeviceRecord,
+          );
         return HttpServerResponse.jsonUnsafe({
           devices: devices
             .filter((entry) => entry.revokedAt === null)
             .map(toPublicDevice)
             .toSorted(comparePublicDevices),
-          device: device.value,
+          device: responseDevice,
         });
       }),
     );

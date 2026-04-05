@@ -47,6 +47,7 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 - Bird Code caches the last successful snapshot locally so it can show the last synced threads after a restart even before the next refresh succeeds.
 - Bird Code exposes an explicit disconnect action so you can clear a stale session and pair again without reinstalling the app.
 - The desktop settings panel is scrollable and the QR card is intentionally compact so the pairing controls stay usable on smaller screens.
+- The desktop settings panel now includes a Disconnect action for each paired device so you can revoke a stale phone from the desktop.
 - The Bird Code logo is loaded from the bundled artwork derived from `assets/new/logo-dark.svg`.
 - The app icon now comes from `apps/mobile/Resources/Assets.xcassets/AppIcon.appiconset`.
 - If iOS still shows an old icon after reinstalling, delete Bird Code from the device or simulator once and install it again to clear the cached icon.

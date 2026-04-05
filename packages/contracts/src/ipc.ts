@@ -127,6 +127,7 @@ export interface DesktopBridge {
   getPairingCode?: () => string | null;
   getDesktopAuthToken?: () => string | null;
   getMobileDevices?: () => DesktopMobileDevicesResult | null;
+  revokeMobileDevice?: (input: { deviceId: string }) => Promise<DesktopMobileDevicesResult | null>;
   pickFolder: () => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
   setTheme: (theme: DesktopTheme) => Promise<void>;

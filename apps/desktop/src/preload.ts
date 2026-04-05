@@ -17,6 +17,7 @@ const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
 const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
 const GET_DESKTOP_AUTH_TOKEN_CHANNEL = "desktop:get-desktop-auth-token";
 const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
+const REVOKE_MOBILE_DEVICE_CHANNEL = "desktop:revoke-mobile-device";
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   getWsUrl: () => {
@@ -40,6 +41,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     if (typeof result !== "object" || result === null) return null;
     return result as DesktopMobileDevicesResult;
   },
+  revokeMobileDevice: (input) => ipcRenderer.invoke(REVOKE_MOBILE_DEVICE_CHANNEL, input),
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),
   setTheme: (theme) => ipcRenderer.invoke(SET_THEME_CHANNEL, theme),

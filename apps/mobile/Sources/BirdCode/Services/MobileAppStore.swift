@@ -216,6 +216,9 @@ final class MobileAppStore {
         errorMessage = nil
         return
       }
+      if handleSessionRevocation(error) {
+        return
+      }
       errorMessage = error.localizedDescription
     }
   }
@@ -234,6 +237,9 @@ final class MobileAppStore {
       if shouldSuppressConnectedNetworkIssue(error) {
         statusMessage = "Connected. Waiting for desktop."
         errorMessage = nil
+        return
+      }
+      if handleSessionRevocation(error) {
         return
       }
       errorMessage = error.localizedDescription
@@ -295,6 +301,9 @@ final class MobileAppStore {
       statusMessage = "Prompt sent to \(thread.title)"
       await refreshDevices()
     } catch {
+      if handleSessionRevocation(error) {
+        return
+      }
       errorMessage = error.localizedDescription
     }
   }
@@ -336,6 +345,9 @@ final class MobileAppStore {
       statusMessage = "Approval updated."
       await refreshDevices()
     } catch {
+      if handleSessionRevocation(error) {
+        return
+      }
       errorMessage = error.localizedDescription
     }
   }
@@ -363,6 +375,9 @@ final class MobileAppStore {
         toTurnCount: turnCount,
       )
     } catch {
+      if handleSessionRevocation(error) {
+        return
+      }
       errorMessage = error.localizedDescription
     }
   }
@@ -392,6 +407,9 @@ final class MobileAppStore {
       }
       errorMessage = nil
     } catch {
+      if handleSessionRevocation(error) {
+        return
+      }
       errorMessage = error.localizedDescription
     }
   }
@@ -449,6 +467,22 @@ final class MobileAppStore {
     }
 
     return false
+  }
+
+  private func handleSessionRevocation(_ error: Error) -> Bool {
+    guard shouldTreatAsRevokedSession(error) else {
+      return false
+    }
+    clearSession()
+    errorMessage = "This device was disconnected from the desktop. Pair again to continue."
+    return true
+  }
+
+  private func shouldTreatAsRevokedSession(_ error: Error) -> Bool {
+    guard case let MobileAPIClientError.httpStatus(status, _) = error else {
+      return false
+    }
+    return status == 401
   }
 
   private func startPolling() {

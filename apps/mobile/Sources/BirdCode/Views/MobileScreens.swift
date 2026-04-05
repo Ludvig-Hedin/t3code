@@ -74,10 +74,10 @@ struct MobilePairingView: View {
           VStack(alignment: .leading, spacing: 14) {
             MobileSectionHeading(
               title: "Pair with desktop",
-              subtitle: "Scan the desktop QR or paste the pairing code from the desktop settings tab.",
+              subtitle: "Scan the desktop QR or paste the pairing code from the desktop app.",
             )
 
-            MobileField(label: "Pairing code or desktop URL") {
+            MobileField(label: "Pairing code") {
               TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -114,16 +114,9 @@ struct MobilePairingView: View {
                     .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
-              }
-              .buttonStyle(MobilePrimaryButtonStyle())
-              .disabled(store.isPairing)
             }
-
-            Text(
-              "No token hunting. The desktop pairing QR already carries the hidden auth token."
-            )
-            .font(.callout)
-            .foregroundStyle(MobileTheme.muted)
+            .buttonStyle(MobilePrimaryButtonStyle())
+            .disabled(store.isPairing)
           }
         }
       }
@@ -678,55 +671,56 @@ struct MobileSettingsSheet: View {
         MobileCard {
           VStack(alignment: .leading, spacing: 12) {
             MobileSectionHeading(
-              title: "Connected device",
-            subtitle: store.pairedDevice.map { "Bird Code is paired to \($0.deviceName)." } ?? "No active pairing yet.",
-          )
+              title: "Current connection",
+              subtitle: store.pairedDevice.map { "Bird Code is paired to \($0.deviceName)." }
+                ?? "No active pairing yet.",
+            )
 
-          MobileConnectionSummaryCard(store: store)
+            MobileConnectionSummaryCard(store: store)
+          }
         }
-      }
 
-      MobileCard {
-        VStack(alignment: .leading, spacing: 12) {
-          MobileSectionHeading(
-            title: "Other devices",
-            subtitle: "Revoke stale devices if you want to lock the session down.",
-          )
+        MobileCard {
+          VStack(alignment: .leading, spacing: 12) {
+            MobileSectionHeading(
+              title: "Other devices",
+              subtitle: "Disconnect phones you no longer want tied to this desktop.",
+            )
 
-          if store.devices.isEmpty {
-            Text("No paired devices yet.")
-              .foregroundStyle(MobileTheme.muted)
-          } else {
-            LazyVStack(spacing: 10) {
-              ForEach(store.devices) { device in
-                HStack(alignment: .top, spacing: 12) {
-                  VStack(alignment: .leading, spacing: 4) {
-                    Text(device.deviceName)
-                      .font(.headline)
-                    Text("Code \(device.pairCode)")
-                      .font(.caption)
-                      .foregroundStyle(MobileTheme.muted)
-                    Text("Seen \(device.lastSeenAt, style: .relative)")
-                      .font(.caption2)
-                      .foregroundStyle(MobileTheme.muted)
-                  }
-                  Spacer(minLength: 12)
-                  if device.id == store.pairedDevice?.id {
-                    MobileStatusPill(text: "Current", tint: MobileTheme.success)
-                  } else {
-                    Button("Revoke") {
-                      Task { await store.revokeDevice(device) }
+            if store.devices.isEmpty {
+              Text("No connected devices yet.")
+                .foregroundStyle(MobileTheme.muted)
+            } else {
+              LazyVStack(spacing: 10) {
+                ForEach(store.devices) { device in
+                  HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                      Text(device.deviceName)
+                        .font(.headline)
+                      Text("Code \(device.pairCode)")
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.muted)
+                      Text("Seen \(device.lastSeenAt, style: .relative)")
+                        .font(.caption2)
+                        .foregroundStyle(MobileTheme.muted)
                     }
-                    .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.danger))
+                    Spacer(minLength: 12)
+                    if device.id == store.pairedDevice?.id {
+                      MobileStatusPill(text: "Current", tint: MobileTheme.success)
+                    } else {
+                      Button("Disconnect") {
+                        Task { await store.revokeDevice(device) }
+                      }
+                      .buttonStyle(MobileSmallButtonStyle(tint: MobileTheme.danger))
+                    }
                   }
-                }
-                if device.id != store.devices.last?.id {
-                  Divider()
+                  if device.id != store.devices.last?.id {
+                    Divider()
+                  }
                 }
               }
             }
           }
-        }
         }
       }
       .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -745,59 +739,60 @@ struct MobileSettingsSheet: View {
               subtitle: "Only edit this if you need to repoint Bird Code at a protected desktop.",
             )
 
-          MobileField(label: "Server URL") {
-            TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .keyboardType(.URL)
-              .padding(.vertical, 12)
-          }
-
-          MobileField(label: "Device name") {
-            TextField("iPhone", text: $store.deviceNameInput)
-              .textInputAutocapitalization(.words)
-              .autocorrectionDisabled()
-              .padding(.vertical, 12)
-          }
-
-          DisclosureGroup("Desktop auth token") {
-            MobileField(label: "Auth token") {
-              SecureField("Only if your desktop asks for one", text: $store.desktopAuthTokenInput)
+            MobileField(label: "Server URL") {
+              TextField("http://192.168.0.10:3773", text: $store.serverURLInput)
                 .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .padding(.vertical, 12)
+            }
+
+            MobileField(label: "Device name") {
+              TextField("iPhone", text: $store.deviceNameInput)
+                .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .padding(.vertical, 12)
             }
-            .padding(.top, 8)
-          }
 
-          HStack(spacing: 10) {
-            Button("Save") {
-              store.saveConnectionPreferences()
-            }
-            .buttonStyle(MobilePrimaryButtonStyle())
-
-            Button("Refresh") {
-              Task {
-                await store.refreshSnapshot()
-                await store.refreshDevices()
+            DisclosureGroup("Desktop auth token") {
+              MobileField(label: "Auth token") {
+                SecureField("Only if your desktop asks for one", text: $store.desktopAuthTokenInput)
+                  .textInputAutocapitalization(.never)
+                  .autocorrectionDisabled()
+                  .padding(.vertical, 12)
               }
+              .padding(.top, 8)
+            }
+
+            HStack(spacing: 10) {
+              Button("Save") {
+                store.saveConnectionPreferences()
+              }
+              .buttonStyle(MobilePrimaryButtonStyle())
+
+              Button("Refresh") {
+                Task {
+                  await store.refreshSnapshot()
+                  await store.refreshDevices()
+                }
+              }
+              .buttonStyle(MobileSecondaryButtonStyle())
+            }
+          }
+        }
+
+        MobileCard {
+          VStack(alignment: .leading, spacing: 12) {
+            MobileSectionHeading(
+              title: "Session actions",
+              subtitle: "Clear local session data if you need to reconnect cleanly.",
+            )
+
+            Button("Forget device") {
+              store.clearSession()
             }
             .buttonStyle(MobileSecondaryButtonStyle())
           }
-        }
-      }
-
-      MobileCard {
-        VStack(alignment: .leading, spacing: 12) {
-          MobileSectionHeading(
-            title: "Session actions",
-            subtitle: "Clear local session data if you need to reconnect cleanly.",
-          )
-
-          Button("Forget device") {
-            store.clearSession()
-          }
-          .buttonStyle(MobileSecondaryButtonStyle())
         }
       }
       .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -805,7 +800,6 @@ struct MobileSettingsSheet: View {
     .scrollIndicators(.visible)
     .scrollDismissesKeyboard(.interactively)
   }
-}
 }
 
 @MainActor
