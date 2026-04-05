@@ -203,7 +203,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   <MenuRadioItem
                     key={`${props.lockedProvider}:${modelOption.slug}`}
                     value={modelOption.slug}
-                    onClick={() => setIsMenuOpen(false)}
                   >
                     {modelOption.name}
                   </MenuRadioItem>
@@ -212,7 +211,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               {isGemini ? (
                 <>
                   <MenuDivider />
-                  <MenuItem onClick={openCustomModelDialog}>Custom model...</MenuItem>
+                  <MenuItem onSelect={openCustomModelDialog}>Custom model...</MenuItem>
                 </>
               ) : null}
             </MenuGroup>
@@ -270,7 +269,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                             <MenuRadioItem
                               key={`${option.value}:${modelOption.slug}`}
                               value={modelOption.slug}
-                              onClick={() => setIsMenuOpen(false)}
                             >
                               {modelOption.name}
                             </MenuRadioItem>
@@ -279,7 +277,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                         {option.value === "gemini" ? (
                           <>
                             <MenuDivider />
-                            <MenuItem onClick={openCustomModelDialog}>Custom model...</MenuItem>
+                            <MenuItem onSelect={openCustomModelDialog}>Custom model...</MenuItem>
                           </>
                         ) : null}
                       </MenuGroup>

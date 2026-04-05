@@ -80,6 +80,7 @@ Source of truth for adding Gemini CLI as a first-class provider in T3 Code.
   - Update `apps/web/src/session-logic.ts` so Gemini is a real selectable provider when enabled.
   - Update `apps/web/src/components/chat/ProviderModelPicker.tsx` and `apps/web/src/components/chat/composerProviderRegistry.tsx` to remove the `Coming soon` placeholder state for Gemini.
   - Update any provider icons, labels, and defaults required by the UI.
+  - Model-item selection now uses the menu primitive's select flow instead of a manual click-close path, so Gemini clicks update state like the other providers.
   - Acceptance criteria: Gemini appears in the picker, can be selected, and the composer renders provider-specific controls correctly.
 
 - [x] 9. Update text-generation routing where Gemini should participate
@@ -104,6 +105,7 @@ Source of truth for adding Gemini CLI as a first-class provider in T3 Code.
   - Add UI tests for provider selection and Gemini availability states.
   - Add a regression test for Gemini preview model selection so the picker resolves the selected slug instead of snapping back to the current model.
   - Add a regression test for runtime-model visibility so the picker shows when Gemini has fallen back to a different slug.
+  - Keep a browser test around the picker selection path so a future menu refactor does not reintroduce the click-no-op bug.
   - Add regression tests for any fallback behavior introduced in server settings.
   - Acceptance criteria: the new provider path is covered by unit tests and the existing test suite still passes.
 

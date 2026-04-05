@@ -13,7 +13,7 @@ Gemini CLI support is wired into T3 Code as a first-class provider.
   - `gemini-3-pro-preview`
   - `gemini-3.1-pro-preview`
   - `gemini-3-flash-preview`
-- The picker now accepts a custom Gemini model slug directly, so you can mirror Gemini CLI's manual model selection flow without waiting for the server to predeclare every possible slug.
+- The picker now accepts a custom Gemini model slug directly, and model clicks use the menu's normal selection path so Gemini changes behave like Codex and Claude.
 - If Gemini CLI routes or falls back at runtime, the picker shows the active runtime model next to the requested model so the difference stays visible.
 - Git text-generation fallback: `gemini` currently routes to the Codex text-generation layer until a Gemini-specific git generation flow is added.
 - Session model: the adapter uses a fresh Gemini CLI process per turn and keeps lightweight session history in memory.
