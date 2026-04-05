@@ -5,8 +5,11 @@
  * Renders an iframe for browser-type apps and log output for non-browser apps.
  * Detects apps on mount, subscribes to live preview events, and allows
  * starting/stopping individual apps.
+ *
+ * Error-safety: all async calls are try/caught; the panel never crashes the
+ * parent app — it degrades to an informative empty state instead.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { Component, useCallback, useEffect, useRef, type ReactNode } from "react";
 import {
   ExternalLinkIcon,
   Loader2Icon,
@@ -26,8 +29,51 @@ import {
   selectSession,
   selectLogs,
   selectActiveAppId,
+  selectDetectionStatus,
 } from "../previewStore";
 import { getWsRpcClient } from "../wsRpcClient";
+
+// ---------------------------------------------------------------------------
+// Error boundary — prevents panel crashes from propagating to the app shell
+// ---------------------------------------------------------------------------
+
+interface ErrorBoundaryState {
+  error: Error | null;
+}
+
+class PreviewErrorBoundary extends Component<
+  { children: ReactNode; onReset: () => void },
+  ErrorBoundaryState
+> {
+  override state: ErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
+  }
+
+  override render(): ReactNode {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center text-muted-foreground">
+          <MonitorPlayIcon className="size-8 opacity-40" />
+          <p className="text-sm font-medium text-destructive">Preview encountered an error</p>
+          <p className="max-w-xs text-xs">{this.state.error.message}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              this.setState({ error: null });
+              this.props.onReset();
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -102,7 +148,7 @@ function TabItem({
   );
 }
 
-/** Auto-scrolling ANSI-safe log view. */
+/** Auto-scrolling log view. */
 function LogView({ lines }: { lines: string[] }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -128,7 +174,7 @@ function LogView({ lines }: { lines: string[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Main component
+// Main component — inner (inside error boundary)
 // ---------------------------------------------------------------------------
 
 interface PreviewPanelProps {
@@ -137,46 +183,85 @@ interface PreviewPanelProps {
   onDetach: () => void;
 }
 
-export function PreviewPanel({ projectId, onDetach }: PreviewPanelProps) {
+function PreviewPanelInner({ projectId, onDetach }: PreviewPanelProps) {
+  // Use EMPTY_APPS / EMPTY_LOGS stable constants via selectors — avoids the
+  // useSyncExternalStore infinite-loop caused by `?? []` returning a new
+  // reference every render.
   const apps = usePreviewStore(selectApps(projectId));
   const activeAppId = usePreviewStore(selectActiveAppId(projectId));
+  const detectionStatus = usePreviewStore(selectDetectionStatus(projectId));
   const setActiveApp = usePreviewStore((s) => s.setActiveApp);
   const applyEvent = usePreviewStore((s) => s.applyEvent);
   const setApps = usePreviewStore((s) => s.setApps);
+  const setDetectionStatus = usePreviewStore((s) => s.setDetectionStatus);
 
+  // Derive active app — must be done before other hooks that depend on it
   const activeApp = apps.find((a) => a.id === activeAppId) ?? apps[0] ?? null;
+
+  // These hooks are called unconditionally (Rules of Hooks).
+  // selectSession / selectLogs return null / EMPTY_LOGS when the key doesn't
+  // exist — stable primitives/references, no infinite-loop risk.
   const activeSession = usePreviewStore(selectSession(projectId, activeApp?.id ?? ""));
   const activeLogs = usePreviewStore(selectLogs(projectId, activeApp?.id ?? ""));
 
   // Detect apps and subscribe to events on mount.
-  // The API expects ProjectId (branded type), so we cast the string prop here.
   useEffect(() => {
     const api = getWsRpcClient();
     const pid = projectId as ProjectId;
 
-    // Detect apps for this project
-    void api.preview.detectApps({ projectId: pid }).then((detected) => {
-      setApps(projectId, detected);
-    });
+    // Mark detection as in-progress so the UI can show a spinner.
+    setDetectionStatus(projectId, "detecting");
 
-    // Subscribe to live preview events
-    const unsubscribe = api.preview.onEvent(pid, (event) => {
-      applyEvent(event);
-    });
+    // Detect apps — always resolves (never rejects) so the UI stays stable.
+    api.preview
+      .detectApps({ projectId: pid })
+      .then((detected) => {
+        setApps(projectId, detected); // also sets detectionStatus → "done"
+      })
+      .catch(() => {
+        // Detection failed (e.g. server unreachable). Show empty state, not crash.
+        setDetectionStatus(projectId, "error");
+        setApps(projectId, []);
+      });
 
-    return unsubscribe;
-  }, [projectId, applyEvent, setApps]);
+    // Subscribe to live preview events (start/stop status, log lines).
+    // The subscription may fail silently for projects with no running apps.
+    let unsubscribe: (() => void) | undefined;
+    try {
+      unsubscribe = api.preview.onEvent(pid, (event) => {
+        try {
+          applyEvent(event);
+        } catch {
+          // Malformed event — ignore, don't crash
+        }
+      });
+    } catch {
+      // onEvent setup failed — continue without live events
+    }
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [projectId, applyEvent, setApps, setDetectionStatus]);
 
   const handleStart = useCallback(
     (app: PreviewApp) => {
-      void getWsRpcClient().preview.start({ projectId: projectId as ProjectId, appId: app.id });
+      void getWsRpcClient()
+        .preview.start({ projectId: projectId as ProjectId, appId: app.id })
+        .catch(() => {
+          // Start failure is shown via the session status-change event
+        });
     },
     [projectId],
   );
 
   const handleStop = useCallback(
     (app: PreviewApp) => {
-      void getWsRpcClient().preview.stop({ projectId: projectId as ProjectId, appId: app.id });
+      void getWsRpcClient()
+        .preview.stop({ projectId: projectId as ProjectId, appId: app.id })
+        .catch(() => {
+          // Stop failure is non-critical — process may already be dead
+        });
     },
     [projectId],
   );
@@ -187,16 +272,32 @@ export function PreviewPanel({ projectId, onDetach }: PreviewPanelProps) {
       ? `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(activeApp.id)}/`
       : null;
 
-  // Empty state when no apps detected
-  if (apps.length === 0) {
+  // --- Loading state while detection is in progress ---
+  if (detectionStatus === "idle" || detectionStatus === "detecting") {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-        <MonitorPlayIcon className="size-8 opacity-40" />
-        <p className="text-sm">No previewable apps detected in this project.</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Loader2Icon className="size-6 animate-spin opacity-60" />
+        <p className="text-sm">Detecting apps…</p>
       </div>
     );
   }
 
+  // --- Empty state: detection finished but no runnable apps found ---
+  if (apps.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-muted-foreground">
+        <MonitorPlayIcon className="size-8 opacity-40" />
+        <p className="text-sm font-medium">No runnable apps detected</p>
+        <p className="max-w-xs text-xs leading-relaxed">
+          {detectionStatus === "error"
+            ? "Could not scan this project. Check that the server is running."
+            : 'Add a package.json with a "dev" script, a manage.py, or a Cargo.toml to get started.'}
+        </p>
+      </div>
+    );
+  }
+
+  // --- Normal state: one or more apps detected ---
   return (
     <div className="flex h-full flex-col overflow-hidden border-l border-border bg-background">
       {/* Tab bar */}
@@ -218,12 +319,7 @@ export function PreviewPanel({ projectId, onDetach }: PreviewPanelProps) {
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 shrink-0"
-                  onClick={onDetach}
-                >
+                <Button variant="ghost" size="icon" className="size-6 shrink-0" onClick={onDetach}>
                   <MaximizeIcon className="size-3" />
                 </Button>
               }
@@ -233,7 +329,7 @@ export function PreviewPanel({ projectId, onDetach }: PreviewPanelProps) {
         </div>
       </div>
 
-      {/* Preview area toolbar (browser apps only) */}
+      {/* Toolbar for browser apps */}
       {activeApp?.type === "browser" && (
         <div className="flex items-center gap-1 border-b border-border bg-card px-2 py-1">
           <Tooltip>
@@ -293,8 +389,8 @@ export function PreviewPanel({ projectId, onDetach }: PreviewPanelProps) {
               className="size-full border-none"
               src={previewUrl}
               title={`Preview: ${activeApp.label}`}
-              // allow-same-origin is intentionally omitted: combining it with allow-scripts
-              // would let the iframe remove its own sandbox, which is a security risk.
+              // allow-same-origin intentionally omitted: combining it with
+              // allow-scripts lets the iframe escape its own sandbox.
               sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
             />
           ) : activeSession?.status === "starting" ? (
@@ -327,5 +423,19 @@ export function PreviewPanel({ projectId, onDetach }: PreviewPanelProps) {
         )}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Public export — wraps inner component in an error boundary
+// ---------------------------------------------------------------------------
+
+export function PreviewPanel(props: PreviewPanelProps) {
+  // resetKey bumps to unmount/remount the inner panel after an error boundary reset
+  const resetKey = useRef(0);
+  return (
+    <PreviewErrorBoundary onReset={() => { resetKey.current += 1; }}>
+      <PreviewPanelInner key={resetKey.current} {...props} />
+    </PreviewErrorBoundary>
   );
 }

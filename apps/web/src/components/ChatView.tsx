@@ -162,6 +162,8 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./Compose
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import { PreviewPanel } from "./PreviewPanel";
+import { PreviewFloatingWindow } from "./PreviewFloatingWindow";
 import { AppPageHeader, AppPageHeaderLeading } from "./AppPageHeader";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
@@ -905,6 +907,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const activeProject = useProjectById(activeThread?.projectId);
   const previewOpen = useUiStateStore((store) => store.previewOpen);
   const setPreviewOpen = useUiStateStore((store) => store.setPreviewOpen);
+  // previewDetached controls whether the panel floats as an overlay window vs. docking inline
+  const previewDetached = useUiStateStore((store) => store.previewDetached);
+  const setPreviewDetached = useUiStateStore((store) => store.setPreviewDetached);
+  // Button is available when a project is open. After detection completes with
+  // no apps, the panel shows a clear "no apps" empty state — still better than
+  // a disabled button that gives no feedback about why.
   const previewAvailable = activeProject !== undefined;
   const hasRunningPreviewApp = usePreviewStore(selectHasRunningApp(activeProject?.id ?? ""));
 
@@ -4774,8 +4782,32 @@ export default function ChatView({ threadId }: ChatViewProps) {
             }}
           />
         ) : null}
+
+        {/* Inline preview panel — shown when preview is open and not detached */}
+        {previewOpen && !previewDetached && activeProject && (
+          <div className="hidden w-[40%] min-w-[320px] max-w-[600px] shrink-0 border-l border-border md:flex md:flex-col">
+            <PreviewPanel
+              projectId={activeProject.id}
+              onDetach={() => {
+                setPreviewDetached(true);
+              }}
+            />
+          </div>
+        )}
       </div>
       {/* end horizontal flex container */}
+
+      {/* Floating preview window — shown when preview is open and detached */}
+      {previewOpen && previewDetached && activeProject && (
+        <PreviewFloatingWindow
+          projectId={activeProject.id}
+          onDock={() => setPreviewDetached(false)}
+          onClose={() => {
+            setPreviewOpen(false);
+            setPreviewDetached(false);
+          }}
+        />
+      )}
 
       {mountedTerminalThreadIds.map((mountedThreadId) => (
         <PersistentThreadTerminalDrawer

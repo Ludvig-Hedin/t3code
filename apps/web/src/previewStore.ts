@@ -19,15 +19,31 @@ function sessionKey(projectId: string, appId: string): SessionKey {
   return `${projectId}:${appId}`;
 }
 
+/**
+ * Stable empty-array constants used as selector fallbacks.
+ *
+ * IMPORTANT: selectors must return these constants (not inline `[]` or `?? []`)
+ * when a key is absent. Zustand uses useSyncExternalStore, which calls the
+ * selector on every render and compares results with Object.is. A new `[]`
+ * on every render looks like a changed value → infinite re-render loop.
+ */
+const EMPTY_APPS: PreviewApp[] = [];
+const EMPTY_LOGS: string[] = [];
+
+export type DetectionStatus = "idle" | "detecting" | "done" | "error";
+
 interface PreviewState {
   apps: Record<string, PreviewApp[]>;
   sessions: Record<SessionKey, PreviewSession>;
   logs: Record<SessionKey, string[]>;
   activeAppId: Record<string, string>;
+  /** Tracks per-project scan progress so the UI can show a loading state. */
+  detectionStatus: Record<string, DetectionStatus>;
 }
 
 interface PreviewStore extends PreviewState {
   setApps: (projectId: string, apps: PreviewApp[]) => void;
+  setDetectionStatus: (projectId: string, status: DetectionStatus) => void;
   applyEvent: (event: PreviewEvent) => void;
   setActiveApp: (projectId: string, appId: string) => void;
   clearProject: (projectId: string) => void;
@@ -38,15 +54,22 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
   sessions: {},
   logs: {},
   activeAppId: {},
+  detectionStatus: {},
 
   setApps: (projectId, apps) =>
     set((state) => ({
       apps: { ...state.apps, [projectId]: apps },
+      detectionStatus: { ...state.detectionStatus, [projectId]: "done" as DetectionStatus },
       // Auto-select first app if nothing selected yet for this project
       activeAppId:
         state.activeAppId[projectId] != null
           ? state.activeAppId
           : { ...state.activeAppId, [projectId]: apps[0]?.id ?? "" },
+    })),
+
+  setDetectionStatus: (projectId, status) =>
+    set((state) => ({
+      detectionStatus: { ...state.detectionStatus, [projectId]: status },
     })),
 
   applyEvent: (event) =>
@@ -109,35 +132,45 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
     }),
 }));
 
-/** Convenience selector: apps for a project */
+/** Convenience selector: apps for a project. Returns stable EMPTY_APPS constant when absent. */
 export const selectApps =
   (projectId: string) =>
   (state: PreviewStore): PreviewApp[] =>
-    state.apps[projectId] ?? [];
+    // Must return the same reference when empty — see EMPTY_APPS comment above.
+    state.apps[projectId] ?? EMPTY_APPS;
 
 /** Convenience selector: session for a specific app */
 export const selectSession =
   (projectId: string, appId: string) =>
   (state: PreviewStore): PreviewSession | null =>
+    // null is a primitive — always Object.is-equal, safe to return inline.
     state.sessions[sessionKey(projectId, appId)] ?? null;
 
-/** Convenience selector: log lines for a specific app */
+/** Convenience selector: log lines for a specific app. Returns stable EMPTY_LOGS constant when absent. */
 export const selectLogs =
   (projectId: string, appId: string) =>
   (state: PreviewStore): string[] =>
-    state.logs[sessionKey(projectId, appId)] ?? [];
+    // Must return the same reference when empty — see EMPTY_APPS comment above.
+    state.logs[sessionKey(projectId, appId)] ?? EMPTY_LOGS;
 
 /** Convenience selector: active tab app id for a project */
 export const selectActiveAppId =
   (projectId: string) =>
   (state: PreviewStore): string | null =>
+    // null is a primitive — safe to return inline.
     state.activeAppId[projectId] ?? null;
+
+/** Convenience selector: detection status for a project */
+export const selectDetectionStatus =
+  (projectId: string) =>
+  (state: PreviewStore): DetectionStatus =>
+    state.detectionStatus[projectId] ?? "idle";
 
 /** Convenience selector: true if any app in the project is running or starting */
 export const selectHasRunningApp =
   (projectId: string) =>
   (state: PreviewStore): boolean => {
-    const apps = state.apps[projectId] ?? [];
+    const apps = state.apps[projectId] ?? EMPTY_APPS;
     return apps.some((app) => {
       const s = state.sessions[sessionKey(projectId, app.id)];
       return s?.status === "running" || s?.status === "starting";
