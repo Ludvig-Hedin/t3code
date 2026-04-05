@@ -305,50 +305,63 @@ export function BirdCodeMobileCompanionPanel() {
           <CardPanel className="space-y-4">
             {pairedDevices.length > 0 ? (
               <div className="space-y-3">
-                {pairedDevices.map((device) => (
-                  <div
-                    key={device.deviceId}
-                    className="rounded-2xl border bg-background/72 p-4 shadow-xs/5"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
-                        {device.deviceName.slice(0, 1).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="truncate text-sm font-medium text-foreground">
-                            {device.deviceName}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Code {device.pairCode}
-                          </div>
+                {pairedDevices.map((device) => {
+                  // Devices polled within the last 35 s are considered live.
+                  const isLive = Date.now() - new Date(device.lastSeenAt).getTime() < 35_000;
+                  return (
+                    <div
+                      key={device.deviceId}
+                      className="rounded-2xl border bg-background/72 p-4 shadow-xs/5"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
+                          {device.deviceName.slice(0, 1).toUpperCase()}
                         </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          Last seen{" "}
-                          {new Date(device.lastSeenAt).toLocaleString(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}
-                        </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <div className="text-xs text-success">Paired</div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={disconnectingDeviceId === device.deviceId}
-                            onClick={() => {
-                              void handleDisconnect(device);
-                            }}
-                          >
-                            {disconnectingDeviceId === device.deviceId
-                              ? "Disconnecting…"
-                              : "Disconnect"}
-                          </Button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="truncate text-sm font-medium text-foreground">
+                              {device.deviceName}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Code {device.pairCode}
+                            </div>
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {isLive ? (
+                              <span className="flex items-center gap-1.5 text-success">
+                                <span className="inline-block size-2 animate-pulse rounded-full bg-green-500" />
+                                Live now
+                              </span>
+                            ) : (
+                              <>
+                                Last seen{" "}
+                                {new Date(device.lastSeenAt).toLocaleString(undefined, {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })}
+                              </>
+                            )}
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <div className="text-xs text-success">Paired</div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={disconnectingDeviceId === device.deviceId}
+                              onClick={() => {
+                                void handleDisconnect(device);
+                              }}
+                            >
+                              {disconnectingDeviceId === device.deviceId
+                                ? "Disconnecting…"
+                                : "Disconnect"}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-2xl border bg-muted/30 p-4">
