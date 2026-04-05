@@ -9,10 +9,13 @@
 ## 1. Problem Statement
 
 ### 1.1 External CLI Threads
+
 Users run Claude Code, Codex CLI, and Gemini CLI in their projects. These sessions are invisible inside Bird Code — there is no unified view of "everything that has happened in this project." Users want to see all sessions from all tools in one place, and be able to continue any of them inside Bird Code.
 
 ### 1.2 Web Project Creation (Bugs)
+
 The web app at `localhost:5733` has three broken behaviors:
+
 - **Empty state "Create project" button** silently does nothing (calls `api.dialogs.pickFolder()` which requires Electron's `desktopBridge` — returns `null` in a browser and exits with no feedback).
 - **Sidebar "Add project"** shows a raw text input for path entry in web mode, with no browsing capability.
 - **"Adding…" hangs forever** because the WS client connects to `localhost:5733` (Vite dev server) instead of `localhost:3773` (Bird Code server) when `VITE_WS_URL` is unset in dev mode.
@@ -43,6 +46,7 @@ Both features run entirely through the existing Bird Code server. No new infrast
 ```
 
 **Directory browser** (for web project creation):
+
 ```
 Web UI → shell.listDirectory RPC → server filesystem → returns subdirs → UI navigates
 ```
@@ -58,6 +62,7 @@ The server is already the source of truth shared by all clients. A project creat
 Location: `apps/server/src/cliHistory/`
 
 Responsibilities:
+
 - On startup: full scan of all three CLI directories
 - Ongoing: FSEvents/chokidar watch on each directory root; re-parse on file change
 - For each session found: match to a Bird Code project by `workspaceRoot`; if no match, skip
@@ -65,13 +70,14 @@ Responsibilities:
 
 **Per-CLI parsing:**
 
-| CLI | Location | Project match | Title |
-|-----|----------|---------------|-------|
-| Claude Code | `~/.claude/projects/<path-slug>/*.jsonl` | Decode folder name: leading `-` stripped, remaining `-` replaced with `/` → `workspaceRoot`. Edge case: paths with real dashes are ambiguous; resolve by checking if the decoded path exists on disk. | `slug` field in first user message (e.g. `"snug-brewing-liskov"`) |
-| Codex | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | `session_meta.payload.cwd` → `workspaceRoot` | First user message text, truncated to 60 chars |
-| Gemini | `~/.gemini/tmp/<folder>/chats/session-*.json` | Folder name = last path segment of `workspaceRoot` (best-effort; flag as ambiguous if multiple projects share the same folder name) | Timestamp-based (`Session YYYY-MM-DD HH:mm`) |
+| CLI         | Location                                      | Project match                                                                                                                                                                                         | Title                                                             |
+| ----------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Claude Code | `~/.claude/projects/<path-slug>/*.jsonl`      | Decode folder name: leading `-` stripped, remaining `-` replaced with `/` → `workspaceRoot`. Edge case: paths with real dashes are ambiguous; resolve by checking if the decoded path exists on disk. | `slug` field in first user message (e.g. `"snug-brewing-liskov"`) |
+| Codex       | `~/.codex/sessions/YYYY/MM/DD/*.jsonl`        | `session_meta.payload.cwd` → `workspaceRoot`                                                                                                                                                          | First user message text, truncated to 60 chars                    |
+| Gemini      | `~/.gemini/tmp/<folder>/chats/session-*.json` | Folder name = last path segment of `workspaceRoot` (best-effort; flag as ambiguous if multiple projects share the same folder name)                                                                   | Timestamp-based (`Session YYYY-MM-DD HH:mm`)                      |
 
 **Message normalisation:** All three formats are normalised into a flat `ExternalMessage[]`:
+
 ```ts
 interface ExternalMessage {
   role: "user" | "assistant";
@@ -79,6 +85,7 @@ interface ExternalMessage {
   timestamp: string; // ISO
 }
 ```
+
 Tool use, images, and other non-text content are represented as `[tool_use: <name>]` or `[image]` inline text placeholders — sufficient for read-only display.
 
 ### 3.2 Database
@@ -114,7 +121,7 @@ export const ExternalMessage = Schema.Struct({
 });
 
 export const ExternalThread = Schema.Struct({
-  id: ThreadId,                          // Bird Code UUID (stable)
+  id: ThreadId, // Bird Code UUID (stable)
   projectId: ProjectId,
   source: ExternalThreadSource,
   externalSessionId: TrimmedNonEmptyString,
@@ -127,6 +134,7 @@ export type ExternalThread = typeof ExternalThread.Type;
 ```
 
 The orchestration snapshot gains a new field:
+
 ```ts
 externalThreads: ReadonlyArray<ExternalThread>;
 ```
@@ -137,21 +145,25 @@ When the user clicks **Continue in Bird Code**:
 
 1. Bird Code dispatches a normal `thread.create` + `thread.turn.start` command.
 2. The first user message is pre-populated using the existing `buildBootstrapInput` helper (already used for history truncation) — this prepends the full conversation transcript as context.
-3. **Codex only:** Before falling back to bootstrap, attempt to pass `externalSessionId` as the resume session ID to the Codex app-server. If the app-server acknowledges it (session not expired/deleted), the thread truly resumes in-place. If it rejects it, fall back silently to bootstrap copy.
-4. After the new Bird Code thread is created, the external thread entry remains visible in the sidebar (it is not consumed or deleted).
+3. **Codex only — true session resume (verified possible):** The Codex app-server protocol has a `thread/resume` JSON-RPC method accepting a `threadId`. Bird Code's `codexAppServerManager.ts` already implements this exact flow (lines 562–590): it calls `thread/resume`, and if the server rejects it, automatically falls back to a new thread. We wire the external Codex thread ID (from `session_meta` in the JSONL) into the `resumeCursor` when creating the new Bird Code session. **No new infrastructure needed.**
+4. **Claude Code / Gemini — bootstrap only:** Bird Code uses its own internal `claudeAgent`/`gemini` providers, not the CLI binaries. True session resume via the CLI's session ID is not available through Bird Code's provider layer. The conversation history is loaded as transcript context via the existing `buildBootstrapInput` helper. Note: Claude Code does support `claude --resume <session-id>` and `claude --session-id <UUID>` flags in the CLI itself, but that is outside Bird Code's provider boundary.
+5. After the new Bird Code thread is created, the external thread entry remains in the sidebar (it is not consumed or deleted).
 
 **Continuity banner** — shown at the top of the external thread read-only view:
-> *"Started in [Claude Code / Codex / Gemini CLI] · Continuing here creates a new Bird Code session. New messages won't sync back to the CLI."*  
+
+> _"Started in [Claude Code / Codex / Gemini CLI] · Continuing here creates a new Bird Code session. New messages won't sync back to the CLI."_
 > `[ Continue in Bird Code ]`
 
-For Codex where resume may have worked, the banner changes after a successful resume to:
-> *"Resumed from Codex CLI session · Messages sent here also continue the original session."*
+For Codex where true resume succeeded, the banner updates to:
+
+> _"Resumed from Codex CLI session · Messages sent here also update the original CLI session."_
 
 ### 3.5 Sidebar display
 
 External threads appear in the project's thread list, sorted by `createdAt` alongside regular threads.
 
 **Badge:** Each external thread shows two small muted icons to the right of the title:
+
 - Provider logo icon (Claude anthropic logo / OpenAI logo / Google Gemini logo) — 12×12px, `opacity-40`
 - Terminal icon — 12×12px, `opacity-40`
 
@@ -166,7 +178,7 @@ These icons are already available or can be added to `Icons.tsx`. No text label 
 Add to `packages/contracts/src/rpc.ts`:
 
 ```ts
-WS_METHODS.shellListDirectory = "shell.listDirectory"
+WS_METHODS.shellListDirectory = "shell.listDirectory";
 
 export const ShellListDirectoryInput = Schema.Struct({
   path: TrimmedNonEmptyString,
@@ -174,13 +186,13 @@ export const ShellListDirectoryInput = Schema.Struct({
 
 export const ShellDirectoryEntry = Schema.Struct({
   name: TrimmedNonEmptyString,
-  path: TrimmedNonEmptyString,     // absolute path
-  isGitRepo: Schema.Boolean,       // true if .git exists — useful hint in picker UI
+  path: TrimmedNonEmptyString, // absolute path
+  isGitRepo: Schema.Boolean, // true if .git exists — useful hint in picker UI
 });
 
 export const ShellListDirectoryResult = Schema.Struct({
-  path: TrimmedNonEmptyString,     // canonical path returned (may differ from input after symlink resolve)
-  parent: Schema.NullOr(TrimmedNonEmptyString),  // parent path, null if at filesystem root
+  path: TrimmedNonEmptyString, // canonical path returned (may differ from input after symlink resolve)
+  parent: Schema.NullOr(TrimmedNonEmptyString), // parent path, null if at filesystem root
   entries: Schema.Array(ShellDirectoryEntry),
   homePath: TrimmedNonEmptyString, // always returned so UI can show a "Home" shortcut
 });
@@ -202,18 +214,21 @@ New component: `apps/web/src/components/DirectoryPicker.tsx`
 ### 4.3 Bug fixes
 
 **Empty state "Create project" button** (`routes/_chat.index.tsx`):
+
 - Remove the `if (!cwd) return` silent exit
 - Instead: if `window.desktopBridge` exists → use Electron's `pickFolder` as today
 - Otherwise → open the new `DirectoryPicker` component
 
 **Sidebar "Browse…" button** (`components/Sidebar.tsx`):
+
 - The `{isElectron && <Browse button>}` guard is changed to always render the Browse button
 - In Electron: clicking it calls `desktopBridge.pickFolder()` (unchanged)
 - In web mode: clicking it opens `DirectoryPicker`
 
 **"Adding… forever" fix:**
+
 - Add a 15-second timeout wrapper around `dispatchCommand` in `addProjectFromPath`
-- On timeout: show error toast *"Could not reach server. Make sure the Bird Code server is running."*
+- On timeout: show error toast _"Could not reach server. Make sure the Bird Code server is running."_
 - Dev mode: add a `VITE_WS_URL` default of `http://localhost:3773` in `vite.config.ts` so the web app connects to the correct port without manual env setup. (Currently defaults to empty string → falls back to Vite's own port 5733.)
 
 ---
@@ -244,22 +259,22 @@ User clicks an external thread (e.g. a Claude Code session)
 
 ## 6. File Changelist
 
-| File | Change |
-|------|--------|
-| `packages/contracts/src/orchestration.ts` | Add `ExternalThread`, `ExternalThreadSource`, `ExternalMessage` types; add `externalThreads` to snapshot |
-| `packages/contracts/src/rpc.ts` | Add `shell.listDirectory` RPC method and schemas |
-| `apps/server/src/cliHistory/Scanner.ts` | New: CliHistoryScanner service |
-| `apps/server/src/cliHistory/Parsers.ts` | New: per-CLI format parsers (Claude Code, Codex, Gemini) |
-| `apps/server/src/persistence/Migrations/NNN_ExternalThreads.ts` | New: `external_threads` table migration |
-| `apps/server/src/persistence/Layers/ExternalThreads.ts` | New: SQL repository for external threads |
-| `apps/server/src/ws.ts` | Add `shell.listDirectory` RPC handler (alongside existing `shellOpenInEditor`) |
-| `apps/web/src/components/DirectoryPicker.tsx` | New: directory browser modal component |
-| `apps/web/src/components/Sidebar.tsx` | Use DirectoryPicker in web mode; fix isElectron guards |
-| `apps/web/src/routes/_chat.index.tsx` | Fix "Create project" button for web mode |
-| `apps/web/src/components/Icons.tsx` | Add Claude / OpenAI / Gemini logo icons |
-| `apps/web/src/store.ts` | Add `externalThreads` to store state |
-| `apps/web/src/wsNativeApi.ts` or `wsRpcClient.ts` | Wire `shell.listDirectory` client call |
-| `apps/web/vite.config.ts` | Default `VITE_WS_URL` to `http://localhost:3773` in dev |
+| File                                                            | Change                                                                                                   |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/orchestration.ts`                       | Add `ExternalThread`, `ExternalThreadSource`, `ExternalMessage` types; add `externalThreads` to snapshot |
+| `packages/contracts/src/rpc.ts`                                 | Add `shell.listDirectory` RPC method and schemas                                                         |
+| `apps/server/src/cliHistory/Scanner.ts`                         | New: CliHistoryScanner service                                                                           |
+| `apps/server/src/cliHistory/Parsers.ts`                         | New: per-CLI format parsers (Claude Code, Codex, Gemini)                                                 |
+| `apps/server/src/persistence/Migrations/NNN_ExternalThreads.ts` | New: `external_threads` table migration                                                                  |
+| `apps/server/src/persistence/Layers/ExternalThreads.ts`         | New: SQL repository for external threads                                                                 |
+| `apps/server/src/ws.ts`                                         | Add `shell.listDirectory` RPC handler (alongside existing `shellOpenInEditor`)                           |
+| `apps/web/src/components/DirectoryPicker.tsx`                   | New: directory browser modal component                                                                   |
+| `apps/web/src/components/Sidebar.tsx`                           | Use DirectoryPicker in web mode; fix isElectron guards                                                   |
+| `apps/web/src/routes/_chat.index.tsx`                           | Fix "Create project" button for web mode                                                                 |
+| `apps/web/src/components/Icons.tsx`                             | Add Claude / OpenAI / Gemini logo icons                                                                  |
+| `apps/web/src/store.ts`                                         | Add `externalThreads` to store state                                                                     |
+| `apps/web/src/wsNativeApi.ts` or `wsRpcClient.ts`               | Wire `shell.listDirectory` client call                                                                   |
+| `apps/web/vite.config.ts`                                       | Default `VITE_WS_URL` to `http://localhost:3773` in dev                                                  |
 
 ---
 
