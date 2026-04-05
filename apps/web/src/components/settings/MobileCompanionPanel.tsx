@@ -29,10 +29,14 @@ type DesktopMobileDevice = {
 const APP_PAIRING_KIND = "birdcode-pairing" as const;
 
 function buildPairingPayload(serverURL: string): PairingPayload {
+  const desktopAuthToken = window.desktopBridge?.getDesktopAuthToken?.();
   return {
     kind: APP_PAIRING_KIND,
     version: 1,
     serverURL,
+    ...(typeof desktopAuthToken === "string" && desktopAuthToken.length > 0
+      ? { desktopAuthToken }
+      : {}),
   };
 }
 

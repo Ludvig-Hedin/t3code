@@ -62,6 +62,7 @@ const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
 const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
+const GET_DESKTOP_AUTH_TOKEN_CHANNEL = "desktop:get-desktop-auth-token";
 const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
 const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
@@ -1273,6 +1274,11 @@ function registerIpcHandlers(): void {
   ipcMain.removeAllListeners(GET_PAIRING_CODE_CHANNEL);
   ipcMain.on(GET_PAIRING_CODE_CHANNEL, (event) => {
     event.returnValue = backendPairingCode;
+  });
+
+  ipcMain.removeAllListeners(GET_DESKTOP_AUTH_TOKEN_CHANNEL);
+  ipcMain.on(GET_DESKTOP_AUTH_TOKEN_CHANNEL, (event) => {
+    event.returnValue = backendAuthToken;
   });
 
   ipcMain.removeAllListeners(GET_MOBILE_DEVICES_CHANNEL);

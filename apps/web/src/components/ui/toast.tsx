@@ -1,17 +1,20 @@
 "use client";
 
 import { Toast } from "@base-ui/react/toast";
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "@tanstack/react-router";
 import { ThreadId } from "@t3tools/contracts";
 import {
   CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CopyIcon,
   InfoIcon,
   LoaderCircleIcon,
   TriangleAlertIcon,
+  XIcon,
 } from "lucide-react";
 
 import { cn } from "~/lib/utils";
@@ -54,6 +57,55 @@ function CopyErrorButton({ text }: { text: string }) {
         <CopyIcon className="size-3.5" />
       )}
     </button>
+  );
+}
+
+const DESCRIPTION_TRUNCATE_LENGTH = 160;
+
+/**
+ * Renders a toast description with optional "Show details" expansion for long messages.
+ * Keeps the initial view short and readable while preserving full error details on demand.
+ */
+function ToastDescriptionWithDetails({ description }: { description: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = description.length > DESCRIPTION_TRUNCATE_LENGTH;
+
+  if (!isLong) {
+    return (
+      <Toast.Description
+        className="min-w-0 select-text break-words text-muted-foreground"
+        data-slot="toast-description"
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {/* Base UI's Toast.Description renders the full text; we overlay a controlled view */}
+      <span className="sr-only">
+        <Toast.Description />
+      </span>
+      <p className="min-w-0 select-text break-words text-muted-foreground text-sm">
+        {expanded ? description : `${description.slice(0, DESCRIPTION_TRUNCATE_LENGTH)}…`}
+      </p>
+      <button
+        className="flex w-fit items-center gap-0.5 text-xs text-muted-foreground opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+        onClick={() => setExpanded((v) => !v)}
+        type="button"
+      >
+        {expanded ? (
+          <>
+            <ChevronUpIcon className="size-3" />
+            Hide details
+          </>
+        ) : (
+          <>
+            <ChevronDownIcon className="size-3" />
+            Show details
+          </>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -290,44 +342,61 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
               />
               <Toast.Content
                 className={cn(
-                  "pointer-events-auto flex items-center justify-between gap-1.5 overflow-hidden px-3.5 py-3 text-sm transition-opacity duration-250 data-expanded:opacity-100",
+                  "pointer-events-auto flex max-h-[80vh] flex-col gap-1.5 overflow-y-auto px-3.5 py-3 text-sm transition-opacity duration-250 data-expanded:opacity-100",
                   hideCollapsedContent &&
                     "not-data-expanded:pointer-events-none not-data-expanded:opacity-0",
                 )}
               >
-                <div className="flex min-w-0 flex-1 gap-2">
-                  {Icon && (
-                    <div
-                      className="[&>svg]:h-lh [&>svg]:w-4 [&_svg]:pointer-events-none [&_svg]:shrink-0"
-                      data-slot="toast-icon"
-                    >
-                      <Icon className="in-data-[type=loading]:animate-spin in-data-[type=error]:text-destructive in-data-[type=info]:text-info in-data-[type=success]:text-success in-data-[type=warning]:text-warning in-data-[type=loading]:opacity-80" />
-                    </div>
-                  )}
-
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <div className="flex items-center justify-between gap-1">
-                      <Toast.Title
-                        className="min-w-0 break-words font-medium"
-                        data-slot="toast-title"
-                      />
-                      {toast.type === "error" && typeof toast.description === "string" && (
-                        <CopyErrorButton text={toast.description} />
+                {/* Top row: icon + title + copy button + close button */}
+                <div className="flex items-start gap-1.5">
+                  <div className="flex min-w-0 flex-1 gap-2">
+                    {Icon && (
+                      <div
+                        className="[&>svg]:h-lh [&>svg]:w-4 [&_svg]:pointer-events-none [&_svg]:shrink-0"
+                        data-slot="toast-icon"
+                      >
+                        <Icon className="in-data-[type=loading]:animate-spin in-data-[type=error]:text-destructive in-data-[type=info]:text-info in-data-[type=success]:text-success in-data-[type=warning]:text-warning in-data-[type=loading]:opacity-80" />
+                      </div>
+                    )}
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <Toast.Title
+                          className="min-w-0 break-words font-medium"
+                          data-slot="toast-title"
+                        />
+                        {toast.type === "error" && typeof toast.description === "string" && (
+                          <CopyErrorButton text={toast.description} />
+                        )}
+                      </div>
+                      {/* Description: truncated with "Show details" for long error messages */}
+                      {typeof toast.description === "string" && toast.description.length > 0 ? (
+                        <ToastDescriptionWithDetails description={toast.description} />
+                      ) : (
+                        <Toast.Description
+                          className="min-w-0 select-text break-words text-muted-foreground"
+                          data-slot="toast-description"
+                        />
                       )}
                     </div>
-                    <Toast.Description
-                      className="min-w-0 select-text break-words text-muted-foreground"
-                      data-slot="toast-description"
-                    />
                   </div>
-                </div>
-                {toast.actionProps && (
-                  <Toast.Action
-                    className={cn(buttonVariants({ size: "xs" }), "shrink-0")}
-                    data-slot="toast-action"
+                  {/* Close button — always visible so the user can dismiss stuck/error toasts */}
+                  <Toast.Close
+                    className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+                    title="Dismiss"
                   >
-                    {toast.actionProps.children}
-                  </Toast.Action>
+                    <XIcon className="size-3.5" />
+                  </Toast.Close>
+                </div>
+                {/* Action button row */}
+                {toast.actionProps && (
+                  <div className="flex justify-end">
+                    <Toast.Action
+                      className={cn(buttonVariants({ size: "xs" }), "shrink-0")}
+                      data-slot="toast-action"
+                    >
+                      {toast.actionProps.children}
+                    </Toast.Action>
+                  </div>
                 )}
               </Toast.Content>
             </Toast.Root>

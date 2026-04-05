@@ -2,8 +2,15 @@ import {
   type GitActionProgressEvent,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
+  type McpServer,
+  type McpServerInput,
   type NativeApi,
   ORCHESTRATION_WS_METHODS,
+  type PluginInfo,
+  type PreviewApp,
+  type PreviewEvent,
+  type PreviewSession,
+  type ProviderKind,
   type ServerSettingsPatch,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -105,6 +112,40 @@ export interface WsRpcClient {
     readonly save: RpcUnaryMethod<typeof WS_METHODS.skillsSave>;
     readonly delete: RpcUnaryMethod<typeof WS_METHODS.skillsDelete>;
     readonly generate: RpcUnaryMethod<typeof WS_METHODS.skillsGenerate>;
+  };
+  readonly mcp: {
+    readonly listServers: (input: { provider: ProviderKind }) => Promise<readonly McpServer[]>;
+    readonly addServer: (input: {
+      provider: ProviderKind;
+      name: string;
+      server: McpServerInput;
+    }) => Promise<McpServer>;
+    readonly updateServer: (input: {
+      provider: ProviderKind;
+      name: string;
+      patch: McpServerInput;
+    }) => Promise<McpServer>;
+    readonly deleteServer: (input: { provider: ProviderKind; name: string }) => Promise<void>;
+  };
+  readonly plugins: {
+    readonly list: () => Promise<readonly PluginInfo[]>;
+    readonly install: (input: { source: string }) => Promise<PluginInfo>;
+    readonly remove: (input: { location: string }) => Promise<void>;
+  };
+  readonly preview: {
+    readonly detectApps: (input: { projectId: string }) => Promise<PreviewApp[]>;
+    readonly start: (input: { projectId: string; appId: string }) => Promise<PreviewSession>;
+    readonly stop: (input: { projectId: string; appId: string }) => Promise<void>;
+    readonly getSessions: (input: { projectId: string }) => Promise<PreviewSession[]>;
+    readonly updateApp: (input: {
+      projectId: string;
+      appId: string;
+      patch: { label?: string; command?: string; cwd?: string; type?: "browser" | "logs" };
+    }) => Promise<PreviewApp>;
+    readonly onEvent: (
+      projectId: string,
+      listener: (event: PreviewEvent) => void,
+    ) => () => void;
   };
 }
 
@@ -232,6 +273,55 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
       save: (input) => transport.request((client) => client[WS_METHODS.skillsSave](input)),
       delete: (input) => transport.request((client) => client[WS_METHODS.skillsDelete](input)),
       generate: (input) => transport.request((client) => client[WS_METHODS.skillsGenerate](input)),
+    },
+    mcp: {
+      listServers: (input) =>
+        transport
+          .request((client) => client[WS_METHODS.mcpListServers](input))
+          .then((servers) => [...servers]),
+      addServer: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.mcpAddServer]({
+            provider: input.provider,
+            name: input.name,
+            server: input.server,
+          }),
+        ),
+      updateServer: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.mcpUpdateServer]({
+            provider: input.provider,
+            name: input.name,
+            patch: input.patch,
+          }),
+        ),
+      deleteServer: (input) =>
+        transport.request((client) => client[WS_METHODS.mcpDeleteServer](input)),
+    },
+    plugins: {
+      list: () =>
+        transport
+          .request((client) => client[WS_METHODS.pluginsList]({}))
+          .then((plugins) => [...plugins]),
+      install: (input) => transport.request((client) => client[WS_METHODS.pluginsInstall](input)),
+      remove: (input) => transport.request((client) => client[WS_METHODS.pluginsRemove](input)),
+    },
+    preview: {
+      detectApps: (input) =>
+        transport.request((client) => client[WS_METHODS.previewDetectApps](input)),
+      start: (input) =>
+        transport.request((client) => client[WS_METHODS.previewStart](input)),
+      stop: (input) =>
+        transport.request((client) => client[WS_METHODS.previewStop](input)),
+      getSessions: (input) =>
+        transport.request((client) => client[WS_METHODS.previewGetSessions](input)),
+      updateApp: (input) =>
+        transport.request((client) => client[WS_METHODS.previewUpdateApp](input)),
+      onEvent: (projectId, listener) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.subscribePreviewEvents]({ projectId }),
+          listener,
+        ),
     },
   };
 }

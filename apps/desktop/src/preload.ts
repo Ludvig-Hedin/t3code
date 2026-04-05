@@ -15,6 +15,7 @@ const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const GET_PAIRING_URL_CHANNEL = "desktop:get-pairing-url";
 const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
+const GET_DESKTOP_AUTH_TOKEN_CHANNEL = "desktop:get-desktop-auth-token";
 const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
 
 contextBridge.exposeInMainWorld("desktopBridge", {
@@ -28,6 +29,10 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   },
   getPairingCode: () => {
     const result = ipcRenderer.sendSync(GET_PAIRING_CODE_CHANNEL);
+    return typeof result === "string" ? result : null;
+  },
+  getDesktopAuthToken: () => {
+    const result = ipcRenderer.sendSync(GET_DESKTOP_AUTH_TOKEN_CHANNEL);
     return typeof result === "string" ? result : null;
   },
   getMobileDevices: () => {

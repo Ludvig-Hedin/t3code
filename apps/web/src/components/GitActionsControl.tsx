@@ -5,10 +5,13 @@ import type {
   GitStatusResult,
   ThreadId,
 } from "@t3tools/contracts";
+import { DEFAULT_RUNTIME_MODE } from "@t3tools/contracts";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon, CloudUploadIcon, GitCommitIcon, InfoIcon } from "lucide-react";
 import { GitHubIcon } from "./Icons";
+import { useComposerDraftStore } from "~/composerDraftStore";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
@@ -48,7 +51,7 @@ import {
   gitStatusQueryOptions,
   invalidateGitStatusQuery,
 } from "~/lib/gitReactQuery";
-import { newCommandId, newMessageId, randomUUID } from "~/lib/utils";
+import { newCommandId, newMessageId, newThreadId, randomUUID } from "~/lib/utils";
 import { buildCodeReviewPrompt, runtimeModeForFixMode } from "~/lib/codeReview";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { readNativeApi } from "~/nativeApi";
@@ -94,6 +97,39 @@ interface RunGitActionWithToastInput {
   filePaths?: string[];
   /** When true, skip the auto-review-before-push intercept (prevents re-entry). */
   skipAutoReview?: boolean;
+}
+
+/**
+ * Returns a concise, user-facing summary of a git error for display in the toast title.
+ * Shows only the first non-empty line, capped at 80 chars to avoid overflow.
+ */
+function summarizeGitError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "An unknown error occurred.";
+  const firstLine = message.split("\n").find((l) => l.trim().length > 0) ?? message;
+  return firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
+}
+
+/**
+ * Builds the AI fix prompt for a git error, embedding the full error so the agent
+ * has enough context to diagnose and fix the issue.
+ */
+function buildGitErrorFixPrompt(errorMessage: string, action: GitStackedAction | "pull"): string {
+  const actionLabel =
+    action === "commit"
+      ? "commit"
+      : action === "push"
+        ? "push"
+        : action === "pull"
+          ? "pull"
+          : action === "create_pr"
+            ? "create a pull request"
+            : action === "commit_push"
+              ? "commit and push"
+              : action === "commit_push_pr"
+                ? "commit, push and create a pull request"
+                : "run a git action";
+
+  return `I got an error while trying to ${actionLabel} in this repository. Please help me diagnose and fix it.\n\nError message:\n\`\`\`\n${errorMessage}\n\`\`\`\n\nPlease explain what caused this error and provide the steps or commands to fix it.`;
 }
 
 function formatElapsedDescription(startedAtMs: number | null): string | undefined {
@@ -217,7 +253,9 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
   const activeServerThread = useStore((store) =>
     activeThreadId ? store.threads.find((thread) => thread.id === activeThreadId) : undefined,
   );
+  const activeProjectId = activeServerThread?.projectId ?? null;
   const setThreadBranch = useStore((store) => store.setThreadBranch);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [dialogCommitMessage, setDialogCommitMessage] = useState("");
@@ -236,6 +274,33 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
   const resumePushCallbackRef = useRef<(() => void) | null>(null);
   // Holds the review turn ID we are waiting for ("__waiting__" until it appears).
   const reviewTurnIdForPushRef = useRef<string | null>(null);
+
+  /**
+   * Opens a new thread pre-filled with a prompt to fix a git error.
+   * Uses useEffectEvent so it always reads latest navigate/projectId without
+   * needing to be in the dependency array of the error handler effect.
+   */
+  const startFixWithAi = useEffectEvent(
+    (errorMessage: string, action: GitStackedAction | "pull") => {
+      if (!activeProjectId) return;
+      const { setProjectDraftThreadId, applyStickyState, setPrompt } =
+        useComposerDraftStore.getState();
+      const threadId = newThreadId();
+      const createdAt = new Date().toISOString();
+      // Register the new draft thread under the same project
+      setProjectDraftThreadId(activeProjectId, threadId, {
+        createdAt,
+        branch: null,
+        worktreePath: null,
+        envMode: "local",
+        runtimeMode: DEFAULT_RUNTIME_MODE,
+      });
+      applyStickyState(threadId);
+      // Pre-fill the composer with the error fix prompt
+      setPrompt(threadId, buildGitErrorFixPrompt(errorMessage, action));
+      void navigate({ to: "/$threadId", params: { threadId } });
+    },
+  );
 
   let runGitActionWithToast: (input: RunGitActionWithToastInput) => Promise<void>;
 
@@ -696,11 +761,22 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
         }
       } catch (err) {
         activeGitActionProgressRef.current = null;
+        const fullErrorMessage = err instanceof Error ? err.message : "An error occurred.";
+        // Show a concise summary as the title; full message is available via "Show details"
+        const errorSummary = summarizeGitError(err);
         toastManager.update(resolvedProgressToastId, {
           type: "error",
-          title: "Action failed",
-          description: err instanceof Error ? err.message : "An error occurred.",
+          title: errorSummary,
+          // Full message in description so "Show details" / copy button have full context
+          description: fullErrorMessage !== errorSummary ? fullErrorMessage : undefined,
           data: scopedToastData,
+          // "Fix with AI" — navigates to a new thread with the error pre-filled as prompt
+          actionProps: activeProjectId
+            ? {
+                children: "Fix with AI",
+                onClick: () => startFixWithAi(fullErrorMessage, action),
+              }
+            : undefined,
         });
       }
     },
@@ -768,11 +844,18 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
               : `${result.branch} is already synchronized.`,
           data: threadToastData,
         }),
-        error: (err) => ({
-          title: "Pull failed",
-          description: err instanceof Error ? err.message : "An error occurred.",
-          data: threadToastData,
-        }),
+        error: (err) => {
+          const fullMsg = err instanceof Error ? err.message : "An error occurred.";
+          const summary = summarizeGitError(err);
+          return {
+            title: summary,
+            description: fullMsg !== summary ? fullMsg : undefined,
+            data: threadToastData,
+            actionProps: activeProjectId
+              ? { children: "Fix with AI", onClick: () => startFixWithAi(fullMsg, "pull") }
+              : undefined,
+          };
+        },
       });
       void promise.catch(() => undefined);
       return;

@@ -81,8 +81,6 @@ struct MobilePairingView: View {
               TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .textContentType(.URL)
                 .font(.body)
                 .padding(.vertical, 12)
             }
@@ -607,11 +605,10 @@ struct MobileSettingsSheet: View {
             )
 
           MobileField(label: "Pairing code or desktop URL") {
-            TextField("Scan a QR or paste a Bird Code pairing link", text: $pairingCodeInput, axis: .vertical)
+            TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
               .textInputAutocapitalization(.never)
               .autocorrectionDisabled()
-              .keyboardType(.URL)
-              .lineLimit(2...4)
+              .font(.body)
               .padding(.vertical, 12)
           }
 
@@ -941,10 +938,10 @@ private struct MobileBrandHeader: View {
       MobileLogoMark()
       VStack(alignment: .leading, spacing: 8) {
         Text(title)
-          .font(.system(.largeTitle, weight: .bold))
+          .font(.system(.title2, weight: .semibold))
           .foregroundStyle(MobileTheme.foreground)
         Text(subtitle)
-          .font(.callout)
+          .font(.subheadline)
           .foregroundStyle(MobileTheme.muted)
       }
     }
@@ -975,9 +972,13 @@ private struct MobileLogoMark: View {
 }
 
 private enum MobileLogoLoader {
-  static func image() -> UIImage? {
+  private static let cachedImage: UIImage? = {
     guard let url = Bundle.main.url(forResource: "logo-dark", withExtension: "png") else { return nil }
     return UIImage(contentsOfFile: url.path)
+  }()
+
+  static func image() -> UIImage? {
+    cachedImage
   }
 }
 

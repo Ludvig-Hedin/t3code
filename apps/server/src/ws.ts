@@ -56,6 +56,8 @@ import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptR
 import { SkillService } from "./skills";
 import { Mem0Service, type Mem0Memory, type Mem0ServiceShape } from "./memory/Services/Mem0Service";
 import { PreviewServerManager } from "./preview/Services/PreviewServerManager";
+import { McpService } from "./mcp";
+import { PluginService } from "./plugins";
 
 // ---------------------------------------------------------------------------
 // Memory helpers — used in the dispatchCommand handler to enrich user messages
@@ -172,6 +174,8 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const skillService = yield* SkillService;
     const mem0 = yield* Mem0Service;
     const previewManager = yield* PreviewServerManager;
+    const mcpService = yield* McpService;
+    const pluginService = yield* PluginService;
 
     const serverCommandId = (tag: string) =>
       CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -854,6 +858,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           }),
           { "rpc.aggregate": "server" },
         ),
+
       // Rate-limit subscription:
       //  1. Emit cached snapshot (populated by session-start eager fetch, may be empty).
       //  2. Make a direct fetch from provider credential files / keychain — no active session
@@ -999,6 +1004,37 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           previewManager.streamEvents(projectId),
           { "rpc.aggregate": "preview" },
         ),
+
+      // ── MCP server handlers ────────────────────────────────────────────────
+      [WS_METHODS.mcpListServers]: ({ provider }) =>
+        observeRpcEffect(WS_METHODS.mcpListServers, mcpService.list(provider), {
+          "rpc.aggregate": "mcp",
+        }),
+      [WS_METHODS.mcpAddServer]: ({ provider, name, server }) =>
+        observeRpcEffect(WS_METHODS.mcpAddServer, mcpService.add(provider, name, server), {
+          "rpc.aggregate": "mcp",
+        }),
+      [WS_METHODS.mcpUpdateServer]: ({ provider, name, patch }) =>
+        observeRpcEffect(WS_METHODS.mcpUpdateServer, mcpService.update(provider, name, patch), {
+          "rpc.aggregate": "mcp",
+        }),
+      [WS_METHODS.mcpDeleteServer]: ({ provider, name }) =>
+        observeRpcEffect(WS_METHODS.mcpDeleteServer, mcpService.delete(provider, name), {
+          "rpc.aggregate": "mcp",
+        }),
+      // ── Plugin handlers ────────────────────────────────────────────────────
+      [WS_METHODS.pluginsList]: (_input) =>
+        observeRpcEffect(WS_METHODS.pluginsList, pluginService.list(), {
+          "rpc.aggregate": "plugins",
+        }),
+      [WS_METHODS.pluginsInstall]: ({ source }) =>
+        observeRpcEffect(WS_METHODS.pluginsInstall, pluginService.install(source), {
+          "rpc.aggregate": "plugins",
+        }),
+      [WS_METHODS.pluginsRemove]: ({ location }) =>
+        observeRpcEffect(WS_METHODS.pluginsRemove, pluginService.remove(location), {
+          "rpc.aggregate": "plugins",
+        }),
     });
   }),
 );

@@ -41,6 +41,8 @@ export const ClientSettingsSchema = Schema.Struct({
   enterKeyBehavior: EnterKeyBehavior.pipe(
     Schema.withDecodingDefault(() => DEFAULT_ENTER_KEY_BEHAVIOR),
   ),
+  // Plugin names the user has explicitly disabled; defaults to empty (all plugins active)
+  disabledPlugins: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 

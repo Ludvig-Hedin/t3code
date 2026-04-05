@@ -50,6 +50,8 @@ import { Mem0ServiceLive } from "./memory/Layers/Mem0Service";
 import { MemoryReactorLive } from "./memory/Layers/MemoryReactor";
 import { PreviewServerManagerLive } from "./preview/Layers/PreviewServerManager";
 import { previewProxyRouteLayer } from "./preview/previewProxyRoute";
+import { McpServiceLive } from "./mcp";
+import { PluginServiceLive } from "./plugins";
 
 const PtyAdapterLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -205,6 +207,8 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(SkillServiceLive),
   Layer.provideMerge(Mem0ServiceLive),
   Layer.provideMerge(PreviewServerManagerLive),
+  Layer.provideMerge(McpServiceLive),
+  Layer.provideMerge(PluginServiceLive),
 
   // Misc.
   Layer.provideMerge(AnalyticsServiceLayerLive),

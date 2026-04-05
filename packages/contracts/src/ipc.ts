@@ -125,6 +125,7 @@ export interface DesktopBridge {
   getWsUrl: () => string | null;
   getPairingUrl?: () => string | null;
   getPairingCode?: () => string | null;
+  getDesktopAuthToken?: () => string | null;
   getMobileDevices?: () => DesktopMobileDevicesResult | null;
   pickFolder: () => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;

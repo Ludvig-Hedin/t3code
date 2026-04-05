@@ -42,6 +42,7 @@ import {
   OrchestrationReplayEventsError,
   OrchestrationReplayEventsInput,
   OrchestrationRpcSchemas,
+  ProviderKind,
 } from "./orchestration";
 import {
   ProjectSearchEntriesError,
@@ -74,6 +75,8 @@ import {
   ServerUpsertKeybindingResult,
   ProviderRateLimitEntry,
 } from "./server";
+import { McpServer, McpServerInput, McpServerError } from "./mcp";
+import { PluginInfo, PluginInstallInput, PluginError } from "./plugins";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings";
 import {
   SkillDeleteInput,
@@ -142,6 +145,17 @@ export const WS_METHODS = {
   skillsSave: "skills.save",
   skillsDelete: "skills.delete",
   skillsGenerate: "skills.generate",
+
+  // MCP server methods
+  mcpListServers: "mcp.listServers",
+  mcpAddServer: "mcp.addServer",
+  mcpUpdateServer: "mcp.updateServer",
+  mcpDeleteServer: "mcp.deleteServer",
+
+  // Plugin methods
+  pluginsList: "plugins.list",
+  pluginsInstall: "plugins.install",
+  pluginsRemove: "plugins.remove",
 
   // Streaming subscriptions
   subscribeOrchestrationDomainEvents: "subscribeOrchestrationDomainEvents",
@@ -446,6 +460,52 @@ export const WsSubscribePreviewEventsRpc = Rpc.make(WS_METHODS.subscribePreviewE
   stream: true,
 });
 
+// ── MCP Server RPCs ─────────────────────────────────────────────────────
+
+export const WsMcpListServersRpc = Rpc.make(WS_METHODS.mcpListServers, {
+  payload: Schema.Struct({ provider: ProviderKind }),
+  success: Schema.Array(McpServer),
+  error: McpServerError,
+});
+
+export const WsMcpAddServerRpc = Rpc.make(WS_METHODS.mcpAddServer, {
+  payload: Schema.Struct({ provider: ProviderKind, name: Schema.String, server: McpServerInput }),
+  success: McpServer,
+  error: McpServerError,
+});
+
+export const WsMcpUpdateServerRpc = Rpc.make(WS_METHODS.mcpUpdateServer, {
+  payload: Schema.Struct({ provider: ProviderKind, name: Schema.String, patch: McpServerInput }),
+  success: McpServer,
+  error: McpServerError,
+});
+
+export const WsMcpDeleteServerRpc = Rpc.make(WS_METHODS.mcpDeleteServer, {
+  payload: Schema.Struct({ provider: ProviderKind, name: Schema.String }),
+  error: McpServerError,
+});
+
+// ── Plugin RPCs ─────────────────────────────────────────────────────────
+
+export const WsPluginsListRpc = Rpc.make(WS_METHODS.pluginsList, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(PluginInfo),
+  error: PluginError,
+});
+
+export const WsPluginsInstallRpc = Rpc.make(WS_METHODS.pluginsInstall, {
+  payload: PluginInstallInput,
+  success: PluginInfo,
+  error: PluginError,
+});
+
+export const WsPluginsRemoveRpc = Rpc.make(WS_METHODS.pluginsRemove, {
+  // changed from `name` to `location` (absolute path from PluginInfo.location).
+  // This makes the contract unambiguous — package.json name ≠ directory name.
+  payload: Schema.Struct({ location: Schema.String }),
+  error: PluginError,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -494,4 +554,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewGetSessionsRpc,
   WsPreviewUpdateAppRpc,
   WsSubscribePreviewEventsRpc,
+  WsMcpListServersRpc,
+  WsMcpAddServerRpc,
+  WsMcpUpdateServerRpc,
+  WsMcpDeleteServerRpc,
+  WsPluginsListRpc,
+  WsPluginsInstallRpc,
+  WsPluginsRemoveRpc,
 );
