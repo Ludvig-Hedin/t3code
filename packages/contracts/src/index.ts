@@ -13,3 +13,4 @@ export * from "./editor";
 export * from "./project";
 export * from "./rpc";
 export * from "./skills";
+export * from "./preview";
