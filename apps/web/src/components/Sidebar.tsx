@@ -5,6 +5,7 @@ import {
   FolderIcon,
   GitPullRequestIcon,
   LoaderCircleIcon,
+  PanelLeftIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -29,6 +30,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import {
   DndContext,
@@ -111,6 +113,7 @@ import {
   SidebarMenuSubItem,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar,
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import {
@@ -784,6 +787,8 @@ export default function Sidebar() {
   const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
   // Search modal open state — toggled by search button and Cmd+K shortcut
   const [searchOpen, setSearchOpen] = useState(false);
+  // Sidebar collapse state — toggled by button and Cmd+B shortcut
+  const { open: sidebarOpen, toggleSidebar } = useSidebar();
   const selectedThreadIds = useThreadSelectionStore((s) => s.selectedThreadIds);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
@@ -1580,6 +1585,18 @@ export default function Sidebar() {
         return;
       }
 
+      // Toggle sidebar on Cmd+B (Mac) or Ctrl+B (other platforms)
+      const isSidebarToggleShortcut = isMacPlatform(platform)
+        ? key === "b" && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+        : key === "b" && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+
+      if (isSidebarToggleShortcut) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleSidebar();
+        return;
+      }
+
       const command = resolveShortcutCommand(event, keybindings, {
         platform,
         context: getShortcutContext(),
@@ -1646,6 +1663,7 @@ export default function Sidebar() {
     routeTerminalOpen,
     routeThreadId,
     threadJumpThreadIds,
+    toggleSidebar,
     updateThreadJumpHintsVisibility,
   ]);
 
@@ -2037,8 +2055,33 @@ export default function Sidebar() {
     });
   }, []);
 
+  // Icon-only button style matching new thread / search sidebar buttons
+  const sidebarIconButtonClass =
+    "flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground";
+
+  // The toggle sidebar button — same icon size as new-thread/search buttons
+  const toggleSidebarButton = (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label="Toggle sidebar"
+            className={sidebarIconButtonClass}
+            onClick={toggleSidebar}
+          >
+            <PanelLeftIcon className="size-3.5" />
+          </button>
+        }
+      />
+      <TooltipPopup side="bottom" sideOffset={4}>
+        Toggle sidebar ({isMacPlatform(navigator.platform) ? "⌘B" : "Ctrl+B"})
+      </TooltipPopup>
+    </Tooltip>
+  );
+
   const wordmark = (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <SidebarTrigger className="shrink-0 md:hidden" />
       <Tooltip>
         <TooltipTrigger
@@ -2065,10 +2108,66 @@ export default function Sidebar() {
     </div>
   );
 
+  // When the sidebar is collapsed (Electron desktop), render a fixed overlay in the
+  // top-left corner so the toggle button (and quick-action icons) remain accessible.
+  const collapsedSidebarBar =
+    isElectron && !sidebarOpen
+      ? createPortal(
+          <div
+            className="drag-region fixed top-0 left-0 z-50 flex h-[52px] items-center gap-0.5 pl-[90px] pr-2"
+            data-testid="sidebar-collapsed-bar"
+          >
+            {toggleSidebarButton}
+            {projects.length > 0 && defaultProjectId && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label="New thread"
+                        className={sidebarIconButtonClass}
+                        onClick={() => void navigate({ to: "/" })}
+                      >
+                        <SquarePenIcon className="size-3.5" />
+                      </button>
+                    }
+                  />
+                  <TooltipPopup side="bottom" sideOffset={4}>
+                    New thread
+                    {newThreadShortcutLabel && ` (${newThreadShortcutLabel})`}
+                  </TooltipPopup>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label="Search"
+                        className={sidebarIconButtonClass}
+                        onClick={() => setSearchOpen(true)}
+                      >
+                        <SearchIcon className="size-3.5" />
+                      </button>
+                    }
+                  />
+                  <TooltipPopup side="bottom" sideOffset={4}>
+                    Search ({isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"})
+                  </TooltipPopup>
+                </Tooltip>
+              </>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <>
+      {collapsedSidebarBar}
       {isElectron ? (
-        <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-2 px-4 py-0 pl-[90px]">
+        <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-1 px-2 py-0 pl-[90px]">
+          {toggleSidebarButton}
           {wordmark}
         </SidebarHeader>
       ) : (

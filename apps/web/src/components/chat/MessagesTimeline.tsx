@@ -392,7 +392,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <div className="flex justify-end">
               {/* Timestamp sits above the bubble, right-aligned, ~6px gap via mb-1.5 */}
               <div className="flex flex-col items-end">
-                <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm bg-secondary/50 px-3 py-2">
+                <div className="group relative max-w-[80%] rounded-2xl bg-secondary/50 px-3 py-2">
                   {userImages.length > 0 && (
                     <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
                       {userImages.map(
@@ -781,7 +781,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground">
+          <div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-normal text-foreground">
             {inlineNodes}
           </div>
         );
@@ -809,7 +809,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="wrap-break-word whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
+      <div className="wrap-break-word whitespace-pre-wrap font-mono text-xs leading-normal text-foreground">
         {inlineNodes}
       </div>
     );
@@ -820,7 +820,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed text-foreground">
+    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-normal text-foreground">
       {props.text}
     </pre>
   );

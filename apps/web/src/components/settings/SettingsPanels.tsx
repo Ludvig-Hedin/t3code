@@ -82,7 +82,9 @@ const THEME_OPTIONS = [
 ] as const;
 
 const TIMESTAMP_FORMAT_LABELS = {
-  locale: "System default",
+  // "locale" uses Intl.DateTimeFormat(undefined) — inherits the browser's locale,
+  // timezone, and 12/24h preference automatically (e.g. 24h for Sweden, 12h for US)
+  locale: "Auto (locale)",
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
@@ -832,7 +834,7 @@ export function GeneralSettingsPanel() {
 
         <SettingsRow
           title="Time format"
-          description="System default follows your browser or OS clock preference."
+          description="Auto uses your browser locale's timezone and 12/24h preference (e.g. 24h for Sweden, 12h for US). Override with 12-hour or 24-hour if needed."
           resetAction={
             settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat ? (
               <SettingResetButton

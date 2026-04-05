@@ -168,6 +168,15 @@ input {
   -webkit-app-region: drag;
 }
 
+/* When the sidebar is collapsed in the Electron app, the macOS traffic-light
+   buttons (close / minimise / full-screen) overlap the main-content drag
+   regions.  A SidebarCollapseEffect component toggles this attribute on
+   <body> so we can push the content clear of the ~90 px traffic-light zone. */
+/* Pad past: 90px traffic lights + 3 icon buttons (≈26px each) + 2 gaps (2px) + 8px right margin = ~185px */
+body[data-sidebar-collapsed] .drag-region {
+  padding-left: 185px;
+}
+
 .drag-region button,
 .drag-region input,
 .drag-region textarea,
