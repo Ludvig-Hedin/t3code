@@ -165,7 +165,7 @@ export function BirdCodeMobileCompanionPanel() {
   };
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-1 flex-col gap-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           Mobile devices
@@ -198,11 +198,11 @@ export function BirdCodeMobileCompanionPanel() {
                   Bird Code will read the QR, take the server URL and hidden desktop auth token from
                   it, and then pair without asking you to hunt for anything.
                 </p>
-                <div className="rounded-xl border bg-background/72 p-3">
+                <div className="rounded-lg border bg-background/72 p-2.5">
                   <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                     Pairing code
                   </div>
-                  <div className="mt-1 break-all font-mono text-sm text-foreground">
+                  <div className="mt-1 break-all font-mono text-[11px] text-foreground">
                     {pairingCode}
                   </div>
                 </div>
@@ -214,7 +214,7 @@ export function BirdCodeMobileCompanionPanel() {
                 {qrDataUrl ? (
                   <img
                     alt="Bird Code desktop pairing QR"
-                    className="h-[12rem] w-[12rem] rounded-xl border bg-background p-2 object-contain shadow-xs/5"
+                    className="h-[10.5rem] w-[10.5rem] rounded-lg border bg-background p-2 object-contain shadow-xs/5"
                     src={qrDataUrl}
                   />
                 ) : (

@@ -30,7 +30,13 @@ export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
 }
 
-export interface UiState extends UiProjectState, UiThreadState {}
+export interface UiPreviewState {
+  previewOpen: boolean;
+  previewDetached: boolean;
+  previewFloatingBounds: { x: number; y: number; w: number; h: number } | null;
+}
+
+export interface UiState extends UiProjectState, UiThreadState, UiPreviewState {}
 
 export interface SyncProjectInput {
   id: ProjectId;
@@ -46,6 +52,10 @@ const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
+  // Preview state is session-only — intentionally not persisted to localStorage
+  previewOpen: false,
+  previewDetached: false,
+  previewFloatingBounds: null,
 };
 
 const persistedExpandedProjectCwds = new Set<string>();
@@ -390,6 +400,9 @@ interface UiStateStore extends UiState {
   toggleProject: (projectId: ProjectId) => void;
   setProjectExpanded: (projectId: ProjectId, expanded: boolean) => void;
   reorderProjects: (draggedProjectId: ProjectId, targetProjectId: ProjectId) => void;
+  setPreviewOpen: (open: boolean) => void;
+  setPreviewDetached: (detached: boolean) => void;
+  setPreviewFloatingBounds: (bounds: { x: number; y: number; w: number; h: number } | null) => void;
 }
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
@@ -406,6 +419,9 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (draggedProjectId, targetProjectId) =>
     set((state) => reorderProjects(state, draggedProjectId, targetProjectId)),
+  setPreviewOpen: (open) => set((state) => ({ ...state, previewOpen: open })),
+  setPreviewDetached: (detached) => set((state) => ({ ...state, previewDetached: detached })),
+  setPreviewFloatingBounds: (bounds) => set((state) => ({ ...state, previewFloatingBounds: bounds })),
 }));
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));

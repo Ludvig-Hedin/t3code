@@ -21,13 +21,18 @@
 		60E747A41E154A37A5D7F7BE /* MobileScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileScreens.swift; sourceTree = "<group>"; };
 		7A59017220D382D29BA02754 /* MobileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModels.swift; sourceTree = "<group>"; };
 		B2A0109CE38F9C84156A219C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
-		B9BB7694E0E20B181E7DF2E1 /* BirdCode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BirdCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9BB7694E0E20B181E7DF2E1 /* BirdCode.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = BirdCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F7F7914D30F6B37FFBCF7805 /* MobileAppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1143B7EE6E3BCFA276BCC5B7 /* Resources */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+				Assets.xcassets,
+			);
 			path = Resources;
 			sourceTree = "<group>";
 		};
@@ -252,10 +257,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = XDBG7P4V96;
 				INFOPLIST_KEY_CFBundleDisplayName = "Bird Code";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan Bird Code pairing QR codes from your desktop or other devices.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Bird Code needs local network access to reach your desktop session for pairing and syncing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -274,10 +280,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = XDBG7P4V96;
 				INFOPLIST_KEY_CFBundleDisplayName = "Bird Code";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan Bird Code pairing QR codes from your desktop or other devices.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Bird Code needs local network access to reach your desktop session for pairing and syncing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;

@@ -16,6 +16,9 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
+    previewOpen: false,
+    previewDetached: false,
+    previewFloatingBounds: null,
     ...overrides,
   };
 }

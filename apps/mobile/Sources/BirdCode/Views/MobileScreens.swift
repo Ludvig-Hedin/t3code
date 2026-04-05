@@ -81,6 +81,8 @@ struct MobilePairingView: View {
               TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .textContentType(.URL)
                 .font(.body)
                 .padding(.vertical, 12)
             }
@@ -132,6 +134,7 @@ struct MobilePairingView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .scrollIndicators(.visible)
+    .scrollDismissesKeyboard(.interactively)
     .sheet(isPresented: $isShowingScanner) {
       MobileQRCodeScannerSheet { scannedText in
         pairingCodeInput = scannedText
@@ -163,6 +166,7 @@ struct MobileShellView: View {
       }
     }
     .navigationSplitViewStyle(.balanced)
+    .fontDesign(.default)
     .toolbar {
       ToolbarItemGroup(placement: .topBarTrailing) {
         Button {
@@ -301,7 +305,7 @@ struct MobileThreadDetailView: View {
       ToolbarItemGroup(placement: .topBarLeading) {
         VStack(alignment: .leading, spacing: 4) {
           Text(thread.title)
-            .font(.system(.title2, design: .rounded, weight: .semibold))
+            .font(.system(.title2, weight: .semibold))
           Text(thread.branch ?? thread.projectId)
             .font(.caption)
             .foregroundStyle(MobileTheme.muted)
@@ -581,6 +585,7 @@ struct MobileSettingsSheet: View {
         }
       }
     }
+    .fontDesign(.default)
     .presentationDetents([.large])
     .presentationDragIndicator(.visible)
     .sheet(isPresented: $isShowingScanner) {
@@ -600,100 +605,64 @@ struct MobileSettingsSheet: View {
         MobileCard {
           VStack(alignment: .leading, spacing: 14) {
             MobileSectionHeading(
-              title: "Pair a device",
+              title: "Pair with desktop",
               subtitle: "Scan the desktop QR or paste the pairing code. No token hunting required.",
             )
 
-          MobileField(label: "Pairing code or desktop URL") {
-            TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
-              .textInputAutocapitalization(.never)
-              .autocorrectionDisabled()
-              .font(.body)
-              .padding(.vertical, 12)
-          }
-
-          HStack(spacing: 10) {
-            Button {
-              isShowingScanner = true
-            } label: {
-              Label("Scan QR", systemImage: "qrcode.viewfinder")
+            MobileField(label: "Pairing code or desktop URL") {
+              TextField("Paste Bird Code pairing code", text: $pairingCodeInput)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .textContentType(.URL)
+                .font(.body)
+                .padding(.vertical, 12)
             }
-            .buttonStyle(MobileSecondaryButtonStyle())
 
-            Button {
-              Task {
-                if pairingCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                  await store.connectAndPair()
-                } else {
-                  await store.importPairingCode(pairingCodeInput)
+            HStack(spacing: 10) {
+              Button {
+                isShowingScanner = true
+              } label: {
+                Label("Scan QR", systemImage: "qrcode.viewfinder")
+              }
+              .buttonStyle(MobileSecondaryButtonStyle())
+
+              Button {
+                Task {
+                  if pairingCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    await store.connectAndPair()
+                  } else {
+                    await store.importPairingCode(pairingCodeInput)
+                  }
                 }
-              }
-            } label: {
-              HStack(spacing: 10) {
-                if store.isPairing {
-                  ProgressView()
-                    .tint(.white)
-                } else {
-                  Image(systemName: "link.circle.fill")
-                    .font(.system(size: 16, weight: .semibold))
+              } label: {
+                HStack(spacing: 10) {
+                  if store.isPairing {
+                    ProgressView()
+                      .tint(.white)
+                  } else {
+                    Image(systemName: "link.circle.fill")
+                      .font(.system(size: 16, weight: .semibold))
+                  }
+                  Text(store.isPairing ? "Pairing…" : "Pair device")
+                    .fontWeight(.semibold)
                 }
-                Text(store.isPairing ? "Pairing…" : "Pair device")
-                  .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
               }
-              .frame(maxWidth: .infinity)
+              .buttonStyle(MobilePrimaryButtonStyle())
+              .disabled(store.isPairing)
             }
-            .buttonStyle(MobilePrimaryButtonStyle())
-            .disabled(store.isPairing)
+
+            Text("The desktop QR already carries the hidden auth token. No extra token entry is needed.")
+              .font(.callout)
+              .foregroundStyle(MobileTheme.muted)
           }
-        }
-      }
-
-      MobileCard {
-        VStack(alignment: .leading, spacing: 14) {
-          MobileSectionHeading(
-            title: "Pairing code",
-            subtitle: store.deviceToken == nil
-              ? "Once you pair the desktop, Bird Code can generate a share code for other devices."
-              : "Scan or paste this code on another device to connect instantly.",
-          )
-
-          if let shareCode = store.pairingShareCode() {
-            HStack(alignment: .center, spacing: 16) {
-              QRCodeView(
-                payload: shareCode,
-                label: "Bird Code pairing QR",
-              )
-              .frame(width: 144, height: 144)
-
-              VStack(alignment: .leading, spacing: 8) {
-                Text("Share code")
-                  .font(.caption)
-                  .foregroundStyle(MobileTheme.muted)
-                  .textCase(.uppercase)
-                  .tracking(0.8)
-                Text(shareCode)
-                  .font(.system(.caption, design: .monospaced))
-                  .foregroundStyle(MobileTheme.foreground)
-                  .textSelection(.enabled)
-                  .lineLimit(5)
-                Text("The QR contains the desktop server address. After pairing, it also carries the device token for quick reconnects.")
-                  .font(.callout)
-                  .foregroundStyle(MobileTheme.muted)
-              }
-            }
-          } else {
-            MobileEmptyStateCard(
-              title: "No pairing code yet",
-              subtitle: "Enter a desktop URL or scan the QR from the desktop settings screen.",
-              symbol: "qrcode",
-            )
-          }
-        }
         }
       }
       .frame(maxWidth: .infinity, alignment: .topLeading)
     }
     .scrollIndicators(.visible)
+    .scrollDismissesKeyboard(.interactively)
   }
 
   private var settingsDevicesTab: some View {
@@ -756,6 +725,7 @@ struct MobileSettingsSheet: View {
       .frame(maxWidth: .infinity, alignment: .topLeading)
     }
     .scrollIndicators(.visible)
+    .scrollDismissesKeyboard(.interactively)
   }
 
   private var settingsAdvancedTab: some View {
@@ -826,6 +796,7 @@ struct MobileSettingsSheet: View {
       .frame(maxWidth: .infinity, alignment: .topLeading)
     }
     .scrollIndicators(.visible)
+    .scrollDismissesKeyboard(.interactively)
   }
 }
 }
@@ -938,10 +909,10 @@ private struct MobileBrandHeader: View {
       MobileLogoMark()
       VStack(alignment: .leading, spacing: 8) {
         Text(title)
-          .font(.system(.title2, weight: .semibold))
+          .font(.system(.largeTitle, weight: .bold))
           .foregroundStyle(MobileTheme.foreground)
         Text(subtitle)
-          .font(.subheadline)
+          .font(.callout)
           .foregroundStyle(MobileTheme.muted)
       }
     }
@@ -972,13 +943,9 @@ private struct MobileLogoMark: View {
 }
 
 private enum MobileLogoLoader {
-  private static let cachedImage: UIImage? = {
+  static func image() -> UIImage? {
     guard let url = Bundle.main.url(forResource: "logo-dark", withExtension: "png") else { return nil }
     return UIImage(contentsOfFile: url.path)
-  }()
-
-  static func image() -> UIImage? {
-    cachedImage
   }
 }
 

@@ -10,6 +10,7 @@ import {
   type PreviewApp,
   type PreviewEvent,
   type PreviewSession,
+  type ProjectId,
   type ProviderKind,
   type ServerSettingsPatch,
   WS_METHODS,
@@ -133,17 +134,17 @@ export interface WsRpcClient {
     readonly remove: (input: { location: string }) => Promise<void>;
   };
   readonly preview: {
-    readonly detectApps: (input: { projectId: string }) => Promise<PreviewApp[]>;
-    readonly start: (input: { projectId: string; appId: string }) => Promise<PreviewSession>;
-    readonly stop: (input: { projectId: string; appId: string }) => Promise<void>;
-    readonly getSessions: (input: { projectId: string }) => Promise<PreviewSession[]>;
+    readonly detectApps: (input: { projectId: ProjectId }) => Promise<PreviewApp[]>;
+    readonly start: (input: { projectId: ProjectId; appId: string }) => Promise<PreviewSession>;
+    readonly stop: (input: { projectId: ProjectId; appId: string }) => Promise<void>;
+    readonly getSessions: (input: { projectId: ProjectId }) => Promise<PreviewSession[]>;
     readonly updateApp: (input: {
-      projectId: string;
+      projectId: ProjectId;
       appId: string;
       patch: { label?: string; command?: string; cwd?: string; type?: "browser" | "logs" };
     }) => Promise<PreviewApp>;
     readonly onEvent: (
-      projectId: string,
+      projectId: ProjectId,
       listener: (event: PreviewEvent) => void,
     ) => () => void;
   };
@@ -307,14 +308,19 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
       remove: (input) => transport.request((client) => client[WS_METHODS.pluginsRemove](input)),
     },
     preview: {
+      // Spread readonly arrays to satisfy mutable PreviewApp[] / PreviewSession[] return types
       detectApps: (input) =>
-        transport.request((client) => client[WS_METHODS.previewDetectApps](input)),
+        transport
+          .request((client) => client[WS_METHODS.previewDetectApps](input))
+          .then((apps) => [...apps]),
       start: (input) =>
         transport.request((client) => client[WS_METHODS.previewStart](input)),
       stop: (input) =>
         transport.request((client) => client[WS_METHODS.previewStop](input)),
       getSessions: (input) =>
-        transport.request((client) => client[WS_METHODS.previewGetSessions](input)),
+        transport
+          .request((client) => client[WS_METHODS.previewGetSessions](input))
+          .then((sessions) => [...sessions]),
       updateApp: (input) =>
         transport.request((client) => client[WS_METHODS.previewUpdateApp](input)),
       onEvent: (projectId, listener) =>
