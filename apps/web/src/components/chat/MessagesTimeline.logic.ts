@@ -165,13 +165,39 @@ function estimateWorkRowHeight(
 ): number {
   const isExpanded = input.expandedWorkGroups?.[row.id] ?? false;
   const hasOverflow = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-  const visibleEntries =
-    hasOverflow && !isExpanded ? MAX_VISIBLE_WORK_LOG_ENTRIES : row.groupedEntries.length;
-  const onlyToolEntries = row.groupedEntries.every((entry) => entry.tone === "tool");
-  const showHeader = hasOverflow || !onlyToolEntries;
 
-  // Card chrome, optional header, and one compact work-entry row per visible entry.
-  return 28 + (showHeader ? 26 : 0) + visibleEntries * 32;
+  // Header is always shown now (stats strip or "Work log (N)")
+  const headerHeight = 26;
+  const cardChrome = 28;
+
+  // Count reasoning blocks vs tool entries in visible range for more accurate estimation.
+  // Reasoning blocks collapse to ~28px each when closed.
+  // Tool entries are ~34px each (with possible secondary line).
+  let reasoningBlockCount = 0;
+  let toolEntryCount = 0;
+  let inReasoningRun = false;
+
+  const visibleSlice = hasOverflow && !isExpanded
+    ? row.groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
+    : row.groupedEntries;
+
+  for (const entry of visibleSlice) {
+    const isReasoning =
+      entry.tone === "thinking" || entry.label.startsWith("Reasoning update");
+    if (isReasoning) {
+      if (!inReasoningRun) {
+        reasoningBlockCount++;
+        inReasoningRun = true;
+      }
+    } else {
+      inReasoningRun = false;
+      toolEntryCount++;
+    }
+  }
+
+  // Reasoning blocks: collapsed ~28px each
+  // Tool entries: ~34px each (slightly taller with possible secondary line)
+  return cardChrome + headerHeight + reasoningBlockCount * 28 + toolEntryCount * 34;
 }
 
 function estimateTimelineProposedPlanHeight(proposedPlan: ProposedPlan): number {
