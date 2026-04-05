@@ -4,7 +4,7 @@ import * as readline from "node:readline";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
 
-import { Effect, Layer, Queue, Stream } from "effect";
+import { Effect, Layer, PubSub, Stream } from "effect";
 import { ProjectId } from "@t3tools/contracts";
 import type { PreviewApp, PreviewEvent, PreviewSession } from "@t3tools/contracts";
 
@@ -141,8 +141,10 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
   const projectApps = new Map<string, PreviewApp[]>();
   // projectId -> manual overrides (appId -> partial PreviewApp patch)
   const manualOverrides = new Map<string, Map<string, Partial<PreviewApp>>>();
-  // Global broadcast queue - all subscribers filter events by projectId
-  const eventQueue = yield* Queue.unbounded<PreviewEvent>();
+  // Global broadcast PubSub — all subscribers receive every event and filter by projectId.
+  // PubSub (unlike Queue) is a multi-consumer broadcast primitive, so two simultaneous
+  // browser tabs each get the full event stream rather than splitting it.
+  const eventQueue = yield* PubSub.unbounded<PreviewEvent>();
 
   // Cleanup all child processes on scope exit (server shutdown)
   yield* Effect.addFinalizer(() =>
@@ -157,7 +159,7 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
   // Fire-and-forget event emission from plain Node.js callbacks.
   // Uses runFork (bound to the Effect service context) to safely enqueue into the Effect Queue.
   const emitEvent = (event: PreviewEvent): void => {
-    runFork(Queue.offer(eventQueue, event).pipe(Effect.asVoid));
+    runFork(PubSub.publish(eventQueue, event).pipe(Effect.asVoid));
   };
 
   const updateSessionStatus = (key: string, patch: Partial<PreviewSession>): void => {
@@ -334,10 +336,12 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
 
     getApps: (projectId) => projectApps.get(projectId) ?? [],
 
-    // Filter the global broadcast queue to only emit events for this project.
+    // Subscribe to the global broadcast PubSub and filter to this project.
+    // Each call creates a fresh independent subscription, so multiple callers
+    // (e.g., two browser tabs) each receive all events — no event splitting.
     // The stream never ends on its own — callers should manage lifecycle.
     streamEvents: (projectId) =>
-      Stream.fromQueue(eventQueue).pipe(
+      Stream.fromPubSub(eventQueue).pipe(
         Stream.filter((e) => {
           if (e.type === "log") return e.projectId === projectId;
           if (e.type === "status-change") return e.projectId === projectId;
