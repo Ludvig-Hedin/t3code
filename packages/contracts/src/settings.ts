@@ -68,12 +68,9 @@ export const ClientSettingsSchema = Schema.Struct({
   customInstructions: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
 
   // Default provider for new chats
-  defaultProvider: Schema.Union(
-    Schema.Literal("use-latest"),
-    Schema.Literal("codex"),
-    Schema.Literal("claudeAgent"),
-    Schema.Literal("gemini"),
-  ).pipe(Schema.withDecodingDefault(() => "use-latest" as const)),
+  defaultProvider: Schema.Literals(["use-latest", "codex", "claudeAgent", "gemini"]).pipe(
+    Schema.withDecodingDefault(() => "use-latest" as const),
+  ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
