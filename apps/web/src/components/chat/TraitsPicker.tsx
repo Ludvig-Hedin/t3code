@@ -18,7 +18,7 @@ import {
 } from "@t3tools/shared/model";
 import { memo, useCallback, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
-import { ChevronDownIcon } from "lucide-react";
+import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import { Button, buttonVariants } from "../ui/button";
 import {
   Menu,
@@ -397,6 +397,9 @@ export const TraitsPicker = memo(function TraitsPicker({
           <Button
             size="sm"
             variant={triggerVariant ?? "ghost"}
+            // Native title tooltip — low-risk alternative to a custom Tooltip since the
+            // trigger is nested inside MenuTrigger and restructuring would be complex.
+            title={triggerLabel ? `Reasoning: ${triggerLabel}` : "Model options"}
             className={cn(
               isCodexStyle
                 ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:max-w-48 sm:px-3 [&_svg]:mx-0"
@@ -408,11 +411,15 @@ export const TraitsPicker = memo(function TraitsPicker({
       >
         {isCodexStyle ? (
           <span className="flex min-w-0 w-full items-center gap-2 overflow-hidden">
+            {/* Brain icon signals this button controls reasoning/thinking settings */}
+            <BrainIcon aria-hidden="true" className="size-3 shrink-0" />
             {triggerLabel}
             <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
           </span>
         ) : (
           <>
+            {/* Brain icon signals this button controls reasoning/thinking settings */}
+            <BrainIcon aria-hidden="true" className="size-3 shrink-0" />
             <span>{triggerLabel}</span>
             <ChevronDownIcon aria-hidden="true" className="size-3 opacity-60" />
           </>
