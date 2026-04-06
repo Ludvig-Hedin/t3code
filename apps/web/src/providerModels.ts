@@ -29,6 +29,7 @@ export function getProviderModelsByProvider(
     codex: getProviderModels(providers, "codex"),
     claudeAgent: getProviderModels(providers, "claudeAgent"),
     gemini: getProviderModels(providers, "gemini"),
+    opencode: getProviderModels(providers, "opencode"),
   };
 }
 

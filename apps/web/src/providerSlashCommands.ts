@@ -155,6 +155,8 @@ export const PROVIDER_SLASH_COMMANDS: Record<ProviderKind, readonly ProviderSlas
   codex: CODEX_COMMANDS,
   claudeAgent: CLAUDE_AGENT_COMMANDS,
   gemini: GEMINI_COMMANDS,
+  // opencode uses pass-through commands — populated server-side when available
+  opencode: [],
 };
 
 /**
