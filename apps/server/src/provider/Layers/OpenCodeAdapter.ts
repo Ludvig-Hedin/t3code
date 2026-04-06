@@ -250,11 +250,12 @@ function mapSseEvent(
     case "session.error": {
       const message =
         typeof data.message === "string" ? data.message : "Unknown opencode session error";
+      // session.error is a terminal error — emit turn.error, not runtime.warning
       emitEvent(
         makeThreadEvent(
-          "runtime.warning",
+          "turn.error" as ProviderRuntimeEvent["type"],
           threadId,
-          { message, detail: null },
+          { message, detail: null } as never,
           turnId,
         ),
       );
@@ -341,15 +342,13 @@ export const OpenCodeAdapterLive = Layer.effect(
         );
 
         // Resolve default model: try GET /config, fall back to input or hardcoded default
-        let modelSlug =
-          input.modelSelection?.model ?? "moonshot/kimi-k2-5";
+        // Priority: 1) explicit caller selection, 2) GET /config default, 3) hardcoded fallback
         const configResult = yield* Effect.tryPromise({
           try: () => handle.client.get<{ model?: string }>("/config"),
           catch: () => null,
         }).pipe(Effect.catchAll(() => Effect.succeed(null)));
-        if (configResult?.model) {
-          modelSlug = configResult.model;
-        }
+        const serverDefault = configResult?.model ?? null;
+        const modelSlug = input.modelSelection?.model ?? serverDefault ?? "moonshot/kimi-k2-5";
 
         const { providerID, modelID } = parseModelSlug(modelSlug);
 
