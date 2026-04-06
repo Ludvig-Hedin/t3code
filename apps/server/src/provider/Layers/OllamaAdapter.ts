@@ -541,11 +541,12 @@ export const OllamaAdapterLive = Layer.effect(
           Math.max(0, sessionState.turns.length - numTurns),
         );
 
-        // Each turn = 1 user message + 1 assistant message. Remove N×2 messages.
-        // Only count turns that actually have an assistant message (i.e., not interrupted without content).
+        // Calculate messages to remove based on turn state:
+        // - Completed turns: 2 messages (user + assistant, since both were appended to messages[])
+        // - Failed/interrupted turns: 1 message (user only, assistant not appended on non-success)
         const removedTurns = sessionState.turns.slice(nextTurns.length);
         const messagesToRemove = removedTurns.reduce(
-          (acc, t) => acc + 1 + (t.assistantContent.length > 0 ? 1 : 0),
+          (acc, t) => acc + (t.state === "completed" ? 2 : 1),
           0,
         );
         const nextMessages = sessionState.messages.slice(
