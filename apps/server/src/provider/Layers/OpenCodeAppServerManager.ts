@@ -8,7 +8,7 @@
  *
  * @module OpenCodeAppServerManager
  */
-import { Effect, Ref } from "effect";
+import { Deferred, Effect, Ref } from "effect";
 import { type ChildProcess as NodeChildProcess, spawn } from "node:child_process";
 
 const STARTING_PORT = 4096;
@@ -108,7 +108,21 @@ export async function startOpenCodeServer(binaryPath: string): Promise<OpenCodeS
     console.error("[OpenCodeAppServerManager] child process error:", err);
   });
 
-  await waitForHealth(baseUrl);
+  // Race health polling against early process exit
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (!settled) { settled = true; fn(); }
+    };
+
+    child.on("exit", (code) => {
+      settle(() => reject(new Error(`opencode serve exited early with code ${code ?? "unknown"}`)));
+    });
+
+    waitForHealth(baseUrl)
+      .then(() => settle(resolve))
+      .catch((err: unknown) => settle(() => reject(err instanceof Error ? err : new Error(String(err)))));
+  });
 
   return {
     client: makeHttpClient(baseUrl),
@@ -130,21 +144,62 @@ export interface OpenCodeServerHandleManager {
 /**
  * Effect-managed singleton handle. Acquired once per server session scope.
  * Exposes a Ref so adapters can obtain the client without re-spawning.
+ *
+ * Concurrency safety: uses a Deferred as a one-shot lock so concurrent fibers
+ * calling getOrStart simultaneously only ever spawn one child process.
  */
 export const makeOpenCodeServerHandleRef = (
   binaryPath: string,
 ): Effect.Effect<OpenCodeServerHandleManager> =>
   Effect.gen(function* () {
     const handleRef = yield* Ref.make<OpenCodeServerHandle | null>(null);
+    // Deferred used as a one-shot lock: first caller races to complete it,
+    // subsequent callers await its result without spawning a second process.
+    const startingRef = yield* Ref.make<import("effect").Deferred.Deferred<OpenCodeServerHandle, Error> | null>(null);
 
     const getOrStart: Effect.Effect<OpenCodeServerHandle, Error> = Effect.gen(function* () {
+      // Fast path: already running
       const existing = yield* Ref.get(handleRef);
       if (existing) return existing;
-      const handle = yield* Effect.tryPromise({
+
+      // Check if a start is already in flight
+      const existingDeferred = yield* Ref.get(startingRef);
+      if (existingDeferred) {
+        return yield* Deferred.await(existingDeferred);
+      }
+
+      // We are the first — create a deferred and race to set it
+      const deferred = yield* Deferred.make<OpenCodeServerHandle, Error>();
+      const won = yield* Ref.compareAndSet(startingRef, null, deferred);
+
+      if (!won) {
+        // Another fiber beat us to it — await their deferred
+        const raceDeferred = yield* Ref.get(startingRef);
+        if (raceDeferred) return yield* Deferred.await(raceDeferred);
+        // Fallback: just get the handle (should be ready now)
+        const handle = yield* Ref.get(handleRef);
+        if (handle) return handle;
+        return yield* Effect.fail(new Error("opencode server start race condition fallback"));
+      }
+
+      // We won the race — start the server
+      const startEffect = Effect.tryPromise({
         try: () => startOpenCodeServer(binaryPath),
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
       });
+
+      const result = yield* Effect.exit(startEffect);
+      if (result._tag === "Failure") {
+        const err = result.cause._tag === "Fail" ? result.cause.error : new Error("opencode start failed");
+        yield* Deferred.fail(deferred, err);
+        yield* Ref.set(startingRef, null);
+        return yield* Effect.fail(err);
+      }
+
+      const handle = result.value;
       yield* Ref.set(handleRef, handle);
+      yield* Deferred.succeed(deferred, handle);
+      yield* Ref.set(startingRef, null);
       return handle;
     });
 
