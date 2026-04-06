@@ -146,6 +146,8 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!previewAvailable}
                 >
                   <MonitorPlayIcon className="size-3" />
+                  {/* Label shown only on very large containers where space is available */}
+                  <span className="hidden @5xl/header-actions:inline">Preview</span>
                   {hasRunningPreviewApp && (
                     <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-green-500" />
                   )}
@@ -173,15 +175,17 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!terminalAvailable}
                 >
                   <TerminalSquareIcon className="size-3" />
+                  {/* Label shown only on very large containers where space is available */}
+                  <span className="hidden @5xl/header-actions:inline">Terminal</span>
                 </Toggle>
               }
             />
             <TooltipPopup side="bottom">
               {!terminalAvailable
-                ? "Terminal is unavailable until this thread has an active project."
+                ? "Terminal unavailable — open a project first"
                 : terminalToggleShortcutLabel
-                  ? `Toggle terminal drawer (${terminalToggleShortcutLabel})`
-                  : "Toggle terminal drawer"}
+                  ? `Toggle terminal (${terminalToggleShortcutLabel})`
+                  : "Toggle terminal"}
             </TooltipPopup>
           </Tooltip>
           <Tooltip>
@@ -197,12 +201,14 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!isGitRepo}
                 >
                   <DiffIcon className="size-3" />
+                  {/* Label shown only on very large containers where space is available */}
+                  <span className="hidden @5xl/header-actions:inline">Diff</span>
                 </Toggle>
               }
             />
             <TooltipPopup side="bottom">
               {!isGitRepo
-                ? "Diff panel is unavailable because this project is not a git repository."
+                ? "Diff panel unavailable — project must be a git repository"
                 : diffToggleShortcutLabel
                   ? `Toggle diff panel (${diffToggleShortcutLabel})`
                   : "Toggle diff panel"}
@@ -223,6 +229,8 @@ export const ChatHeader = memo(function ChatHeader({
               }
             >
               <ExternalLinkIcon className="size-3" />
+              {/* Label shown only on very large containers where space is available */}
+              <span className="hidden @5xl/header-actions:inline">Pop out</span>
             </TooltipTrigger>
             <TooltipPopup side="bottom">Pop out to new window</TooltipPopup>
           </Tooltip>
