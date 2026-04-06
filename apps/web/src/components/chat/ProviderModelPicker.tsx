@@ -4,7 +4,7 @@ import type { SelectableModelOption } from "@t3tools/shared/model";
 import { memo, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { type ProviderPickerKind, PROVIDER_OPTIONS } from "../../session-logic";
-import { ChevronDownIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
 import { Button, buttonVariants } from "../ui/button";
 import {
   Dialog,
@@ -45,6 +45,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   claudeAgent: ClaudeAI,
   gemini: Gemini,
   cursor: CursorIcon,
+  opencode: OpenCodeIcon,
 };
 
 export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
@@ -52,6 +53,52 @@ const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option
 const COMING_SOON_PROVIDER_OPTIONS = [
   { id: "opencode", label: "OpenCode", icon: OpenCodeIcon },
 ] as const;
+
+// Install & auth metadata for each provider — shown in the setup dialog
+type ProviderInstallEntry = {
+  installCommands: ReadonlyArray<{ label: string; command: string }>;
+  authCommand?: string;
+  docsUrl: string;
+};
+
+const PROVIDER_INSTALL_DATA: Record<string, ProviderInstallEntry> = {
+  codex: {
+    installCommands: [
+      { label: "npm", command: "npm install -g @openai/codex" },
+      { label: "Homebrew", command: "brew install codex" },
+    ],
+    authCommand: "codex auth",
+    docsUrl: "https://developers.openai.com/codex/quickstart?setup=cli",
+  },
+  claudeAgent: {
+    installCommands: [
+      { label: "macOS / Linux / WSL", command: "curl -fsSL https://claude.ai/install.sh | bash" },
+    ],
+    // Running `claude` launches the interactive auth flow on first run
+    authCommand: "claude",
+    docsUrl: "https://code.claude.com/docs/en/cli-reference",
+  },
+  gemini: {
+    installCommands: [
+      { label: "npm", command: "npm install -g @google/gemini-cli" },
+    ],
+    authCommand: "gemini auth",
+    docsUrl: "https://geminicli.com/docs/",
+  },
+  opencode: {
+    installCommands: [
+      { label: "macOS / Linux", command: "curl -fsSL https://opencode.ai/install | bash" },
+    ],
+    docsUrl: "https://opencode.ai/docs/",
+  },
+};
+
+type ProviderSetupDialog = {
+  providerId: string;
+  providerLabel: string;
+  /** Whether the provider needs to be installed or authenticated */
+  action: "install" | "auth";
+} | null;
 
 function providerIconClassName(
   provider: ProviderKind | ProviderPickerKind,
@@ -78,6 +125,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const [isCustomModelDialogOpen, setIsCustomModelDialogOpen] = useState(false);
   const [customModelValue, setCustomModelValue] = useState("");
   const [customModelError, setCustomModelError] = useState<string | null>(null);
+  // Tracks which provider's install/auth dialog is open
+  const [setupDialog, setSetupDialog] = useState<ProviderSetupDialog>(null);
   const activeProvider = props.lockedProvider ?? props.provider;
   const isGemini = activeProvider === "gemini";
   const selectedProviderOptions = getProviderModelsForProvider(
@@ -223,6 +272,72 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   ? getProviderSnapshot(props.providers, option.value)
                   : undefined;
                 if (liveProvider && liveProvider.status !== "ready") {
+                  // Determine the appropriate action for this provider
+                  const isNotInstalled = !liveProvider.installed;
+                  const isUnauthenticated =
+                    liveProvider.installed &&
+                    liveProvider.auth.status === "unauthenticated";
+                  const installData = PROVIDER_INSTALL_DATA[option.value];
+
+                  // Show actionable Install button when the CLI isn't installed and we have a command
+                  if (isNotInstalled && installData?.installCommands.length) {
+                    return (
+                      <MenuItem
+                        key={option.value}
+                        onSelect={() => {
+                          setSetupDialog({
+                            providerId: option.value,
+                            providerLabel: option.label,
+                            action: "install",
+                          });
+                          setIsMenuOpen(false);
+                        }}
+                      >
+                        <OptionIcon
+                          aria-hidden="true"
+                          className={cn(
+                            "size-4 shrink-0 opacity-80",
+                            providerIconClassName(option.value, "text-muted-foreground/85"),
+                          )}
+                        />
+                        <span>{option.label}</span>
+                        <span className="ms-auto text-[11px] text-blue-500 uppercase tracking-[0.08em] font-medium">
+                          Install
+                        </span>
+                      </MenuItem>
+                    );
+                  }
+
+                  // Show actionable Auth button when installed but not authenticated
+                  if (isUnauthenticated && installData?.authCommand) {
+                    return (
+                      <MenuItem
+                        key={option.value}
+                        onSelect={() => {
+                          setSetupDialog({
+                            providerId: option.value,
+                            providerLabel: option.label,
+                            action: "auth",
+                          });
+                          setIsMenuOpen(false);
+                        }}
+                      >
+                        <OptionIcon
+                          aria-hidden="true"
+                          className={cn(
+                            "size-4 shrink-0 opacity-80",
+                            providerIconClassName(option.value, "text-muted-foreground/85"),
+                          )}
+                        />
+                        <span>{option.label}</span>
+                        <span className="ms-auto text-[11px] text-amber-500 uppercase tracking-[0.08em] font-medium">
+                          Authenticate
+                        </span>
+                      </MenuItem>
+                    );
+                  }
+
+                  // Fallback: disabled item with generic status label
                   const unavailableLabel = !liveProvider.enabled
                     ? "Disabled"
                     : !liveProvider.installed
@@ -304,6 +419,29 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               {COMING_SOON_PROVIDER_OPTIONS.length > 0 && <MenuDivider />}
               {COMING_SOON_PROVIDER_OPTIONS.map((option) => {
                 const OptionIcon = option.icon;
+                const installData = PROVIDER_INSTALL_DATA[option.id];
+                // Show Install action if we have a command, otherwise fall back to "Coming soon"
+                if (installData?.installCommands.length) {
+                  return (
+                    <MenuItem
+                      key={option.id}
+                      onSelect={() => {
+                        setSetupDialog({
+                          providerId: option.id,
+                          providerLabel: option.label,
+                          action: "install",
+                        });
+                        setIsMenuOpen(false);
+                      }}
+                    >
+                      <OptionIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />
+                      <span>{option.label}</span>
+                      <span className="ms-auto text-[11px] text-blue-500 uppercase tracking-[0.08em] font-medium">
+                        Install
+                      </span>
+                    </MenuItem>
+                  );
+                }
                 return (
                   <MenuItem key={option.id} disabled>
                     <OptionIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />
@@ -318,6 +456,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           )}
         </MenuPopup>
       </Menu>
+      {/* Provider install / auth setup dialog */}
+      <ProviderSetupDialog
+        setupDialog={setupDialog}
+        onClose={() => setSetupDialog(null)}
+      />
       <Dialog open={isCustomModelDialogOpen} onOpenChange={setIsCustomModelDialogOpen}>
         <DialogPopup className="max-w-sm">
           <DialogHeader>
@@ -369,3 +512,116 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     </>
   );
 });
+
+// Shown when the user clicks Install or Authenticate for a provider
+function ProviderSetupDialog({
+  setupDialog,
+  onClose,
+}: {
+  setupDialog: ProviderSetupDialog;
+  onClose: () => void;
+}) {
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+
+  const copyToClipboard = (command: string) => {
+    void navigator.clipboard.writeText(command).then(() => {
+      setCopiedCommand(command);
+      // Reset the copied indicator after 2 s
+      setTimeout(() => setCopiedCommand((prev) => (prev === command ? null : prev)), 2000);
+    });
+  };
+
+  const info = setupDialog ? PROVIDER_INSTALL_DATA[setupDialog.providerId] : undefined;
+
+  return (
+    <Dialog
+      open={setupDialog !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogPopup className="max-w-md">
+        {setupDialog && (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {setupDialog.action === "install"
+                  ? `Install ${setupDialog.providerLabel}`
+                  : `Authenticate ${setupDialog.providerLabel}`}
+              </DialogTitle>
+            </DialogHeader>
+            <DialogPanel className="space-y-4">
+              {setupDialog.action === "install" && info && info.installCommands.length > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Run one of the following commands in your terminal, then refresh this page.
+                  </p>
+                  {info.installCommands.map((cmd) => (
+                    <div key={cmd.label} className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground/70">{cmd.label}</p>
+                      <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2">
+                        <code className="flex-1 truncate font-mono text-sm">{cmd.command}</code>
+                        <button
+                          type="button"
+                          aria-label="Copy command"
+                          onClick={() => copyToClipboard(cmd.command)}
+                          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {copiedCommand === cmd.command ? (
+                            <CheckIcon className="size-3.5 text-green-500" />
+                          ) : (
+                            <CopyIcon className="size-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : setupDialog.action === "auth" && info?.authCommand ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Run the following command to authenticate, then refresh this page.
+                  </p>
+                  <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2">
+                    <code className="flex-1 truncate font-mono text-sm">{info.authCommand}</code>
+                    <button
+                      type="button"
+                      aria-label="Copy command"
+                      onClick={() => copyToClipboard(info.authCommand!)}
+                      className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {copiedCommand === info.authCommand ? (
+                        <CheckIcon className="size-3.5 text-green-500" />
+                      ) : (
+                        <CopyIcon className="size-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </DialogPanel>
+            <DialogFooter>
+              {info?.docsUrl ? (
+                <a
+                  href={info.docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "sm" }),
+                    "mr-auto gap-1.5 text-muted-foreground",
+                  )}
+                >
+                  Docs
+                  <ExternalLinkIcon className="size-3" />
+                </a>
+              ) : null}
+              <Button variant="ghost" onClick={onClose}>
+                Close
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogPopup>
+    </Dialog>
+  );
+}
