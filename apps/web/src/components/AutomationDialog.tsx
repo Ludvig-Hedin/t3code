@@ -1,15 +1,18 @@
 /**
  * AutomationDialog — Modal dialog for creating or editing an automation.
  *
- * Supports all fields from the spec:
- *  - Name, Prompt
- *  - Project (from store), Frequency, Model (from server providers), Reasoning Level
- *  - Frequency time and custom day picker
- *  - Templates to quick-start with a preset (create mode only)
+ * Uses Menu-based chip dropdowns (same pattern as ProviderModelPicker / TraitsPicker)
+ * to avoid z-index conflicts inside the base-ui Dialog portal.
+ *
+ * Layout:
+ *   Name (pill input) → Prompt (textarea) → chips bar (project, frequency, time,
+ *   model, reasoning) → day pills (if weekly/custom) → templates (create mode only)
+ *   Footer: [Clear all] [Cancel] [Save]
  */
 import {
   BrainIcon,
   CalendarIcon,
+  ChevronDownIcon,
   ClockIcon,
   CodeIcon,
   FolderIcon,
@@ -29,7 +32,14 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { Select, SelectButton, SelectItem, SelectPopup } from "~/components/ui/select";
+import {
+  Menu,
+  MenuGroup,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuTrigger,
+} from "~/components/ui/menu";
 import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
 import { useStore } from "~/store";
@@ -46,6 +56,32 @@ import {
   REASONING_LEVEL_LABELS,
   REASONING_LEVEL_OPTIONS,
 } from "~/automationsStore";
+
+// ── Time picker data ──────────────────────────────────────────────────
+
+/** 0–23 hours for the time picker */
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+/** 5-minute intervals for the time picker */
+const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+
+function splitTime(time: string): { hour: string; minute: string } {
+  const [h = "09", m = "00"] = time.split(":");
+  return { hour: h.padStart(2, "0"), minute: m.padStart(2, "0") };
+}
+
+// ── Frequencies ───────────────────────────────────────────────────────
+
+/** Frequencies that require a time picker */
+const FREQUENCIES_WITH_TIME = new Set<FrequencyType>([
+  "daily",
+  "weekly",
+  "weekday",
+  "weekends",
+  "custom",
+]);
+
+/** Frequencies that allow day-of-week selection */
+const FREQUENCIES_WITH_DAYS = new Set<FrequencyType>(["weekly", "custom"]);
 
 // ── Templates ─────────────────────────────────────────────────────────
 
@@ -75,7 +111,7 @@ const TEMPLATES: AutomationTemplate[] = [
   {
     name: "weekly-report",
     title: "Weekly Report",
-    description: "Generate a weekly progress report every Monday",
+    description: "Generate a progress report every Monday",
     icon: <CalendarIcon className="size-3.5" />,
     preset: {
       name: "Weekly Progress Report",
@@ -103,7 +139,7 @@ const TEMPLATES: AutomationTemplate[] = [
   {
     name: "code-review",
     title: "Code Review",
-    description: "Review staged changes and suggest improvements",
+    description: "Review staged changes on demand",
     icon: <CodeIcon className="size-3.5" />,
     preset: {
       name: "Code Review",
@@ -143,46 +179,67 @@ const TEMPLATES: AutomationTemplate[] = [
   },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────
+// ── Chip button ───────────────────────────────────────────────────────
 
-/** Frequencies that require a time picker */
-const FREQUENCIES_WITH_TIME = new Set<FrequencyType>([
-  "daily",
-  "weekly",
-  "weekday",
-  "weekends",
-  "custom",
-]);
-
-/** Frequencies that allow day-of-week selection */
-const FREQUENCIES_WITH_DAYS = new Set<FrequencyType>(["weekly", "custom"]);
+/**
+ * Shared pill-shaped ghost button used as a Menu trigger for all chip selectors.
+ * Matches the ProviderModelPicker / TraitsPicker visual style.
+ */
+function ChipButton({
+  icon,
+  label,
+  className,
+}: {
+  icon?: ReactNode;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className={cn(
+        "h-7 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground/70 hover:bg-accent hover:text-foreground/90 [&_svg]:mx-0",
+        className,
+      )}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+      <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
+    </Button>
+  );
+}
 
 // ── AutomationDialog ──────────────────────────────────────────────────
 
 interface AutomationDialogProps {
-  /** When provided the dialog is in edit mode and pre-fills from this item */
+  /** When provided the dialog opens in edit mode, pre-filled from this item. */
   existing?: AutomItem;
   onSave: (input: CreateAutomationInput) => void;
 }
+
+const EMPTY_DEFAULTS = {
+  name: "",
+  prompt: "",
+  frequency: "manual" as FrequencyType,
+  frequencyTime: "09:00",
+  frequencyDays: [] as DayValue[],
+  reasoningLevel: "none" as ReasoningLevel,
+};
 
 export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
   const projects = useStore((s) => s.projects);
   const serverProviders = useServerProviders();
 
-  // Flatten providers → model options
+  // ── Derived model list from server providers ─────────────────────────
   const modelOptions = useMemo(() => {
     const opts: { provider: string; model: string; label: string }[] = [];
-    for (const provider of serverProviders) {
-      if (!provider.enabled || provider.status !== "ready") continue;
-      for (const model of provider.models) {
-        opts.push({
-          provider: provider.provider,
-          model: model.slug,
-          label: model.name,
-        });
+    for (const p of serverProviders) {
+      if (!p.enabled || p.status !== "ready") continue;
+      for (const m of p.models) {
+        opts.push({ provider: p.provider, model: m.slug, label: m.name });
       }
     }
-    // Fallback when no providers are connected yet
     if (opts.length === 0) {
       opts.push({ provider: "codex", model: "codex-1", label: "Codex 1" });
     }
@@ -194,25 +251,47 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
     return [...new Set(names)];
   }, [projects]);
 
-  // ── Form state ──────────────────────────────────────────────────────
-
   const defaultProject = projectNames[0] ?? "";
   const defaultModel = modelOptions[0];
 
-  const [name, setName] = useState(existing?.name ?? "");
-  const [prompt, setPrompt] = useState(existing?.prompt ?? "");
+  // ── Form state ───────────────────────────────────────────────────────
+  const [name, setName] = useState(existing?.name ?? EMPTY_DEFAULTS.name);
+  const [prompt, setPrompt] = useState(existing?.prompt ?? EMPTY_DEFAULTS.prompt);
   const [project, setProject] = useState(existing?.project ?? defaultProject);
-  const [frequency, setFrequency] = useState<FrequencyType>(existing?.frequency ?? "manual");
-  const [frequencyTime, setFrequencyTime] = useState(existing?.frequencyTime ?? "09:00");
-  const [frequencyDays, setFrequencyDays] = useState<DayValue[]>(existing?.frequencyDays ?? []);
+  const [frequency, setFrequency] = useState<FrequencyType>(
+    existing?.frequency ?? EMPTY_DEFAULTS.frequency,
+  );
+  const [frequencyTime, setFrequencyTime] = useState(
+    existing?.frequencyTime ?? EMPTY_DEFAULTS.frequencyTime,
+  );
+  const [frequencyDays, setFrequencyDays] = useState<DayValue[]>(
+    existing?.frequencyDays ?? EMPTY_DEFAULTS.frequencyDays,
+  );
   const [model, setModel] = useState(existing?.model ?? defaultModel?.model ?? "");
   const [provider, setProvider] = useState(existing?.provider ?? defaultModel?.provider ?? "");
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
-    existing?.reasoningLevel ?? "none",
+    existing?.reasoningLevel ?? EMPTY_DEFAULTS.reasoningLevel,
   );
 
-  // ── Template application ────────────────────────────────────────────
+  // ── Clear all ────────────────────────────────────────────────────────
+  const [clearPending, setClearPending] = useState(false);
 
+  const handleClear = () => {
+    if (clearPending) {
+      setName(EMPTY_DEFAULTS.name);
+      setPrompt(EMPTY_DEFAULTS.prompt);
+      setFrequency(EMPTY_DEFAULTS.frequency);
+      setFrequencyTime(EMPTY_DEFAULTS.frequencyTime);
+      setFrequencyDays(EMPTY_DEFAULTS.frequencyDays);
+      setReasoningLevel(EMPTY_DEFAULTS.reasoningLevel);
+      setClearPending(false);
+    } else {
+      setClearPending(true);
+      setTimeout(() => setClearPending(false), 2500);
+    }
+  };
+
+  // ── Template application ─────────────────────────────────────────────
   const applyTemplate = useCallback((template: AutomationTemplate) => {
     const p = template.preset;
     if (p.name !== undefined) setName(p.name);
@@ -222,16 +301,19 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
     if (p.frequencyDays !== undefined) setFrequencyDays(p.frequencyDays);
   }, []);
 
-  // ── Day picker toggle ───────────────────────────────────────────────
-
+  // ── Day toggle ───────────────────────────────────────────────────────
   const toggleDay = (day: DayValue) => {
     setFrequencyDays((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
     );
   };
 
-  // ── Submission ──────────────────────────────────────────────────────
+  // ── Time helpers ─────────────────────────────────────────────────────
+  const { hour: selectedHour, minute: selectedMinute } = splitTime(frequencyTime);
+  const setHour = (h: string) => setFrequencyTime(`${h}:${selectedMinute}`);
+  const setMinute = (m: string) => setFrequencyTime(`${selectedHour}:${m}`);
 
+  // ── Submission ───────────────────────────────────────────────────────
   const isReady = name.trim().length > 0 || prompt.trim().length > 0;
 
   const handleSave = () => {
@@ -249,203 +331,277 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
     });
   };
 
-  const selectedModelOption = modelOptions.find((o) => o.model === model);
+  const selectedModelLabel =
+    modelOptions.find((o) => o.model === model)?.label ?? (model || "Model");
+
   const showTimePicker = FREQUENCIES_WITH_TIME.has(frequency);
   const showDayPicker = FREQUENCIES_WITH_DAYS.has(frequency);
 
+  // ── Input class shared across all text fields ────────────────────────
+  const inputCls =
+    "h-9 w-full rounded-full border border-input bg-background/60 px-4 text-sm outline-none placeholder:text-muted-foreground/50 focus:border-ring transition-colors";
+
   return (
-    <DialogPopup className="max-w-xl" showCloseButton={false}>
+    <DialogPopup className="max-w-lg" showCloseButton={false}>
       <DialogHeader>
-        <DialogTitle className="text-base">
+        <DialogTitle className="text-base font-semibold">
           {existing ? "Edit automation" : "New automation"}
         </DialogTitle>
       </DialogHeader>
 
-      <DialogPanel className="flex flex-col gap-4 px-6 pb-2 pt-0">
-        {/* Templates — shown only in create mode */}
-        {!existing && (
-          <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Start from a template</p>
-            <div className="grid grid-cols-3 gap-2">
-              {TEMPLATES.map((t) => (
-                <button
-                  key={t.name}
-                  type="button"
-                  onClick={() => applyTemplate(t)}
-                  className="flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-accent hover:border-border"
-                >
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    {t.icon}
-                    <span className="text-xs font-medium text-foreground">{t.title}</span>
-                  </div>
-                  <span className="text-[11px] leading-tight text-muted-foreground">
-                    {t.description}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+      <DialogPanel className="flex flex-col gap-3 px-6 pb-2 pt-0">
+        {/* ── Name ── */}
+        <input
+          autoFocus
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Automation name…"
+          className={inputCls}
+        />
 
-        {/* Name */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Name</label>
-          <input
-            autoFocus
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Daily standup summary"
-            className="h-8 rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/24 placeholder:text-muted-foreground/60 focus:border-ring focus:ring-[3px]"
-          />
-        </div>
+        {/* ── Prompt ── */}
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Describe what the agent should do…"
+          className="min-h-28 resize-none rounded-2xl"
+        />
 
-        {/* Prompt */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Prompt</label>
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe what the agent should do…"
-            className="min-h-24 resize-none"
-          />
-        </div>
-
-        {/* Row: Project + Frequency */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Project</label>
-            <Select value={project} onValueChange={(v) => setProject(v ?? project)}>
-              <SelectButton size="sm" className="w-full">
-                <FolderIcon className="size-3.5 shrink-0 opacity-70" />
-                <span className="truncate">{project || "Select project"}</span>
-              </SelectButton>
-              <SelectPopup>
-                {projectNames.length > 0 ? (
-                  projectNames.map((p) => (
-                    <SelectItem key={p} value={p}>
+        {/* ── Chips bar ── */}
+        <div className="flex flex-wrap items-center gap-1">
+          {/* Project */}
+          {projectNames.length > 0 && (
+            <Menu>
+              <MenuTrigger
+                render={
+                  <ChipButton
+                    icon={<FolderIcon className="size-3.5 shrink-0" />}
+                    label={project || "Project"}
+                  />
+                }
+              />
+              <MenuPopup align="start">
+                <MenuRadioGroup value={project} onValueChange={(v) => v && setProject(v)}>
+                  {projectNames.map((p) => (
+                    <MenuRadioItem key={p} value={p}>
                       {p}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="" disabled>
-                    No projects
-                  </SelectItem>
-                )}
-              </SelectPopup>
-            </Select>
-          </div>
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuPopup>
+            </Menu>
+          )}
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Frequency</label>
-            <Select value={frequency} onValueChange={(v) => v && setFrequency(v as FrequencyType)}>
-              <SelectButton size="sm" className="w-full">
-                <CalendarIcon className="size-3.5 shrink-0 opacity-70" />
-                <span className="truncate">{FREQUENCY_LABELS[frequency]}</span>
-              </SelectButton>
-              <SelectPopup>
-                {FREQUENCY_OPTIONS.map((f) => (
-                  <SelectItem key={f} value={f}>
-                    {FREQUENCY_LABELS[f]}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
-          </div>
-        </div>
-
-        {/* Time picker */}
-        {showTimePicker && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Time</label>
-            <input
-              type="time"
-              value={frequencyTime}
-              onChange={(e) => setFrequencyTime(e.target.value)}
-              className="h-8 w-36 rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/24 focus:border-ring focus:ring-[3px]"
+          {/* Frequency */}
+          <Menu>
+            <MenuTrigger
+              render={
+                <ChipButton
+                  icon={<CalendarIcon className="size-3.5 shrink-0" />}
+                  label={FREQUENCY_LABELS[frequency]}
+                />
+              }
             />
-          </div>
-        )}
+            <MenuPopup align="start">
+              <MenuRadioGroup
+                value={frequency}
+                onValueChange={(v) => v && setFrequency(v as FrequencyType)}
+              >
+                {FREQUENCY_OPTIONS.map((f) => (
+                  <MenuRadioItem key={f} value={f}>
+                    {FREQUENCY_LABELS[f]}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuPopup>
+          </Menu>
 
-        {/* Day picker */}
-        {showDayPicker && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Day(s)</label>
-            <div className="flex flex-wrap gap-1.5">
-              {DAY_OPTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => toggleDay(value)}
-                  className={cn(
-                    "h-7 rounded-md border px-2.5 text-xs font-medium transition-colors",
-                    frequencyDays.includes(value)
-                      ? "border-ring bg-accent text-foreground"
-                      : "border-border text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
+          {/* Time (hour + minute) — same row as chips */}
+          {showTimePicker && (
+            <div className="flex items-center gap-0.5">
+              {/* Hour */}
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 rounded-full px-2 text-xs tabular-nums text-muted-foreground/70 hover:bg-accent hover:text-foreground/90"
+                    >
+                      {selectedHour}
+                      <ChevronDownIcon className="size-3 opacity-50" />
+                    </Button>
+                  }
+                />
+                <MenuPopup className="max-h-48 overflow-y-auto" align="start">
+                  <MenuRadioGroup value={selectedHour} onValueChange={(v) => v && setHour(v)}>
+                    {HOURS.map((h) => (
+                      <MenuRadioItem key={h} value={h}>
+                        {h}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuPopup>
+              </Menu>
+
+              <span className="text-xs text-muted-foreground/50">:</span>
+
+              {/* Minute */}
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 rounded-full px-2 text-xs tabular-nums text-muted-foreground/70 hover:bg-accent hover:text-foreground/90"
+                    >
+                      {selectedMinute}
+                      <ChevronDownIcon className="size-3 opacity-50" />
+                    </Button>
+                  }
+                />
+                <MenuPopup align="start">
+                  <MenuRadioGroup value={selectedMinute} onValueChange={(v) => v && setMinute(v)}>
+                    {MINUTES.map((m) => (
+                      <MenuRadioItem key={m} value={m}>
+                        {m}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuPopup>
+              </Menu>
             </div>
+          )}
+
+          {/* Model */}
+          <Menu>
+            <MenuTrigger
+              render={
+                <ChipButton
+                  icon={<SparklesIcon className="size-3.5 shrink-0" />}
+                  label={selectedModelLabel}
+                />
+              }
+            />
+            <MenuPopup align="start">
+              <MenuRadioGroup
+                value={model}
+                onValueChange={(v) => {
+                  if (!v) return;
+                  setModel(v);
+                  const opt = modelOptions.find((o) => o.model === v);
+                  if (opt) setProvider(opt.provider);
+                }}
+              >
+                {modelOptions.map((o) => (
+                  <MenuRadioItem key={`${o.provider}:${o.model}`} value={o.model}>
+                    {o.label}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuPopup>
+          </Menu>
+
+          {/* Reasoning */}
+          <Menu>
+            <MenuTrigger
+              render={
+                <ChipButton
+                  icon={<BrainIcon className="size-3.5 shrink-0" />}
+                  label={REASONING_LEVEL_LABELS[reasoningLevel]}
+                />
+              }
+            />
+            <MenuPopup align="start">
+              <MenuGroup>
+                <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-muted-foreground">
+                  Reasoning
+                </div>
+                <MenuRadioGroup
+                  value={reasoningLevel}
+                  onValueChange={(v) => v && setReasoningLevel(v as ReasoningLevel)}
+                >
+                  {REASONING_LEVEL_OPTIONS.map((r) => (
+                    <MenuRadioItem key={r} value={r}>
+                      {REASONING_LEVEL_LABELS[r]}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuGroup>
+            </MenuPopup>
+          </Menu>
+        </div>
+
+        {/* ── Day pills (same section, shown conditionally) ── */}
+        {showDayPicker && (
+          <div className="flex flex-wrap gap-1.5">
+            {DAY_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => toggleDay(value)}
+                className={cn(
+                  "h-7 rounded-full border px-3 text-xs font-medium transition-colors",
+                  frequencyDays.includes(value)
+                    ? "border-ring bg-accent text-foreground"
+                    : "border-border/60 text-muted-foreground/60 hover:bg-accent/50 hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         )}
 
-        {/* Row: Model + Reasoning */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Model</label>
-            <Select
-              value={model}
-              onValueChange={(v) => {
-                if (!v) return;
-                setModel(v);
-                const opt = modelOptions.find((o) => o.model === v);
-                if (opt) setProvider(opt.provider);
-              }}
-            >
-              <SelectButton size="sm" className="w-full">
-                <SparklesIcon className="size-3.5 shrink-0 opacity-70" />
-                <span className="truncate">
-                  {selectedModelOption?.label ?? (model || "Select model")}
-                </span>
-              </SelectButton>
-              <SelectPopup>
-                {modelOptions.map((o) => (
-                  <SelectItem key={`${o.provider}:${o.model}`} value={o.model}>
-                    {o.label}
-                  </SelectItem>
+        {/* ── Templates (create mode only, shown at bottom) ── */}
+        {!existing && (
+          <>
+            <div className="mt-1 border-t border-border/50 pt-3">
+              <p className="mb-2 text-[11px] font-medium tracking-wide text-muted-foreground/60 uppercase">
+                Templates
+              </p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {TEMPLATES.map((t) => (
+                  <button
+                    key={t.name}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    className="flex flex-col gap-1 rounded-xl border border-border/50 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-accent/50"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground/70">{t.icon}</span>
+                      <span className="text-xs font-medium text-foreground">{t.title}</span>
+                    </div>
+                    <span className="text-[10px] leading-tight text-muted-foreground/60">
+                      {t.description}
+                    </span>
+                  </button>
                 ))}
-              </SelectPopup>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Reasoning</label>
-            <Select
-              value={reasoningLevel}
-              onValueChange={(v) => v && setReasoningLevel(v as ReasoningLevel)}
-            >
-              <SelectButton size="sm" className="w-full">
-                <BrainIcon className="size-3.5 shrink-0 opacity-70" />
-                <span className="truncate">{REASONING_LEVEL_LABELS[reasoningLevel]}</span>
-              </SelectButton>
-              <SelectPopup>
-                {REASONING_LEVEL_OPTIONS.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {REASONING_LEVEL_LABELS[r]}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
-          </div>
-        </div>
+              </div>
+            </div>
+          </>
+        )}
       </DialogPanel>
 
       <DialogFooter variant="bare">
+        {/* Clear all — two-tap confirm pattern */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "mr-auto rounded-full text-xs transition-colors",
+            clearPending ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground/60",
+          )}
+          onClick={handleClear}
+        >
+          {clearPending ? "Confirm clear" : "Clear fields"}
+        </Button>
+
         <DialogClose
           render={
-            <Button variant="outline" size="sm">
+            <Button variant="ghost" size="sm" className="rounded-full">
               Cancel
             </Button>
           }
@@ -453,8 +609,8 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
         <DialogClose
           disabled={!isReady}
           render={
-            <Button size="sm" disabled={!isReady} onClick={handleSave}>
-              {existing ? "Save changes" : "Create automation"}
+            <Button size="sm" disabled={!isReady} className="rounded-full" onClick={handleSave}>
+              {existing ? "Save changes" : "Create"}
             </Button>
           }
         />

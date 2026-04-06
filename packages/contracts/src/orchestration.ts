@@ -1,5 +1,11 @@
 import { Option, Schema, SchemaIssue, Struct } from "effect";
-import { ClaudeModelOptions, CodexModelOptions, GeminiModelOptions, OllamaModelOptions, OpenCodeModelOptions } from "./model";
+import {
+  ClaudeModelOptions,
+  CodexModelOptions,
+  GeminiModelOptions,
+  OllamaModelOptions,
+  OpenCodeModelOptions,
+} from "./model";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -23,7 +29,13 @@ export const ORCHESTRATION_WS_METHODS = {
   replayEvents: "orchestration.replayEvents",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "gemini", "opencode", "ollama"]);
+export const ProviderKind = Schema.Literals([
+  "codex",
+  "claudeAgent",
+  "gemini",
+  "opencode",
+  "ollama",
+]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",

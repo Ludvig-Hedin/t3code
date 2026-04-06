@@ -219,9 +219,7 @@ function mapSseEvent(
       if (status === "running") {
         emitEvent(makeThreadEvent("turn.started", threadId, { model: undefined }, turnId));
       } else if (status === "idle") {
-        emitEvent(
-          makeThreadEvent("turn.completed", threadId, { state: "completed" }, turnId),
-        );
+        emitEvent(makeThreadEvent("turn.completed", threadId, { state: "completed" }, turnId));
       }
       break;
     }
@@ -240,9 +238,7 @@ function mapSseEvent(
       break;
     }
     case "message.completed": {
-      emitEvent(
-        makeThreadEvent("turn.completed", threadId, { state: "completed" }, turnId),
-      );
+      emitEvent(makeThreadEvent("turn.completed", threadId, { state: "completed" }, turnId));
       break;
     }
     case "session.error": {
@@ -330,12 +326,13 @@ export const OpenCodeAdapterLive = Layer.effect(
     const startSession: OpenCodeAdapterShape["startSession"] = (input) =>
       Effect.gen(function* () {
         const handle = yield* serverManager.getOrStart.pipe(
-          Effect.mapError((e) =>
-            new ProviderAdapterRequestError({
-              provider: PROVIDER,
-              method: "startSession",
-              detail: `Failed to start opencode server: ${e instanceof Error ? e.message : String(e)}`,
-            }),
+          Effect.mapError(
+            (e) =>
+              new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "startSession",
+                detail: `Failed to start opencode server: ${e instanceof Error ? e.message : String(e)}`,
+              }),
           ),
         );
 
@@ -418,18 +415,18 @@ export const OpenCodeAdapterLive = Layer.effect(
         }
 
         const handle = yield* serverManager.getOrStart.pipe(
-          Effect.mapError((e) =>
-            new ProviderAdapterRequestError({
-              provider: PROVIDER,
-              method: "sendTurn",
-              detail: `Failed to get opencode server handle: ${e instanceof Error ? e.message : String(e)}`,
-            }),
+          Effect.mapError(
+            (e) =>
+              new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "sendTurn",
+                detail: `Failed to get opencode server handle: ${e instanceof Error ? e.message : String(e)}`,
+              }),
           ),
         );
 
         const turnId = `turn-${globalThis.crypto.randomUUID()}` as TurnId;
-        const modelSlug =
-          input.modelSelection?.model ?? sessionState.modelSlug;
+        const modelSlug = input.modelSelection?.model ?? sessionState.modelSlug;
         const { providerID, modelID } = parseModelSlug(modelSlug);
 
         // Update session state to running
@@ -465,22 +462,17 @@ export const OpenCodeAdapterLive = Layer.effect(
         // Send prompt to opencode
         yield* Effect.tryPromise({
           try: () =>
-            handle.client.post(
-              `/sessions/${sessionState.opencodeSessionId}/prompt`,
-              {
-                prompt: input.input ?? "",
-                model: { providerID, modelID },
-              },
-            ),
+            handle.client.post(`/sessions/${sessionState.opencodeSessionId}/prompt`, {
+              prompt: input.input ?? "",
+              model: { providerID, modelID },
+            }),
           catch: (err) =>
             new ProviderAdapterRequestError({
               provider: PROVIDER,
               method: "sendTurn",
               detail: `POST /sessions/${sessionState.opencodeSessionId}/prompt failed: ${err instanceof Error ? err.message : String(err)}`,
             }),
-        }).pipe(
-          Effect.tapError(() => Effect.sync(() => sseAbort.abort())),
-        );
+        }).pipe(Effect.tapError(() => Effect.sync(() => sseAbort.abort())));
 
         return {
           threadId: input.threadId,
@@ -517,7 +509,12 @@ export const OpenCodeAdapterLive = Layer.effect(
 
         if (targetTurnId) {
           yield* emitEvent(
-            makeThreadEvent("turn.aborted", threadId, { reason: "Interrupted by user." }, targetTurnId),
+            makeThreadEvent(
+              "turn.aborted",
+              threadId,
+              { reason: "Interrupted by user." },
+              targetTurnId,
+            ),
           );
         }
       });

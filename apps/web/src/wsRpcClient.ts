@@ -311,8 +311,7 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
     ollama: {
       pullModel: (input) =>
         transport.request((client) => client[WS_METHODS.ollamaPullModel](input)),
-      quitServer: () =>
-        transport.request((client) => client[WS_METHODS.ollamaQuitServer]({})),
+      quitServer: () => transport.request((client) => client[WS_METHODS.ollamaQuitServer]({})),
     },
     preview: {
       // Spread readonly arrays to satisfy mutable PreviewApp[] / PreviewSession[] return types

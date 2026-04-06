@@ -1164,10 +1164,13 @@ describe("PROVIDER_OPTIONS", () => {
   it("advertises Claude and Gemini as available while keeping Cursor as a placeholder", () => {
     const claude = PROVIDER_OPTIONS.find((option) => option.value === "claudeAgent");
     const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
+    // Updated to include opencode and ollama providers added in the Ollama implementation
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
       { value: "claudeAgent", label: "Claude", available: true },
       { value: "gemini", label: "Gemini", available: true },
+      { value: "opencode", label: "OpenCode", available: true },
+      { value: "ollama", label: "Ollama", available: true },
       { value: "cursor", label: "Cursor", available: false },
     ]);
     expect(claude).toEqual({

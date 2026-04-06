@@ -10,6 +10,8 @@
       {
         "name": "@effect/language-service",
         "namespaceImportPackages": ["@effect/platform-node"],
+        "ignoreEffectWarningsInTscExitCode": true,
+        "ignoreEffectSuggestionsInTscExitCode": true,
         "diagnosticSeverity": {
           "importFromBarrel": "error",
           "anyUnknownInErrorContext": "warning",

@@ -98,6 +98,7 @@ import {
 } from "./desktopUpdate.logic";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
+import { BirdLogomark } from "./BirdLogo";
 import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -599,28 +600,7 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
   );
 }
 
-// Bird Code logo — inline SVG extracted from logo-dark/light.svg.
-// Background rect removed; fill uses currentColor so it adapts to dark/light theme automatically.
-function BirdLogomark() {
-  return (
-    <svg
-      aria-label="Bird Code"
-      className="size-5 shrink-0 text-foreground"
-      viewBox="0 0 1024 1024"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M327.702 724.854L515.565 399.426L557.026 327.592C560.249 322.01 576.142 293.565 579.065 290.983C585.467 289.99 609.754 290.453 617.313 290.454L694.588 290.478L773.236 290.447C779.603 290.441 804.315 289.975 809.516 291.127C812.469 293.029 830.88 326.155 834.474 332.387L874.158 401.144L915.308 472.407C922.686 485.184 930.931 498.883 937.898 511.761C931.081 524.744 921.15 540.875 913.701 553.777L865.969 636.448L829.588 699.509C825.919 705.886 814.326 728.077 810.132 731.841C807.829 733.908 759.856 732.907 753.148 732.897L717.409 732.952C713.019 732.962 690.153 735.129 693.592 726.996C695.439 722.632 699.744 715.48 702.297 711.046L720.797 679.019L793.083 553.802C793.748 552.681 796.366 548.152 797.377 547.631C821.995 535.009 848.519 523.738 873.372 511.661C855.807 503.203 838.008 495.153 820.308 486.971C813.936 484.024 802.919 479.965 797.678 476.094C794.159 473.492 774.127 436.776 769.952 429.539L720.963 344.627C712.523 330.002 703.198 312.913 694.283 298.746L520.31 600.067L469.23 688.544L453.865 715.155C450.842 720.385 446.976 727.557 443.441 732.201C439.198 733.247 422.995 732.912 417.476 732.912L369.691 732.902L267.2 732.907C250.215 732.907 229.197 733.458 212.48 732.697C209.559 729.939 201.416 715.01 198.87 710.58L178.179 674.63L84.1953 511.676L170.973 361.255L196.558 316.868C199.46 311.833 209.567 292.613 213.332 290.584C231.487 289.867 249.888 290.463 268.066 290.457C277.287 290.454 320.556 289.259 326.785 291.481C327.718 291.814 328.283 292.542 328.563 293.508C329.125 295.44 328.207 297.249 327.37 298.935C323.225 307.289 318.062 315.352 313.389 323.428L287.496 368.204L204.701 511.651C217.287 534.874 232.509 559.973 245.852 583.081L327.702 724.854Z"
-        fill="currentColor"
-      />
-      <path
-        d="M698.683 447.332C716.408 447.105 730.969 461.276 731.219 478.999C731.47 496.722 717.314 511.301 699.589 511.571C681.83 511.846 667.218 497.662 666.968 479.906C666.718 462.15 680.924 447.56 698.683 447.332Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
+// BirdLogomark is now imported from ./BirdLogo — see that file for the SVG source.
 
 type SortableProjectHandleProps = Pick<
   ReturnType<typeof useSortable>,
@@ -733,6 +713,9 @@ function SortableProjectItem({
 
 export default function Sidebar() {
   const projects = useStore((store) => store.projects);
+  // bootstrapComplete flips to true once the server read model has been synced for the first time.
+  // We use this to distinguish "still loading" from "genuinely no projects".
+  const bootstrapComplete = useStore((store) => store.bootstrapComplete);
   const sidebarThreadsById = useStore((store) => store.sidebarThreadsById);
   const threadIdsByProjectId = useStore((store) => store.threadIdsByProjectId);
   const { projectExpandedById, projectOrder, threadLastVisitedAtById } = useUiStateStore(
@@ -2336,7 +2319,9 @@ export default function Sidebar() {
                 </SidebarMenu>
               )}
 
-              {projects.length === 0 && !shouldShowProjectPathEntry && (
+              {/* Only surface the "no projects" empty state once bootstrap is complete —
+                  avoids a flash of this message before the server read model arrives. */}
+              {bootstrapComplete && projects.length === 0 && !shouldShowProjectPathEntry && (
                 <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
                   No projects yet
                 </div>

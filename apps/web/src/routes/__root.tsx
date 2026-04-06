@@ -16,6 +16,8 @@ import { Throttler } from "@tanstack/react-pacer";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import { BirdLogomark } from "../components/BirdLogo";
+import { Spinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
@@ -72,14 +74,43 @@ function RootRouteView() {
   return (
     <ToastProvider>
       <AnchoredToastProvider>
+        {/* Always mount bootstrap/event machinery so they can resolve bootstrapComplete. */}
         <ServerStateBootstrap />
         <ThemeCustomizationApplier />
         <EventRouter />
-        <AppSidebarLayout>
-          <Outlet />
-        </AppSidebarLayout>
+        <AppBootstrapGate />
       </AnchoredToastProvider>
     </ToastProvider>
+  );
+}
+
+/**
+ * Renders a full-screen loading screen while the server read model is being
+ * fetched for the first time (bootstrapComplete === false), then swaps to the
+ * real app layout once data is ready. This prevents a flash of empty state.
+ */
+function AppBootstrapGate() {
+  const bootstrapComplete = useStore((store) => store.bootstrapComplete);
+
+  if (!bootstrapComplete) {
+    return <AppLoadingScreen />;
+  }
+
+  return (
+    <AppSidebarLayout>
+      <Outlet />
+    </AppSidebarLayout>
+  );
+}
+
+/** Full-screen splash shown while waiting for the initial server snapshot. */
+function AppLoadingScreen() {
+  return (
+    <div className="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
+      {/* Logo pulses to indicate the app is alive and loading */}
+      <BirdLogomark className="size-12 animate-pulse text-foreground/60" />
+      <Spinner className="size-4 text-muted-foreground/50" />
+    </div>
   );
 }
 

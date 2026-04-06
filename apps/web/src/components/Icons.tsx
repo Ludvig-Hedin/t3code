@@ -426,21 +426,12 @@ export const OpenCodeIcon: Icon = (props) => (
 );
 
 export const OllamaIcon: Icon = (props) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    {...props}
-  >
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
     {/* Stylised llama head — simple geometric */}
     <circle cx="12" cy="8" r="4" fill="currentColor" opacity="0.9" />
     <ellipse cx="9" cy="5.5" rx="1.2" ry="2.2" fill="currentColor" />
     <ellipse cx="15" cy="5.5" rx="1.2" ry="2.2" fill="currentColor" />
-    <path
-      d="M6 14c0-3.314 2.686-6 6-6s6 2.686 6 6v4H6v-4z"
-      fill="currentColor"
-      opacity="0.85"
-    />
+    <path d="M6 14c0-3.314 2.686-6 6-6s6 2.686 6 6v4H6v-4z" fill="currentColor" opacity="0.85" />
     <circle cx="10.5" cy="8" r="0.7" fill="white" />
     <circle cx="13.5" cy="8" r="0.7" fill="white" />
   </svg>

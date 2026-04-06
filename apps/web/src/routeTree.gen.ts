@@ -14,10 +14,15 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AutomationsRouteImport } from './routes/automations'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
+import { Route as SettingsPersonalizationRouteImport } from './routes/settings.personalization'
+import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
 import { Route as SettingsMobileRouteImport } from './routes/settings.mobile'
 import { Route as SettingsMcpRouteImport } from './routes/settings.mcp'
+import { Route as SettingsGitRouteImport } from './routes/settings.git'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
+import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
 
 const SkillsRoute = SkillsRouteImport.update({
@@ -44,6 +49,21 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChatRoute,
 } as any)
+const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
+  id: '/providers',
+  path: '/providers',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsPersonalizationRoute = SettingsPersonalizationRouteImport.update({
+  id: '/personalization',
+  path: '/personalization',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsMobileRoute = SettingsMobileRouteImport.update({
   id: '/mobile',
   path: '/mobile',
@@ -54,6 +74,11 @@ const SettingsMcpRoute = SettingsMcpRouteImport.update({
   path: '/mcp',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsGitRoute = SettingsGitRouteImport.update({
+  id: '/git',
+  path: '/git',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   id: '/general',
   path: '/general',
@@ -62,6 +87,11 @@ const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
 const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   id: '/archived',
   path: '/archived',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
+  id: '/appearance',
+  path: '/appearance',
   getParentRoute: () => SettingsRoute,
 } as any)
 const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
@@ -76,20 +106,30 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
+  '/settings/git': typeof SettingsGitRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/mobile': typeof SettingsMobileRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/personalization': typeof SettingsPersonalizationRoute
+  '/settings/providers': typeof SettingsProvidersRoute
 }
 export interface FileRoutesByTo {
   '/automations': typeof AutomationsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
+  '/settings/git': typeof SettingsGitRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/mobile': typeof SettingsMobileRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/personalization': typeof SettingsPersonalizationRoute
+  '/settings/providers': typeof SettingsProvidersRoute
   '/': typeof ChatIndexRoute
 }
 export interface FileRoutesById {
@@ -99,10 +139,15 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/_chat/$threadId': typeof ChatThreadIdRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
+  '/settings/git': typeof SettingsGitRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/mobile': typeof SettingsMobileRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/personalization': typeof SettingsPersonalizationRoute
+  '/settings/providers': typeof SettingsProvidersRoute
   '/_chat/': typeof ChatIndexRoute
 }
 export interface FileRouteTypes {
@@ -113,20 +158,30 @@ export interface FileRouteTypes {
     | '/settings'
     | '/skills'
     | '/$threadId'
+    | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
+    | '/settings/git'
     | '/settings/mcp'
     | '/settings/mobile'
+    | '/settings/notifications'
+    | '/settings/personalization'
+    | '/settings/providers'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/automations'
     | '/settings'
     | '/skills'
     | '/$threadId'
+    | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
+    | '/settings/git'
     | '/settings/mcp'
     | '/settings/mobile'
+    | '/settings/notifications'
+    | '/settings/personalization'
+    | '/settings/providers'
     | '/'
   id:
     | '__root__'
@@ -135,10 +190,15 @@ export interface FileRouteTypes {
     | '/settings'
     | '/skills'
     | '/_chat/$threadId'
+    | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
+    | '/settings/git'
     | '/settings/mcp'
     | '/settings/mobile'
+    | '/settings/notifications'
+    | '/settings/personalization'
+    | '/settings/providers'
     | '/_chat/'
   fileRoutesById: FileRoutesById
 }
@@ -186,6 +246,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/settings/providers': {
+      id: '/settings/providers'
+      path: '/providers'
+      fullPath: '/settings/providers'
+      preLoaderRoute: typeof SettingsProvidersRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/personalization': {
+      id: '/settings/personalization'
+      path: '/personalization'
+      fullPath: '/settings/personalization'
+      preLoaderRoute: typeof SettingsPersonalizationRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/notifications': {
+      id: '/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof SettingsNotificationsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/mobile': {
       id: '/settings/mobile'
       path: '/mobile'
@@ -200,6 +281,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsMcpRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/git': {
+      id: '/settings/git'
+      path: '/git'
+      fullPath: '/settings/git'
+      preLoaderRoute: typeof SettingsGitRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/general': {
       id: '/settings/general'
       path: '/general'
@@ -212,6 +300,13 @@ declare module '@tanstack/react-router' {
       path: '/archived'
       fullPath: '/settings/archived'
       preLoaderRoute: typeof SettingsArchivedRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/appearance': {
+      id: '/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/_chat/$threadId': {
@@ -237,17 +332,27 @@ const ChatRouteChildren: ChatRouteChildren = {
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
+  SettingsGitRoute: typeof SettingsGitRoute
   SettingsMcpRoute: typeof SettingsMcpRoute
   SettingsMobileRoute: typeof SettingsMobileRoute
+  SettingsNotificationsRoute: typeof SettingsNotificationsRoute
+  SettingsPersonalizationRoute: typeof SettingsPersonalizationRoute
+  SettingsProvidersRoute: typeof SettingsProvidersRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
+  SettingsGitRoute: SettingsGitRoute,
   SettingsMcpRoute: SettingsMcpRoute,
   SettingsMobileRoute: SettingsMobileRoute,
+  SettingsNotificationsRoute: SettingsNotificationsRoute,
+  SettingsPersonalizationRoute: SettingsPersonalizationRoute,
+  SettingsProvidersRoute: SettingsProvidersRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(

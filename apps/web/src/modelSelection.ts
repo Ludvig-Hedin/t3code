@@ -121,7 +121,8 @@ export function getAppModelOptions(
   );
 
   // OllamaSettings does not have customModels — fall back to empty array
-  const customModels = (settings.providers[provider] as { customModels?: readonly string[] }).customModels ?? [];
+  const customModels =
+    (settings.providers[provider] as { customModels?: readonly string[] }).customModels ?? [];
   for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
     if (seen.has(slug)) {
       continue;
@@ -163,7 +164,11 @@ export function resolveAppModelSelection(
   const resolvedProvider = resolveSelectableProvider(providers, provider);
   // Gemini, OpenCode, and Ollama use dynamic model slugs that bypass the selectable-options
   // resolution path — normalise directly to the canonical slug instead.
-  if (resolvedProvider === "gemini" || resolvedProvider === "opencode" || resolvedProvider === "ollama") {
+  if (
+    resolvedProvider === "gemini" ||
+    resolvedProvider === "opencode" ||
+    resolvedProvider === "ollama"
+  ) {
     return (
       normalizeModelSlug(selectedModel, resolvedProvider) ??
       getDefaultServerModel(providers, resolvedProvider)

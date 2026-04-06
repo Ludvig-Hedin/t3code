@@ -112,7 +112,10 @@ export async function startOpenCodeServer(binaryPath: string): Promise<OpenCodeS
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     const settle = (fn: () => void) => {
-      if (!settled) { settled = true; fn(); }
+      if (!settled) {
+        settled = true;
+        fn();
+      }
     };
 
     child.on("exit", (code) => {
@@ -121,7 +124,9 @@ export async function startOpenCodeServer(binaryPath: string): Promise<OpenCodeS
 
     waitForHealth(baseUrl)
       .then(() => settle(resolve))
-      .catch((err: unknown) => settle(() => reject(err instanceof Error ? err : new Error(String(err)))));
+      .catch((err: unknown) =>
+        settle(() => reject(err instanceof Error ? err : new Error(String(err)))),
+      );
   });
 
   return {
@@ -155,7 +160,9 @@ export const makeOpenCodeServerHandleRef = (
     const handleRef = yield* Ref.make<OpenCodeServerHandle | null>(null);
     // Deferred used as a one-shot lock: first caller races to complete it,
     // subsequent callers await its result without spawning a second process.
-    const startingRef = yield* Ref.make<import("effect").Deferred.Deferred<OpenCodeServerHandle, Error> | null>(null);
+    const startingRef = yield* Ref.make<
+      import("effect").Deferred.Deferred<OpenCodeServerHandle, Error> | null
+    >(null);
 
     const getOrStart: Effect.Effect<OpenCodeServerHandle, Error> = Effect.gen(function* () {
       // Fast path: already running

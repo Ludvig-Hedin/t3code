@@ -78,9 +78,7 @@ const PROVIDER_INSTALL_DATA: Record<string, ProviderInstallEntry> = {
     docsUrl: "https://code.claude.com/docs/en/cli-reference",
   },
   gemini: {
-    installCommands: [
-      { label: "npm", command: "npm install -g @google/gemini-cli" },
-    ],
+    installCommands: [{ label: "npm", command: "npm install -g @google/gemini-cli" }],
     authCommand: "gemini auth",
     docsUrl: "https://geminicli.com/docs/",
   },
@@ -313,8 +311,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   // Determine the appropriate action for this provider
                   const isNotInstalled = !liveProvider.installed;
                   const isUnauthenticated =
-                    liveProvider.installed &&
-                    liveProvider.auth.status === "unauthenticated";
+                    liveProvider.installed && liveProvider.auth.status === "unauthenticated";
                   const installData = PROVIDER_INSTALL_DATA[option.value];
 
                   // Show actionable Install button when the CLI isn't installed and we have a command
@@ -418,10 +415,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                             </span>
                           )}
                       </MenuSubTrigger>
-                      <MenuSubPopup
-                        className="[--available-height:min(24rem,70vh)]"
-                        sideOffset={4}
-                      >
+                      <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                         <div className="px-2 py-1.5">
                           <Input
                             autoFocus
@@ -546,10 +540,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         </MenuPopup>
       </Menu>
       {/* Provider install / auth setup dialog */}
-      <ProviderSetupDialog
-        setupDialog={setupDialog}
-        onClose={() => setSetupDialog(null)}
-      />
+      <ProviderSetupDialog setupDialog={setupDialog} onClose={() => setSetupDialog(null)} />
       {/* PullModelDialog — only mounted when the parent supplies an onOllamaPullModel handler */}
       {props.onOllamaPullModel ? (
         <PullModelDialog

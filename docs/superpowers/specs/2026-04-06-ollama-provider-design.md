@@ -11,6 +11,7 @@
 Ollama is a locally-running LLM server (`http://localhost:11434`) that exposes an OpenAI-compatible REST API. Unlike Codex/Claude/Gemini (which wrap CLIs), the Ollama adapter talks to this HTTP endpoint directly — no binary path needed.
 
 Key properties:
+
 - Models are **dynamic**: pulled from `GET /api/tags` at runtime, not hardcoded.
 - Conversation history is **full multi-turn**: the adapter maintains a `messages[]` array per session and sends the full context on each turn (identical to how Claude/Codex work).
 - Model switching is **in-session**: each request carries a `model` field, so switching doesn't require a session restart.
@@ -44,10 +45,10 @@ web/                 → session-logic.ts   (PROVIDER_OPTIONS)
 
 ```ts
 // Before
-Schema.Literals(["codex", "claudeAgent", "gemini"])
+Schema.Literals(["codex", "claudeAgent", "gemini"]);
 
 // After
-Schema.Literals(["codex", "claudeAgent", "gemini", "ollama"])
+Schema.Literals(["codex", "claudeAgent", "gemini", "ollama"]);
 ```
 
 ### 3.2 `model.ts` additions
@@ -88,6 +89,7 @@ export type OllamaSettings = typeof OllamaSettings.Type;
 ```
 
 Add to `ServerSettings.providers`:
+
 ```ts
 ollama: OllamaSettings.pipe(Schema.withDecodingDefault(() => ({}))),
 ```
@@ -132,6 +134,7 @@ Mirrors `GeminiAdapter` service interface — implements `ProviderAdapterShape<P
 ### `apps/server/src/provider/Layers/OllamaAdapter.ts`
 
 **Session state:**
+
 ```ts
 interface OllamaMessage {
   role: "user" | "assistant" | "system";
@@ -149,7 +152,7 @@ interface OllamaTurnRecord {
 interface OllamaSessionState {
   readonly session: ProviderSession;
   readonly modelSelection?: ModelSelection;
-  readonly messages: OllamaMessage[];   // full conversation history
+  readonly messages: OllamaMessage[]; // full conversation history
   readonly turns: OllamaTurnRecord[];
   readonly interruptedTurns: Set<TurnId>;
   readonly abortControllers: Map<TurnId, AbortController>;
@@ -157,12 +160,14 @@ interface OllamaSessionState {
 ```
 
 **`startSession`:**
+
 - Creates session state with `messages: []`.
 - Emits `session.started` + `thread.started` events (same as Gemini).
 
 **Transport:** Uses Node.js built-in `fetch` (not `runProcess`) — Ollama is an HTTP server, not a CLI. The `AbortController` is passed as `signal` to `fetch` for interrupt support.
 
 **`sendTurn`:**
+
 1. Append user message to `messages[]`.
 2. POST `{baseUrl}/v1/chat/completions` with:
    ```json
@@ -181,15 +186,19 @@ interface OllamaSessionState {
 9. On fetch error: emit `turn.completed` with `state: "failed"` + `errorMessage`.
 
 **`interruptTurn`:**
+
 - Call `.abort()` on the stored `AbortController` for that `turnId`.
 
 **`respondToRequest` / `respondToUserInput`:**
+
 - Emit `runtime.warning` (not implemented — Ollama has no approval flows).
 
 **`stopSession`:**
+
 - Abort any active turn, remove session, emit `session.exited`.
 
 **`readThread` / `rollbackThread`:**
+
 - Same pattern as Gemini: build `ProviderThreadSnapshot` from `turns[]`.
 - On rollback of N turns: truncate `turns[]` to `turns.length - N` AND truncate `messages[]` to `messages.length - (N * 2)`, since each turn contributes exactly 1 user message + 1 assistant message to the history array.
 
@@ -227,6 +236,7 @@ Add two new methods to `NativeApi` in `packages/contracts/src/rpc.ts`:
 ```
 
 Server implementations:
+
 - `ollama.pullModel`: `POST {baseUrl}/api/pull` with `{ name: model, stream: false }`. Returns success/error.
 - `ollama.quitServer`: `POST {baseUrl}/api/close` (Ollama ≥ 0.4.x). Fallback: no-op with message.
 
@@ -259,6 +269,7 @@ Add an `OllamaIcon` SVG to `Icons.tsx` (a simple llama silhouette SVG, or a text
 ### 8.4 `PullModelDialog` (new component)
 
 A modal dialog with:
+
 - A text input: "Model name" (placeholder: `llama3.2`, `qwen2.5-coder:7b`)
 - A curated popular models list below the input (scrollable chips/radio items):
   ```
@@ -281,6 +292,7 @@ A modal dialog with:
 ### 8.5 `SettingsPanels.tsx` — Ollama Settings Panel
 
 New panel section "Ollama" showing:
+
 - Enable/disable toggle
 - Base URL input (default `http://localhost:11434`)
 - Status indicator (running / not running)
@@ -292,13 +304,13 @@ New panel section "Ollama" showing:
 
 ## 9. Error Handling & Edge Cases
 
-| Scenario | Behavior |
-|---|---|
+| Scenario                                 | Behavior                                                                                                                                       |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Ollama not running when starting session | `startSession` emits `session.started` optimistically; `sendTurn` fails with `content.delta` error message + `turn.completed` state `"failed"` |
-| Model not pulled | `sendTurn` gets a 404 from Ollama; emits error message: `"Model 'X' is not installed. Pull it from the Ollama settings panel."` |
-| Turn interrupted mid-stream | AbortController fires; stream stops; `turn.aborted` emitted |
-| Ollama disabled in settings | Provider snapshot shows `status: "warning"`, picker shows "Disabled" badge |
-| `ollama.quitServer` on older Ollama | Graceful no-op with user-visible message "Your Ollama version does not support remote quit." |
+| Model not pulled                         | `sendTurn` gets a 404 from Ollama; emits error message: `"Model 'X' is not installed. Pull it from the Ollama settings panel."`                |
+| Turn interrupted mid-stream              | AbortController fires; stream stops; `turn.aborted` emitted                                                                                    |
+| Ollama disabled in settings              | Provider snapshot shows `status: "warning"`, picker shows "Disabled" badge                                                                     |
+| `ollama.quitServer` on older Ollama      | Graceful no-op with user-visible message "Your Ollama version does not support remote quit."                                                   |
 
 ---
 
@@ -314,22 +326,22 @@ New panel section "Ollama" showing:
 
 ## 11. Files Changed
 
-| File | Change |
-|---|---|
-| `packages/contracts/src/orchestration.ts` | Add `"ollama"` to `ProviderKind` |
-| `packages/contracts/src/model.ts` | `OllamaModelOptions`, defaults, display name, aliases |
-| `packages/contracts/src/settings.ts` | `OllamaSettings`, add to `ServerSettings.providers` + patch schemas |
-| `packages/contracts/src/rpc.ts` | `ollama.pullModel`, `ollama.quitServer` methods |
-| `apps/server/src/provider/Services/OllamaProvider.ts` | New service interface |
-| `apps/server/src/provider/Services/OllamaAdapter.ts` | New service interface |
-| `apps/server/src/provider/Layers/OllamaProvider.ts` | Health check + live model list |
-| `apps/server/src/provider/Layers/OllamaAdapter.ts` | Full session adapter |
-| `apps/server/src/provider/Layers/ProviderRegistry.ts` | Wire OllamaProvider |
-| `apps/server/src/provider/Layers/ProviderAdapterRegistry.ts` | Wire OllamaAdapter |
-| `apps/server/src/ws.ts` / `wsServer.ts` | Add `ollama.*` method handlers |
-| `apps/web/src/session-logic.ts` | Add ollama to `PROVIDER_OPTIONS` |
-| `apps/web/src/components/Icons.tsx` | `OllamaIcon` |
-| `apps/web/src/components/chat/ProviderModelPicker.tsx` | Ollama sub-menu extras |
-| `apps/web/src/components/chat/PullModelDialog.tsx` | New component |
-| `apps/web/src/components/settings/SettingsPanels.tsx` | Ollama settings panel |
-| `apps/web/src/wsRpcClient.ts` | Typed client for new ollama RPC methods |
+| File                                                         | Change                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `packages/contracts/src/orchestration.ts`                    | Add `"ollama"` to `ProviderKind`                                    |
+| `packages/contracts/src/model.ts`                            | `OllamaModelOptions`, defaults, display name, aliases               |
+| `packages/contracts/src/settings.ts`                         | `OllamaSettings`, add to `ServerSettings.providers` + patch schemas |
+| `packages/contracts/src/rpc.ts`                              | `ollama.pullModel`, `ollama.quitServer` methods                     |
+| `apps/server/src/provider/Services/OllamaProvider.ts`        | New service interface                                               |
+| `apps/server/src/provider/Services/OllamaAdapter.ts`         | New service interface                                               |
+| `apps/server/src/provider/Layers/OllamaProvider.ts`          | Health check + live model list                                      |
+| `apps/server/src/provider/Layers/OllamaAdapter.ts`           | Full session adapter                                                |
+| `apps/server/src/provider/Layers/ProviderRegistry.ts`        | Wire OllamaProvider                                                 |
+| `apps/server/src/provider/Layers/ProviderAdapterRegistry.ts` | Wire OllamaAdapter                                                  |
+| `apps/server/src/ws.ts` / `wsServer.ts`                      | Add `ollama.*` method handlers                                      |
+| `apps/web/src/session-logic.ts`                              | Add ollama to `PROVIDER_OPTIONS`                                    |
+| `apps/web/src/components/Icons.tsx`                          | `OllamaIcon`                                                        |
+| `apps/web/src/components/chat/ProviderModelPicker.tsx`       | Ollama sub-menu extras                                              |
+| `apps/web/src/components/chat/PullModelDialog.tsx`           | New component                                                       |
+| `apps/web/src/components/settings/SettingsPanels.tsx`        | Ollama settings panel                                               |
+| `apps/web/src/wsRpcClient.ts`                                | Typed client for new ollama RPC methods                             |

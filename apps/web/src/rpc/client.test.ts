@@ -137,6 +137,13 @@ describe("WsRpcAtomClient", () => {
         gemini: {
           ...DEFAULT_SERVER_SETTINGS.providers.gemini,
         },
+        // Include new providers added as part of Ollama/OpenCode implementation
+        opencode: {
+          ...DEFAULT_SERVER_SETTINGS.providers.opencode,
+        },
+        ollama: {
+          ...DEFAULT_SERVER_SETTINGS.providers.ollama,
+        },
       },
     };
     const requestPromise = runRpc((client) => client(WS_METHODS.serverGetSettings, {}));
@@ -189,6 +196,13 @@ describe("WsRpcAtomClient", () => {
         },
         gemini: {
           ...DEFAULT_SERVER_SETTINGS.providers.gemini,
+        },
+        // Include new providers added as part of Ollama/OpenCode implementation
+        opencode: {
+          ...DEFAULT_SERVER_SETTINGS.providers.opencode,
+        },
+        ollama: {
+          ...DEFAULT_SERVER_SETTINGS.providers.ollama,
         },
       },
     };

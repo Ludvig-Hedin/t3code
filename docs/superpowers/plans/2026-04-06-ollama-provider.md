@@ -12,31 +12,32 @@
 
 ## File Map
 
-| Path | Create / Modify | Responsibility |
-|---|---|---|
-| `packages/contracts/src/orchestration.ts` | Modify | Add `"ollama"` to `ProviderKind` literal |
-| `packages/contracts/src/model.ts` | Modify | `OllamaModelOptions`, defaults, display name, aliases |
-| `packages/contracts/src/settings.ts` | Modify | `OllamaSettings` schema + `ServerSettings.providers.ollama` + patch schemas |
-| `packages/contracts/src/rpc.ts` | Modify | `WS_METHODS.ollamaPullModel/quitServer`, two `Rpc.make` definitions, add to `WsRpcGroup` |
-| `apps/server/src/provider/Services/OllamaProvider.ts` | Create | Service tag for snapshot |
-| `apps/server/src/provider/Services/OllamaAdapter.ts` | Create | Service tag for adapter |
-| `apps/server/src/provider/Layers/OllamaProvider.ts` | Create | Health check via `GET /api/tags`, live model list |
-| `apps/server/src/provider/Layers/OllamaAdapter.ts` | Create | Full session lifecycle: startSession, sendTurn (SSE streaming), interruptTurn, stopSession, readThread, rollbackThread |
-| `apps/server/src/provider/Layers/ProviderRegistry.ts` | Modify | Add OllamaProvider slot |
-| `apps/server/src/provider/Layers/ProviderAdapterRegistry.ts` | Modify | Add OllamaAdapter to default adapters |
-| `apps/server/src/ws.ts` | Modify | Handle `ollama.pullModel` and `ollama.quitServer` RPC calls |
-| `apps/web/src/providerModels.ts` | Modify | Add `ollama` to `getProviderModelsByProvider` |
-| `apps/web/src/session-logic.ts` | Modify | Add `"ollama"` to `PROVIDER_OPTIONS` and `ProviderPickerKind` |
-| `apps/web/src/components/Icons.tsx` | Modify | Add `OllamaIcon` SVG |
-| `apps/web/src/components/chat/ProviderModelPicker.tsx` | Modify | Ollama icon, install button, pull/quit menu items |
-| `apps/web/src/components/chat/PullModelDialog.tsx` | Create | Pull model dialog with curated list + text input |
-| `apps/web/src/wsRpcClient.ts` | Modify | Typed client methods for `ollama.pullModel` and `ollama.quitServer` |
+| Path                                                         | Create / Modify | Responsibility                                                                                                         |
+| ------------------------------------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/orchestration.ts`                    | Modify          | Add `"ollama"` to `ProviderKind` literal                                                                               |
+| `packages/contracts/src/model.ts`                            | Modify          | `OllamaModelOptions`, defaults, display name, aliases                                                                  |
+| `packages/contracts/src/settings.ts`                         | Modify          | `OllamaSettings` schema + `ServerSettings.providers.ollama` + patch schemas                                            |
+| `packages/contracts/src/rpc.ts`                              | Modify          | `WS_METHODS.ollamaPullModel/quitServer`, two `Rpc.make` definitions, add to `WsRpcGroup`                               |
+| `apps/server/src/provider/Services/OllamaProvider.ts`        | Create          | Service tag for snapshot                                                                                               |
+| `apps/server/src/provider/Services/OllamaAdapter.ts`         | Create          | Service tag for adapter                                                                                                |
+| `apps/server/src/provider/Layers/OllamaProvider.ts`          | Create          | Health check via `GET /api/tags`, live model list                                                                      |
+| `apps/server/src/provider/Layers/OllamaAdapter.ts`           | Create          | Full session lifecycle: startSession, sendTurn (SSE streaming), interruptTurn, stopSession, readThread, rollbackThread |
+| `apps/server/src/provider/Layers/ProviderRegistry.ts`        | Modify          | Add OllamaProvider slot                                                                                                |
+| `apps/server/src/provider/Layers/ProviderAdapterRegistry.ts` | Modify          | Add OllamaAdapter to default adapters                                                                                  |
+| `apps/server/src/ws.ts`                                      | Modify          | Handle `ollama.pullModel` and `ollama.quitServer` RPC calls                                                            |
+| `apps/web/src/providerModels.ts`                             | Modify          | Add `ollama` to `getProviderModelsByProvider`                                                                          |
+| `apps/web/src/session-logic.ts`                              | Modify          | Add `"ollama"` to `PROVIDER_OPTIONS` and `ProviderPickerKind`                                                          |
+| `apps/web/src/components/Icons.tsx`                          | Modify          | Add `OllamaIcon` SVG                                                                                                   |
+| `apps/web/src/components/chat/ProviderModelPicker.tsx`       | Modify          | Ollama icon, install button, pull/quit menu items                                                                      |
+| `apps/web/src/components/chat/PullModelDialog.tsx`           | Create          | Pull model dialog with curated list + text input                                                                       |
+| `apps/web/src/wsRpcClient.ts`                                | Modify          | Typed client methods for `ollama.pullModel` and `ollama.quitServer`                                                    |
 
 ---
 
 ## Task 1: Extend `ProviderKind` in contracts
 
 **Files:**
+
 - Modify: `packages/contracts/src/orchestration.ts`
 
 - [ ] **Step 1: Add `"ollama"` to the `ProviderKind` literal union and `DEFAULT_PROVIDER_KIND` guard**
@@ -73,6 +74,7 @@ git commit -m "feat(contracts): add 'ollama' to ProviderKind"
 ## Task 2: Add Ollama model metadata to contracts
 
 **Files:**
+
 - Modify: `packages/contracts/src/model.ts`
 
 - [ ] **Step 1: Add `OllamaModelOptions` and update all provider records**
@@ -80,27 +82,32 @@ git commit -m "feat(contracts): add 'ollama' to ProviderKind"
 Open `packages/contracts/src/model.ts`. Make these additions:
 
 After `GeminiModelOptions` (around line 25):
+
 ```ts
 export const OllamaModelOptions = Schema.Struct({});
 export type OllamaModelOptions = typeof OllamaModelOptions.Type;
 ```
 
 In `ProviderModelOptions.fields` struct, after `gemini`:
+
 ```ts
 ollama: Schema.optional(OllamaModelOptions),
 ```
 
 In `DEFAULT_MODEL_BY_PROVIDER`, after `gemini`:
+
 ```ts
 ollama: "llama3.2",
 ```
 
 In `DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER`, after `gemini`:
+
 ```ts
 ollama: "llama3.2",
 ```
 
 In `MODEL_SLUG_ALIASES_BY_PROVIDER`, after the `gemini` block:
+
 ```ts
 ollama: {
   llama3: "llama3.2",
@@ -110,6 +117,7 @@ ollama: {
 ```
 
 In `PROVIDER_DISPLAY_NAMES`, after `gemini`:
+
 ```ts
 ollama: "Ollama",
 ```
@@ -134,6 +142,7 @@ git commit -m "feat(contracts): add OllamaModelOptions and defaults"
 ## Task 3: Add `OllamaSettings` to contracts settings schema
 
 **Files:**
+
 - Modify: `packages/contracts/src/settings.ts`
 
 - [ ] **Step 1: Add `OllamaSettings` schema**
@@ -151,6 +160,7 @@ export type OllamaSettings = typeof OllamaSettings.Type;
 - [ ] **Step 2: Add `ollama` to `ServerSettings.providers`**
 
 In the `providers` struct inside `ServerSettings` (around line 127), after `gemini`:
+
 ```ts
 ollama: OllamaSettings.pipe(Schema.withDecodingDefault(() => ({}))),
 ```
@@ -158,11 +168,13 @@ ollama: OllamaSettings.pipe(Schema.withDecodingDefault(() => ({}))),
 - [ ] **Step 3: Add `OllamaModelOptionsPatch` and wire into `ModelSelectionPatch`**
 
 After `GeminiModelOptionsPatch` (around line 174):
+
 ```ts
 const OllamaModelOptionsPatch = Schema.Struct({});
 ```
 
 Add `ollama` variant to `ModelSelectionPatch` union (after the `gemini` struct in the `Schema.Union`):
+
 ```ts
 Schema.Struct({
   provider: Schema.optionalKey(Schema.Literal("ollama")),
@@ -174,6 +186,7 @@ Schema.Struct({
 - [ ] **Step 4: Add `OllamaSettingsPatch` and wire into `ServerSettingsPatch`**
 
 After `GeminiSettingsPatch` (around line 211):
+
 ```ts
 const OllamaSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
@@ -182,6 +195,7 @@ const OllamaSettingsPatch = Schema.Struct({
 ```
 
 In `ServerSettingsPatch.fields.providers`, after `gemini`:
+
 ```ts
 ollama: Schema.optionalKey(OllamaSettingsPatch),
 ```
@@ -206,11 +220,13 @@ git commit -m "feat(contracts): add OllamaSettings and patch schema"
 ## Task 4: Add `ollama.pullModel` and `ollama.quitServer` RPC methods
 
 **Files:**
+
 - Modify: `packages/contracts/src/rpc.ts`
 
 - [ ] **Step 1: Add method name constants to `WS_METHODS`**
 
 In `WS_METHODS` (around line 102), after the `pluginsRemove` entry and before `subscribeOrchestrationDomainEvents`:
+
 ```ts
 // Ollama management methods
 ollamaPullModel: "ollama.pullModel",
@@ -238,6 +254,7 @@ export const WsOllamaQuitServerRpc = Rpc.make(WS_METHODS.ollamaQuitServer, {
 - [ ] **Step 3: Add to `WsRpcGroup`**
 
 Inside `RpcGroup.make(...)`, add at the end before the closing `)`:
+
 ```ts
 WsOllamaPullModelRpc,
 WsOllamaQuitServerRpc,
@@ -263,6 +280,7 @@ git commit -m "feat(contracts): add ollama.pullModel and ollama.quitServer RPC m
 ## Task 5: Create `OllamaProvider` service and layer
 
 **Files:**
+
 - Create: `apps/server/src/provider/Services/OllamaProvider.ts`
 - Create: `apps/server/src/provider/Layers/OllamaProvider.ts`
 
@@ -311,10 +329,7 @@ import type { ModelCapabilities, OllamaSettings, ServerProviderModel } from "@t3
 import { APP_NAME } from "@t3tools/shared/branding";
 import { Effect, Equal, Layer, Stream } from "effect";
 
-import {
-  buildServerProvider,
-  providerModelsFromSettings,
-} from "../providerSnapshot";
+import { buildServerProvider, providerModelsFromSettings } from "../providerSnapshot";
 import { makeManagedServerProvider } from "../makeManagedServerProvider";
 import { OllamaProvider } from "../Services/OllamaProvider";
 import { ServerSettingsService } from "../../serverSettings";
@@ -473,6 +488,7 @@ git commit -m "feat(server): add OllamaProvider service and health-check layer"
 ## Task 6: Create `OllamaAdapter` service and layer
 
 **Files:**
+
 - Create: `apps/server/src/provider/Services/OllamaAdapter.ts`
 - Create: `apps/server/src/provider/Layers/OllamaAdapter.ts`
 
@@ -763,10 +779,7 @@ export const OllamaAdapterLive = Layer.effect(
             // (SSE chunks were accumulated; Effect can't yield inside the async loop)
             Effect.andThen(
               Effect.gen(function* () {
-                if (
-                  turnState !== "interrupted" &&
-                  assistantContent.length > 0
-                ) {
+                if (turnState !== "interrupted" && assistantContent.length > 0) {
                   yield* emitEvent(
                     makeThreadEvent(
                       "content.delta",
@@ -788,7 +801,12 @@ export const OllamaAdapterLive = Layer.effect(
         // Emit final turn event
         if (turnState === "interrupted") {
           yield* emitEvent(
-            makeThreadEvent("turn.aborted", input.threadId, { reason: "Interrupted by user." }, turnId),
+            makeThreadEvent(
+              "turn.aborted",
+              input.threadId,
+              { reason: "Interrupted by user." },
+              turnId,
+            ),
           );
         } else {
           yield* emitEvent(
@@ -869,7 +887,11 @@ export const OllamaAdapterLive = Layer.effect(
         });
       });
 
-    const respondToRequest: OllamaAdapterShape["respondToRequest"] = (threadId, requestId, decision) =>
+    const respondToRequest: OllamaAdapterShape["respondToRequest"] = (
+      threadId,
+      requestId,
+      decision,
+    ) =>
       emitEvent(
         makeThreadEvent("runtime.warning", threadId, {
           message: `Ollama adapter does not support request responses (${String(requestId)} -> ${decision}).`,
@@ -946,7 +968,10 @@ export const OllamaAdapterLive = Layer.effect(
 
         const nextTurns = state.turns.slice(0, Math.max(0, state.turns.length - numTurns));
         // Each turn = 1 user message + 1 assistant message; trim messages[] accordingly
-        const nextMessages = state.messages.slice(0, Math.max(0, state.messages.length - numTurns * 2));
+        const nextMessages = state.messages.slice(
+          0,
+          Math.max(0, state.messages.length - numTurns * 2),
+        );
 
         yield* Ref.update(sessionsRef, (s) => {
           const next = new Map(s);
@@ -1033,6 +1058,7 @@ git commit -m "feat(server): add OllamaAdapter with full session lifecycle and S
 ## Task 7: Wire Ollama into provider registries
 
 **Files:**
+
 - Modify: `apps/server/src/provider/Layers/ProviderRegistry.ts`
 - Modify: `apps/server/src/provider/Layers/ProviderAdapterRegistry.ts`
 
@@ -1041,6 +1067,7 @@ git commit -m "feat(server): add OllamaAdapter with full session lifecycle and S
 Open `apps/server/src/provider/Layers/ProviderRegistry.ts`.
 
 Add imports at the top:
+
 ```ts
 import { OllamaProviderLive } from "./OllamaProvider";
 import type { OllamaProviderShape } from "../Services/OllamaProvider";
@@ -1048,6 +1075,7 @@ import { OllamaProvider } from "../Services/OllamaProvider";
 ```
 
 Change `loadProviders` signature and body (add 4th slot):
+
 ```ts
 const loadProviders = (
   codexProvider: CodexProviderShape,
@@ -1067,18 +1095,20 @@ const loadProviders = (
 ```
 
 Inside `ProviderRegistryLive` `Effect.gen`, yield the new provider:
+
 ```ts
-const ollamaProvider = yield* OllamaProvider;
+const ollamaProvider = yield * OllamaProvider;
 ```
 
 Update every call to `loadProviders` and `syncProviders` to pass `ollamaProvider`. Add stream subscription:
+
 ```ts
-yield* Stream.runForEach(ollamaProvider.streamChanges, () => syncProviders()).pipe(
-  Effect.forkScoped,
-);
+yield *
+  Stream.runForEach(ollamaProvider.streamChanges, () => syncProviders()).pipe(Effect.forkScoped);
 ```
 
 Update the `refresh` switch:
+
 ```ts
 case "ollama":
   yield* ollamaProvider.refresh;
@@ -1088,6 +1118,7 @@ case "ollama":
 Add `ollamaProvider.refresh` to the default `Effect.all` array.
 
 End of file — add to the `Layer.provideMerge` chain:
+
 ```ts
 .pipe(
   Layer.provideMerge(CodexProviderLive),
@@ -1102,19 +1133,22 @@ End of file — add to the `Layer.provideMerge` chain:
 Open `apps/server/src/provider/Layers/ProviderAdapterRegistry.ts`.
 
 Add imports:
+
 ```ts
 import { OllamaAdapter } from "../Services/OllamaAdapter.ts";
 ```
 
 In `makeProviderAdapterRegistry`, update the default adapters array:
+
 ```ts
 const adapters =
   options?.adapters !== undefined
     ? options.adapters
-    : [yield* CodexAdapter, yield* ClaudeAdapter, yield* GeminiAdapter, yield* OllamaAdapter];
+    : [yield * CodexAdapter, yield * ClaudeAdapter, yield * GeminiAdapter, yield * OllamaAdapter];
 ```
 
 Add to the `ProviderAdapterRegistryLive` layer composition (at the bottom of the file):
+
 ```ts
 export const ProviderAdapterRegistryLive = Layer.effect(
   ProviderAdapterRegistry,
@@ -1145,6 +1179,7 @@ git commit -m "feat(server): wire OllamaProvider and OllamaAdapter into registri
 ## Task 8: Handle `ollama.pullModel` and `ollama.quitServer` in `ws.ts`
 
 **Files:**
+
 - Modify: `apps/server/src/ws.ts`
 
 - [ ] **Step 1: Add the two handlers**
@@ -1239,12 +1274,14 @@ git commit -m "feat(server): handle ollama.pullModel and ollama.quitServer RPC"
 ## Task 9: Update web `providerModels.ts` and `session-logic.ts`
 
 **Files:**
+
 - Modify: `apps/web/src/providerModels.ts`
 - Modify: `apps/web/src/session-logic.ts`
 
 - [ ] **Step 1: Add `ollama` to `getProviderModelsByProvider`**
 
 Open `apps/web/src/providerModels.ts`. In `getProviderModelsByProvider`, add after `gemini`:
+
 ```ts
 ollama: getProviderModels(providers, "ollama"),
 ```
@@ -1264,7 +1301,7 @@ export const PROVIDER_OPTIONS: Array<{
   { value: "codex", label: "Codex", available: true },
   { value: "claudeAgent", label: "Claude", available: true },
   { value: "gemini", label: "Gemini", available: true },
-  { value: "ollama", label: "Ollama", available: true },  // add this
+  { value: "ollama", label: "Ollama", available: true }, // add this
   { value: "cursor", label: "Cursor", available: false },
 ];
 ```
@@ -1287,6 +1324,7 @@ git commit -m "feat(web): add ollama to provider model map and picker options"
 ## Task 10: Add `OllamaIcon` to `Icons.tsx`
 
 **Files:**
+
 - Modify: `apps/web/src/components/Icons.tsx`
 
 - [ ] **Step 1: Add the Ollama icon SVG**
@@ -1295,21 +1333,12 @@ Open `apps/web/src/components/Icons.tsx`. Add after the last `export const` icon
 
 ```tsx
 export const OllamaIcon: Icon = (props) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    {...props}
-  >
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
     {/* Stylised llama head silhouette — simple geometric version */}
     <circle cx="12" cy="8" r="4" fill="currentColor" opacity="0.9" />
     <ellipse cx="9" cy="5.5" rx="1.2" ry="2.2" fill="currentColor" />
     <ellipse cx="15" cy="5.5" rx="1.2" ry="2.2" fill="currentColor" />
-    <path
-      d="M6 14c0-3.314 2.686-6 6-6s6 2.686 6 6v4H6v-4z"
-      fill="currentColor"
-      opacity="0.85"
-    />
+    <path d="M6 14c0-3.314 2.686-6 6-6s6 2.686 6 6v4H6v-4z" fill="currentColor" opacity="0.85" />
     <circle cx="10.5" cy="8" r="0.7" fill="white" />
     <circle cx="13.5" cy="8" r="0.7" fill="white" />
   </svg>
@@ -1334,6 +1363,7 @@ git commit -m "feat(web): add OllamaIcon SVG"
 ## Task 11: Add `ollama` typed RPC methods to `wsRpcClient.ts`
 
 **Files:**
+
 - Modify: `apps/web/src/wsRpcClient.ts`
 
 - [ ] **Step 1: Extend the client with Ollama methods**
@@ -1341,6 +1371,7 @@ git commit -m "feat(web): add OllamaIcon SVG"
 Open `apps/web/src/wsRpcClient.ts`. Find the interface that types the WS RPC client (the object with `server`, `git`, `terminal`, etc. namespaces — around line 88).
 
 Add an `ollama` namespace entry to the interface:
+
 ```ts
 readonly ollama: {
   readonly pullModel: RpcUnaryMethod<typeof WS_METHODS.ollamaPullModel>;
@@ -1368,6 +1399,7 @@ git commit -m "feat(web): add typed ollama RPC methods to wsRpcClient"
 ## Task 12: Create `PullModelDialog` component
 
 **Files:**
+
 - Create: `apps/web/src/components/chat/PullModelDialog.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -1439,7 +1471,12 @@ export function PullModelDialog({ open, onOpenChange, onPull }: PullModelDialogP
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) handleClose();
+      }}
+    >
       <DialogPopup className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Pull Ollama model</DialogTitle>
@@ -1536,6 +1573,7 @@ git commit -m "feat(web): add PullModelDialog with curated model list"
 ## Task 13: Update `ProviderModelPicker.tsx` for Ollama
 
 **Files:**
+
 - Modify: `apps/web/src/components/chat/ProviderModelPicker.tsx`
 
 - [ ] **Step 1: Import `OllamaIcon`, `PullModelDialog`, and add RPC client access**
@@ -1548,6 +1586,7 @@ import { PullModelDialog } from "./PullModelDialog";
 ```
 
 Update `PROVIDER_ICON_BY_PROVIDER` to include `ollama`:
+
 ```ts
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
@@ -1561,6 +1600,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
 - [ ] **Step 2: Add props for Ollama RPC actions**
 
 Add two optional props to `ProviderModelPicker`:
+
 ```ts
 onOllamaPullModel?: (model: string) => Promise<{ success: boolean; error?: string }>;
 onOllamaQuitServer?: () => void;
@@ -1569,6 +1609,7 @@ onOllamaQuitServer?: () => void;
 - [ ] **Step 3: Add state for Ollama dialogs**
 
 Inside `ProviderModelPicker`, add state:
+
 ```ts
 const [isPullModelDialogOpen, setIsPullModelDialogOpen] = useState(false);
 const isOllama = activeProvider === "ollama";
@@ -1576,7 +1617,7 @@ const isOllama = activeProvider === "ollama";
 
 - [ ] **Step 4: Add Ollama-specific menu items and "not running" install state**
 
-Inside the `MenuSubPopup` for each provider (the `AVAILABLE_PROVIDER_OPTIONS.map` block), the current code checks `liveProvider.status !== "ready"` and shows a disabled item. 
+Inside the `MenuSubPopup` for each provider (the `AVAILABLE_PROVIDER_OPTIONS.map` block), the current code checks `liveProvider.status !== "ready"` and shows a disabled item.
 
 For Ollama specifically when `!liveProvider?.installed`, show an "Install" action instead of just a disabled badge. Find the block that renders the unavailable provider item (around line 229) and add an Ollama-specific branch:
 
@@ -1607,43 +1648,49 @@ if (liveProvider && liveProvider.status !== "ready") {
 ```
 
 Inside the `MenuSubPopup` for `option.value === "ollama"` (after the model radio list), add:
+
 ```tsx
-{option.value === "ollama" ? (
-  <>
-    <MenuDivider />
-    <MenuItem
-      onSelect={() => {
-        setIsPullModelDialogOpen(true);
-        setIsMenuOpen(false);
-      }}
-    >
-      Pull model…
-    </MenuItem>
-    {props.onOllamaQuitServer ? (
+{
+  option.value === "ollama" ? (
+    <>
+      <MenuDivider />
       <MenuItem
         onSelect={() => {
-          props.onOllamaQuitServer?.();
+          setIsPullModelDialogOpen(true);
           setIsMenuOpen(false);
         }}
       >
-        Quit Ollama
+        Pull model…
       </MenuItem>
-    ) : null}
-  </>
-) : null}
+      {props.onOllamaQuitServer ? (
+        <MenuItem
+          onSelect={() => {
+            props.onOllamaQuitServer?.();
+            setIsMenuOpen(false);
+          }}
+        >
+          Quit Ollama
+        </MenuItem>
+      ) : null}
+    </>
+  ) : null;
+}
 ```
 
 - [ ] **Step 5: Add `PullModelDialog` to the JSX return**
 
 At the end of the component's return (alongside the existing Gemini custom model `Dialog`), add:
+
 ```tsx
-{props.onOllamaPullModel ? (
-  <PullModelDialog
-    open={isPullModelDialogOpen}
-    onOpenChange={setIsPullModelDialogOpen}
-    onPull={props.onOllamaPullModel}
-  />
-) : null}
+{
+  props.onOllamaPullModel ? (
+    <PullModelDialog
+      open={isPullModelDialogOpen}
+      onOpenChange={setIsPullModelDialogOpen}
+      onPull={props.onOllamaPullModel}
+    />
+  ) : null;
+}
 ```
 
 - [ ] **Step 6: Typecheck**
@@ -1664,6 +1711,7 @@ git commit -m "feat(web): add Ollama icon, install link, pull/quit menu items to
 ## Task 14: Wire Ollama RPC callbacks into the `ProviderModelPicker` call-site
 
 **Files:**
+
 - Modify: whichever file renders `<ProviderModelPicker />` (find with `grep -r "ProviderModelPicker" apps/web/src --include="*.tsx" -l`)
 
 - [ ] **Step 1: Find the call-site**
@@ -1754,6 +1802,7 @@ git commit -m "chore: apply fmt and lint fixes for Ollama provider"
 ## Self-Review Notes
 
 **Spec coverage check:**
+
 - ✅ `ProviderKind` extended
 - ✅ `OllamaSettings` schema (baseUrl, enabled)
 - ✅ Server health check via `GET /api/tags` (live model list)
@@ -1771,6 +1820,7 @@ git commit -m "chore: apply fmt and lint fixes for Ollama provider"
 - ✅ `providerModels.ts` ollama slot
 
 **What's not in v1 (intentionally):**
+
 - Model deletion from UI (deferred)
 - Streaming pull progress (pull is blocking, dialog shows spinner)
 - Ollama settings panel (deferred — the model picker covers the core UX)

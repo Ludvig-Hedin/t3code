@@ -1392,7 +1392,8 @@ export function ProvidersSettingsPanel() {
           const defaultProviderConfig =
             DEFAULT_UNIFIED_SETTINGS.providers[providerSettings.provider];
           // OllamaSettings does not have customModels — fall back to empty array
-          const customModelOptions = (providerConfig as { customModels?: readonly string[] }).customModels ?? [];
+          const customModelOptions =
+            (providerConfig as { customModels?: readonly string[] }).customModels ?? [];
 
           return (
             <ProviderCard
@@ -1481,7 +1482,10 @@ export function GitSettingsPanel() {
               onOllamaPullModel={async (model) => {
                 try {
                   const result = await getWsRpcClient().ollama.pullModel({ model });
-                  return { success: result.success, ...(result.error !== undefined ? { error: result.error } : {}) };
+                  return {
+                    success: result.success,
+                    ...(result.error !== undefined ? { error: result.error } : {}),
+                  };
                 } catch (err) {
                   return { success: false, error: String(err) };
                 }

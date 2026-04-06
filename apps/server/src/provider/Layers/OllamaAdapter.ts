@@ -20,7 +20,6 @@ import type {
   ModelSelection,
   ProviderKind,
   ProviderRuntimeEvent,
-  ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
@@ -286,9 +285,7 @@ export const OllamaAdapterLive = Layer.effect(
           return { ...current, abortControllers: nextControllers };
         });
 
-        yield* emitEvent(
-          makeThreadEvent("turn.started", input.threadId, { model }, turnId),
-        );
+        yield* emitEvent(makeThreadEvent("turn.started", input.threadId, { model }, turnId));
 
         // Read baseUrl fresh from settings on every turn so runtime config changes apply immediately.
         // orDie converts the infra-level ServerSettingsError into a defect — provider adapters
@@ -305,7 +302,11 @@ export const OllamaAdapterLive = Layer.effect(
         // All errors are caught inside the async function and surfaced as a result
         // object so they don't leak into the Effect error channel.
         const streamResult = yield* Effect.promise(
-          async (): Promise<{ assistantContent: string; aborted: boolean; httpError: string | null }> => {
+          async (): Promise<{
+            assistantContent: string;
+            aborted: boolean;
+            httpError: string | null;
+          }> => {
             try {
               const response = await fetch(`${baseUrl}/v1/chat/completions`, {
                 method: "POST",
@@ -317,7 +318,11 @@ export const OllamaAdapterLive = Layer.effect(
               if (!response.ok) {
                 const errorText = await response.text().catch(() => "");
                 // Treat non-2xx as a failed turn — error text surfaced in turn.completed
-                return { assistantContent: "", aborted: false, httpError: `${response.status}: ${errorText}` };
+                return {
+                  assistantContent: "",
+                  aborted: false,
+                  httpError: `${response.status}: ${errorText}`,
+                };
               }
 
               const { assistantContent, aborted } = await readOlllamaSseStream(
@@ -328,7 +333,11 @@ export const OllamaAdapterLive = Layer.effect(
             } catch (err) {
               // AbortError from controller.abort() means the turn was interrupted
               const isAbort = err instanceof Error && err.name === "AbortError";
-              return { assistantContent: "", aborted: isAbort, httpError: isAbort ? null : String(err) };
+              return {
+                assistantContent: "",
+                aborted: isAbort,
+                httpError: isAbort ? null : String(err),
+              };
             }
           },
         );
@@ -355,7 +364,12 @@ export const OllamaAdapterLive = Layer.effect(
         // Emit events AFTER the promise resolves (cannot yield* Effect inside Promise)
         if (turnState === "interrupted") {
           yield* emitEvent(
-            makeThreadEvent("turn.aborted", input.threadId, { reason: "Interrupted by user." }, turnId),
+            makeThreadEvent(
+              "turn.aborted",
+              input.threadId,
+              { reason: "Interrupted by user." },
+              turnId,
+            ),
           );
         } else {
           // Emit accumulated content as a single delta (consistent with other adapters)
@@ -518,9 +532,10 @@ export const OllamaAdapterLive = Layer.effect(
             turns: sessionState
               ? sessionState.turns.map((turn) => ({
                   id: turn.id,
-                  items: turn.assistantContent.length > 0
-                    ? [{ role: "assistant", text: turn.assistantContent }]
-                    : [],
+                  items:
+                    turn.assistantContent.length > 0
+                      ? [{ role: "assistant", text: turn.assistantContent }]
+                      : [],
                 }))
               : [],
           };
@@ -565,9 +580,10 @@ export const OllamaAdapterLive = Layer.effect(
           threadId,
           turns: nextTurns.map((turn) => ({
             id: turn.id,
-            items: turn.assistantContent.length > 0
-              ? [{ role: "assistant", text: turn.assistantContent }]
-              : [],
+            items:
+              turn.assistantContent.length > 0
+                ? [{ role: "assistant", text: turn.assistantContent }]
+                : [],
           })),
         };
       });

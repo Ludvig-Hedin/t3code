@@ -650,7 +650,9 @@ const WsRpcLayer = WsRpcGroup.toLayer(
                 return { success: true as const };
               },
               catch: (err) => ({ success: false as const, error: String(err) }),
-            }).pipe(Effect.orElseSucceed(() => ({ success: false as const, error: "Unknown error" })));
+            }).pipe(
+              Effect.orElseSucceed(() => ({ success: false as const, error: "Unknown error" })),
+            );
             // Refresh provider snapshot so new model appears in picker immediately
             yield* providerRegistry.refresh("ollama").pipe(Effect.orElseSucceed(() => []));
             return result;

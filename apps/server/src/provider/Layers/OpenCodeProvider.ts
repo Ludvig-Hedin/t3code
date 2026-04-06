@@ -37,21 +37,66 @@ const EMPTY_CAPS: ModelCapabilities = {
 
 /** Static fallback list used when opencode server is not reachable. */
 export const OPENCODE_CURATED_MODELS: ReadonlyArray<ServerProviderModel> = [
-  { slug: "moonshot/kimi-k2-5", name: "Kimi K2.5 (Moonshot)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5 (Anthropic)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "anthropic/claude-opus-4", name: "Claude Opus 4 (Anthropic)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "anthropic/claude-haiku-4", name: "Claude Haiku 4 (Anthropic)", isCustom: false, capabilities: EMPTY_CAPS },
+  {
+    slug: "moonshot/kimi-k2-5",
+    name: "Kimi K2.5 (Moonshot)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "anthropic/claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5 (Anthropic)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "anthropic/claude-opus-4",
+    name: "Claude Opus 4 (Anthropic)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "anthropic/claude-haiku-4",
+    name: "Claude Haiku 4 (Anthropic)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
   { slug: "openai/gpt-4o", name: "GPT-4o (OpenAI)", isCustom: false, capabilities: EMPTY_CAPS },
   { slug: "openai/o3", name: "o3 (OpenAI)", isCustom: false, capabilities: EMPTY_CAPS },
   { slug: "openai/o4-mini", name: "o4-mini (OpenAI)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro (Google)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash (Google)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "mistral/mistral-large", name: "Mistral Large", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "meta-llama/llama-3.3-70b", name: "Llama 3.3 70B (Meta)", isCustom: false, capabilities: EMPTY_CAPS },
+  {
+    slug: "google/gemini-2.5-pro",
+    name: "Gemini 2.5 Pro (Google)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "google/gemini-2.5-flash",
+    name: "Gemini 2.5 Flash (Google)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "mistral/mistral-large",
+    name: "Mistral Large",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "meta-llama/llama-3.3-70b",
+    name: "Llama 3.3 70B (Meta)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
   { slug: "deepseek/deepseek-r1", name: "DeepSeek R1", isCustom: false, capabilities: EMPTY_CAPS },
   { slug: "qwen/qwen-2.5-72b", name: "Qwen 2.5 72B", isCustom: false, capabilities: EMPTY_CAPS },
   { slug: "xai/grok-3", name: "Grok 3 (xAI)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "cohere/command-r-plus", name: "Command R+ (Cohere)", isCustom: false, capabilities: EMPTY_CAPS },
+  {
+    slug: "cohere/command-r-plus",
+    name: "Command R+ (Cohere)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
 ];
 
 export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatus")(function* () {
@@ -60,7 +105,11 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     Effect.map((settings) => settings.providers.opencode),
   );
   const checkedAt = new Date().toISOString();
-  const models = providerModelsFromSettings(OPENCODE_CURATED_MODELS, PROVIDER, openCodeSettings.customModels);
+  const models = providerModelsFromSettings(
+    OPENCODE_CURATED_MODELS,
+    PROVIDER,
+    openCodeSettings.customModels,
+  );
 
   if (!openCodeSettings.enabled) {
     return buildServerProvider({

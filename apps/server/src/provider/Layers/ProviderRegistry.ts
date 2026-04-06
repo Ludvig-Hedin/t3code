@@ -63,7 +63,13 @@ export const ProviderRegistryLive = Layer.effect(
       PubSub.shutdown,
     );
     const providersRef = yield* Ref.make<ReadonlyArray<ServerProvider>>(
-      yield* loadProviders(codexProvider, claudeProvider, geminiProvider, openCodeProvider, ollamaProvider),
+      yield* loadProviders(
+        codexProvider,
+        claudeProvider,
+        geminiProvider,
+        openCodeProvider,
+        ollamaProvider,
+      ),
     );
 
     const syncProviders = Effect.fn("syncProviders")(function* (options?: {

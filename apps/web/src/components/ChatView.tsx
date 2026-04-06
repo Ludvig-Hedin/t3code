@@ -2298,7 +2298,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const toggleInteractionMode = useCallback(() => {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
-  const toggleRuntimeMode = useCallback(() => {
+  // Prefixed with _ to mark as intentionally unused for now (planned for future approval UI)
+  const _toggleRuntimeMode = useCallback(() => {
     void handleRuntimeModeChange(
       runtimeMode === "full-access" ? "approval-required" : "full-access",
     );
@@ -2508,7 +2509,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     runtimeMode,
     selectedModelSelection,
     setThreadError,
-    toastManager,
+    // toastManager removed: outer scope value (stable ref), not a valid dep
   ]);
 
   const onMessagesScroll = useCallback(() => {
@@ -4881,7 +4882,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           onOllamaPullModel={async (model) => {
                             try {
                               const result = await getWsRpcClient().ollama.pullModel({ model });
-                              return { success: result.success, ...(result.error !== undefined ? { error: result.error } : {}) };
+                              return {
+                                success: result.success,
+                                ...(result.error !== undefined ? { error: result.error } : {}),
+                              };
                             } catch (err) {
                               return { success: false, error: String(err) };
                             }

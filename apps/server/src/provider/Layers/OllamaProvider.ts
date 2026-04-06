@@ -23,6 +23,18 @@ import { ServerSettingsService } from "../../serverSettings";
 const PROVIDER = "ollama" as const;
 
 /**
+ * Tagged error for Ollama HTTP fetch failures.
+ * Using a tagged error (instead of global Error) preserves Effect type safety.
+ */
+class OllamaFetchError {
+  readonly _tag = "OllamaFetchError";
+  constructor(
+    readonly message: string,
+    readonly cause?: unknown,
+  ) {}
+}
+
+/**
  * Shape returned by GET /api/tags from the Ollama HTTP API.
  * We only extract the fields we need for model discovery.
  */
@@ -73,16 +85,18 @@ export const checkOllamaProviderStatus = Effect.fn("checkOllamaProviderStatus")(
   // slow or unresponsive Ollama server (5-second timeout).
   const tagsResult = yield* Effect.tryPromise({
     try: (signal) => fetch(`${baseUrl}/api/tags`, { signal }),
-    catch: () => new Error("fetch failed"),
+    // Tagged error preserves Effect type safety (avoids globalErrorInEffectCatch warning)
+    catch: (cause) => new OllamaFetchError("fetch failed", cause),
   }).pipe(
     Effect.timeout("5 seconds"),
     Effect.flatMap((res) =>
       res.ok
         ? Effect.tryPromise({
             try: () => res.json() as Promise<OllamaTagsResponse>,
-            catch: () => new Error("json parse failed"),
+            // Tagged error preserves Effect type safety (avoids globalErrorInEffectCatch warning)
+            catch: (cause) => new OllamaFetchError("json parse failed", cause),
           })
-        : Effect.fail(new Error(`HTTP ${res.status}`)),
+        : Effect.fail(new OllamaFetchError(`HTTP ${res.status}`)),
     ),
     Effect.result,
   );

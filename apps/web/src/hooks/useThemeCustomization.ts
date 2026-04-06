@@ -99,19 +99,7 @@ export function useThemeCustomization() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
-  const settings = useSettings((s) => ({
-    uiFontSize: s.uiFontSize,
-    codeFontSize: s.codeFontSize,
-    uiFont: s.uiFont,
-    codeFont: s.codeFont,
-    usePointerCursors: s.usePointerCursors,
-    themeAccentColor: s.themeAccentColor,
-    themeAccentColorDark: s.themeAccentColorDark,
-    themeBackgroundColor: s.themeBackgroundColor,
-    themeBackgroundColorDark: s.themeBackgroundColorDark,
-    themeForegroundColor: s.themeForegroundColor,
-    themeForegroundColorDark: s.themeForegroundColorDark,
-  }));
+  const settings = useSettings();
 
   useEffect(() => {
     // Font sizes — only override when different from hardcoded defaults (14/13)
@@ -139,18 +127,5 @@ export function useThemeCustomization() {
       "--foreground",
       isDark ? settings.themeForegroundColorDark : settings.themeForegroundColor,
     );
-  }, [
-    settings.uiFontSize,
-    settings.codeFontSize,
-    settings.uiFont,
-    settings.codeFont,
-    settings.usePointerCursors,
-    settings.themeAccentColor,
-    settings.themeAccentColorDark,
-    settings.themeBackgroundColor,
-    settings.themeBackgroundColorDark,
-    settings.themeForegroundColor,
-    settings.themeForegroundColorDark,
-    isDark,
-  ]);
+  }, [settings, isDark]);
 }
