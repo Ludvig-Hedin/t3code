@@ -109,6 +109,9 @@ import {
   MessageSquareIcon,
   PaperclipIcon,
   SearchCodeIcon,
+  ShieldCheckIcon,
+  ShieldIcon,
+  ShieldOffIcon,
   SparklesIcon,
   WrenchIcon,
   XIcon,
@@ -4967,6 +4970,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           />
                         ) : (
                           <>
+                            {/* ── Group 1: agent config (model + traits) ── */}
                             {providerTraitsPicker ? (
                               <>
                                 <Separator
@@ -4977,6 +4981,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               </>
                             ) : null}
 
+                            {/* ── Group 2: interaction mode ── */}
                             <Separator
                               orientation="vertical"
                               className="mx-0.5 hidden h-4 sm:block"
@@ -4990,8 +4995,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               onClick={toggleInteractionMode}
                               title={
                                 interactionMode === "plan"
-                                  ? "Plan mode — click to return to normal chat mode"
-                                  : "Default mode — click to enter plan mode"
+                                  ? "Plan mode — agent proposes a plan before making changes. Click to return to Chat mode."
+                                  : "Chat mode — agent acts on each message directly. Click to switch to Plan mode."
                               }
                             >
                               {interactionMode === "plan" ? (
@@ -5030,6 +5035,58 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                 </Button>
                               </>
                             ) : null}
+
+                            {/* ── Group 3: permissions (runtime mode) ──
+                                Surfaced here so users can see and change the safety level at a
+                                glance instead of hunting inside the "…" overflow menu. */}
+                            <Separator
+                              orientation="vertical"
+                              className="mx-0.5 hidden h-4 sm:block"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              type="button"
+                              className={cn(
+                                "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                                runtimeMode === "full-access"
+                                  ? "text-rose-400/80 hover:text-rose-400"
+                                  : runtimeMode === "custom"
+                                    ? "text-amber-400/80 hover:text-amber-400"
+                                    : "text-muted-foreground/70 hover:text-foreground/80",
+                              )}
+                              onClick={() =>
+                                handleRuntimeModeChange(
+                                  runtimeMode === "full-access"
+                                    ? "approval-required"
+                                    : runtimeMode === "approval-required"
+                                      ? "full-access"
+                                      : "approval-required",
+                                )
+                              }
+                              title={
+                                runtimeMode === "full-access"
+                                  ? "Auto accept edits — agent writes files and runs commands without asking. Click to switch to Ask permission."
+                                  : runtimeMode === "approval-required"
+                                    ? "Ask permission — agent requests approval before each action. Click to switch to Auto accept."
+                                    : "Custom permissions — per-action approval rules active. Use the … menu to configure."
+                              }
+                            >
+                              {runtimeMode === "full-access" ? (
+                                <ShieldOffIcon className="size-3.5" />
+                              ) : runtimeMode === "custom" ? (
+                                <ShieldCheckIcon className="size-3.5" />
+                              ) : (
+                                <ShieldIcon className="size-3.5" />
+                              )}
+                              <span className="sr-only sm:not-sr-only">
+                                {runtimeMode === "full-access"
+                                  ? "Auto accept"
+                                  : runtimeMode === "custom"
+                                    ? "Custom"
+                                    : "Ask permission"}
+                              </span>
+                            </Button>
                           </>
                         )}
                       </div>

@@ -62,8 +62,24 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             props.onToggleInteractionMode();
           }}
         >
-          <MenuRadioItem value="default">Chat</MenuRadioItem>
-          <MenuRadioItem value="plan">Plan</MenuRadioItem>
+          {/* Chat: agent acts immediately on each message */}
+          <MenuRadioItem value="default">
+            <span className="flex flex-col">
+              <span>Chat</span>
+              <span className="text-[10px] font-normal text-muted-foreground/60">
+                Agent acts on each message directly
+              </span>
+            </span>
+          </MenuRadioItem>
+          {/* Plan: agent proposes a step-by-step plan before making any changes */}
+          <MenuRadioItem value="plan">
+            <span className="flex flex-col">
+              <span>Plan</span>
+              <span className="text-[10px] font-normal text-muted-foreground/60">
+                Agent proposes a plan before making changes
+              </span>
+            </span>
+          </MenuRadioItem>
         </MenuRadioGroup>
         <MenuDivider />
         <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Permissions</div>

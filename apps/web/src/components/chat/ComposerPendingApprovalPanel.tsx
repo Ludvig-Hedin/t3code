@@ -26,6 +26,16 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
           <span className="text-xs text-muted-foreground">1/{pendingCount}</span>
         ) : null}
       </div>
+      {/* Show the specific file path or command so the user can make an informed decision
+          without having to scroll up to find the agent's message. */}
+      {approval.detail ? (
+        <p
+          className="mt-1 max-w-full truncate font-mono text-xs text-muted-foreground/70"
+          title={approval.detail}
+        >
+          {approval.detail}
+        </p>
+      ) : null}
     </div>
   );
 });
