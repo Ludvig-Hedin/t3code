@@ -162,45 +162,31 @@ export const makeOpenCodeServerHandleRef = (
       const existing = yield* Ref.get(handleRef);
       if (existing) return existing;
 
-      // Check if a start is already in flight
-      const existingDeferred = yield* Ref.get(startingRef);
-      if (existingDeferred) {
-        return yield* Deferred.await(existingDeferred);
+      // Check if a start is already in flight — if so, await it
+      const inflight = yield* Ref.get(startingRef);
+      if (inflight !== null) {
+        return yield* Deferred.await(inflight) as Effect.Effect<OpenCodeServerHandle, Error>;
       }
 
-      // We are the first — create a deferred and race to set it
+      // Create deferred and claim the "starting" slot
       const deferred = yield* Deferred.make<OpenCodeServerHandle, Error>();
-      const won = yield* Ref.compareAndSet(startingRef, null, deferred);
+      yield* Ref.set(startingRef, deferred);
 
-      if (!won) {
-        // Another fiber beat us to it — await their deferred
-        const raceDeferred = yield* Ref.get(startingRef);
-        if (raceDeferred) return yield* Deferred.await(raceDeferred);
-        // Fallback: just get the handle (should be ready now)
-        const handle = yield* Ref.get(handleRef);
-        if (handle) return handle;
-        return yield* Effect.fail(new Error("opencode server start race condition fallback"));
-      }
-
-      // We won the race — start the server
-      const startEffect = Effect.tryPromise({
+      // Start the server and resolve/reject the deferred
+      const started = yield* Effect.tryPromise({
         try: () => startOpenCodeServer(binaryPath),
         catch: (e) => (e instanceof Error ? e : new Error(String(e))),
-      });
+      }).pipe(
+        Effect.tap((handle) =>
+          Effect.all([Ref.set(handleRef, handle), Deferred.succeed(deferred, handle)]),
+        ),
+        Effect.tapError((err) =>
+          Effect.all([Deferred.fail(deferred, err), Ref.set(startingRef, null)]),
+        ),
+        Effect.ensuring(Ref.set(startingRef, null)),
+      );
 
-      const result = yield* Effect.exit(startEffect);
-      if (result._tag === "Failure") {
-        const err = result.cause._tag === "Fail" ? result.cause.error : new Error("opencode start failed");
-        yield* Deferred.fail(deferred, err);
-        yield* Ref.set(startingRef, null);
-        return yield* Effect.fail(err);
-      }
-
-      const handle = result.value;
-      yield* Ref.set(handleRef, handle);
-      yield* Deferred.succeed(deferred, handle);
-      yield* Ref.set(startingRef, null);
-      return handle;
+      return started;
     });
 
     const stop: Effect.Effect<void> = Effect.gen(function* () {

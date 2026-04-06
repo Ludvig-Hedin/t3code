@@ -12,8 +12,9 @@ import type { ChatAttachment, ModelSelection } from "@t3tools/contracts";
 
 import type { TextGenerationError } from "@t3tools/contracts";
 
-/** Providers that support git text generation (commit messages, PR content, branch names). */
-export type TextGenerationProvider = "codex" | "claudeAgent" | "gemini";
+/** Providers that support git text generation (commit messages, PR content, branch names).
+ * OpenCode and Ollama fall back to the codex text-gen implementation. */
+export type TextGenerationProvider = "codex" | "claudeAgent" | "gemini" | "opencode" | "ollama";
 
 export interface CommitMessageGenerationInput {
   cwd: string;

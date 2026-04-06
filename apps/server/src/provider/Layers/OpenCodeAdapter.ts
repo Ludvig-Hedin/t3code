@@ -12,9 +12,7 @@ import { APP_NAME } from "@t3tools/shared/branding";
 import type {
   ProviderKind,
   ProviderRuntimeEvent,
-  ProviderSendTurnInput,
   ProviderSession,
-  ProviderSessionStartInput,
   ProviderTurnStartResult,
   ProviderUserInputAnswers,
   ThreadId,
@@ -173,7 +171,7 @@ function startSseListener(
           reconnect(attempt);
         }
       })
-      .catch((err: unknown) => {
+      .catch((_err: unknown) => {
         if (abort.signal.aborted) return;
         reconnect(attempt);
       });
@@ -267,7 +265,7 @@ function mapSseEvent(
           "request.opened",
           threadId,
           {
-            requestType: "tool_approval",
+            requestType: "command_execution_approval",
             detail: typeof data.description === "string" ? data.description : undefined,
             args: data,
           },
@@ -345,8 +343,8 @@ export const OpenCodeAdapterLive = Layer.effect(
         // Priority: 1) explicit caller selection, 2) GET /config default, 3) hardcoded fallback
         const configResult = yield* Effect.tryPromise({
           try: () => handle.client.get<{ model?: string }>("/config"),
-          catch: () => null,
-        }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+          catch: () => null as { model?: string } | null,
+        }).pipe(Effect.orElseSucceed(() => null));
         const serverDefault = configResult?.model ?? null;
         const modelSlug = input.modelSelection?.model ?? serverDefault ?? "moonshot/kimi-k2-5";
 
@@ -503,7 +501,7 @@ export const OpenCodeAdapterLive = Layer.effect(
         yield* Effect.tryPromise({
           try: () => handle.client.post(`/sessions/${sessionState.opencodeSessionId}/abort`),
           catch: () => null,
-        }).pipe(Effect.catchAll(() => Effect.void));
+        }).pipe(Effect.orElseSucceed(() => null));
 
         const targetTurnId = _turnId ?? sessionState.session.activeTurnId;
         yield* updateSessionState(threadId, (current) => ({
@@ -539,7 +537,7 @@ export const OpenCodeAdapterLive = Layer.effect(
         }
 
         const handle = yield* serverManager.getOrStart.pipe(Effect.orDie);
-        const approved = decision === "approve";
+        const approved = decision === "accept" || decision === "acceptForSession";
         yield* Effect.tryPromise({
           try: () =>
             handle.client.post(
@@ -580,7 +578,7 @@ export const OpenCodeAdapterLive = Layer.effect(
         yield* Effect.tryPromise({
           try: () => handle.client.delete(`/sessions/${sessionState.opencodeSessionId}`),
           catch: () => null,
-        }).pipe(Effect.catchAll(() => Effect.void));
+        }).pipe(Effect.orElseSucceed(() => null));
 
         yield* emitEvent(
           makeThreadEvent("session.exited", threadId, {
@@ -624,7 +622,7 @@ export const OpenCodeAdapterLive = Layer.effect(
           const revertResult = yield* Effect.tryPromise({
             try: () => handle.client.post(`/sessions/${sessionState.opencodeSessionId}/revert`),
             catch: () => "revert-failed" as const,
-          }).pipe(Effect.catchAll(() => Effect.succeed("revert-failed" as const)));
+          }).pipe(Effect.orElseSucceed(() => "revert-failed" as const));
           if (revertResult === "revert-failed") break;
         }
 
