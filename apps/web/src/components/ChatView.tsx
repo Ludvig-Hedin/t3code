@@ -13,6 +13,7 @@ import {
   type ProviderApprovalDecision,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type ServerProvider,
   type ThreadId,
   type TurnId,
@@ -129,6 +130,7 @@ import {
 import { SidebarTrigger } from "./ui/sidebar";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
+import { getWsRpcClient } from "~/wsRpcClient";
 import {
   getProviderModelCapabilities,
   getProviderModels,
@@ -220,6 +222,124 @@ import {
 
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
+// Max size for a single text/code file attachment before it's rejected.
+// 500KB ≈ 125k chars which already approaches the model's input limit on its own.
+const TEXT_FILE_SIZE_LIMIT_BYTES = 500 * 1024;
+const TEXT_FILE_SIZE_LIMIT_LABEL = "500KB";
+// Rough chars-per-token estimate used for context budget warnings (industry standard ~4 chars/token).
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+const APPROX_MAX_TOKENS = Math.round(PROVIDER_SEND_TURN_MAX_INPUT_CHARS / CHARS_PER_TOKEN_ESTIMATE);
+
+// Extensions treated as readable text/code (browsers often omit MIME types for these).
+const TEXT_EXTENSIONS = new Set([
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "py",
+  "rb",
+  "go",
+  "rs",
+  "java",
+  "kt",
+  "swift",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "cs",
+  "php",
+  "sh",
+  "bash",
+  "zsh",
+  "fish",
+  "md",
+  "mdx",
+  "txt",
+  "log",
+  "json",
+  "jsonc",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "env",
+  "xml",
+  "html",
+  "htm",
+  "css",
+  "scss",
+  "sass",
+  "less",
+  "sql",
+  "graphql",
+  "gql",
+  "tf",
+  "hcl",
+  "bicep",
+]);
+
+// Returns true if a file should be treated as readable text (code, markdown, etc.)
+function isTextFile(file: File): boolean {
+  if (file.type.startsWith("text/")) return true;
+  const ext = file.name.slice(file.name.lastIndexOf(".") + 1).toLowerCase();
+  return TEXT_EXTENSIONS.has(ext);
+}
+
+// Markdown language tag → fenced code block language specifier.
+const LANG_TAG_MAP: Record<string, string> = {
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  mjs: "javascript",
+  cjs: "javascript",
+  py: "python",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  kt: "kotlin",
+  swift: "swift",
+  c: "c",
+  cpp: "cpp",
+  h: "c",
+  hpp: "cpp",
+  cs: "csharp",
+  php: "php",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  fish: "fish",
+  md: "markdown",
+  mdx: "mdx",
+  json: "json",
+  jsonc: "json",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  ini: "ini",
+  xml: "xml",
+  html: "html",
+  htm: "html",
+  css: "css",
+  scss: "scss",
+  sass: "sass",
+  less: "less",
+  sql: "sql",
+  graphql: "graphql",
+  gql: "graphql",
+  tf: "hcl",
+  hcl: "hcl",
+  bicep: "bicep",
+};
+
+function langTagFromFilename(name: string): string {
+  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  return LANG_TAG_MAP[ext] ?? ext;
+}
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
@@ -2953,27 +3073,79 @@ export default function ChatView({ threadId }: ChatViewProps) {
     toggleTerminalVisibility,
   ]);
 
+  // Reads text/code files and appends them as fenced code blocks to the composer prompt.
+  // Enforces a per-file size limit and a combined context (character) budget.
+  const addComposerTextFiles = async (files: File[]) => {
+    if (!activeThreadId || files.length === 0) return;
+
+    const currentPrompt = promptRef.current;
+    let usedChars = currentPrompt.length;
+    const blocks: string[] = [];
+    let error: string | null = null;
+
+    for (const file of files) {
+      if (file.size > TEXT_FILE_SIZE_LIMIT_BYTES) {
+        error = `'${file.name}' exceeds the ${TEXT_FILE_SIZE_LIMIT_LABEL} text file limit (~${Math.round(TEXT_FILE_SIZE_LIMIT_BYTES / CHARS_PER_TOKEN_ESTIMATE / 1000)}k tokens).`;
+        continue;
+      }
+
+      let text: string;
+      try {
+        text = await file.text();
+      } catch {
+        error = `Could not read '${file.name}'.`;
+        continue;
+      }
+
+      // Estimate how much context this file will consume.
+      const fileChars = text.length;
+      const budgetRemaining = PROVIDER_SEND_TURN_MAX_INPUT_CHARS - usedChars;
+      if (fileChars > budgetRemaining) {
+        const usedTokens = Math.round(usedChars / CHARS_PER_TOKEN_ESTIMATE);
+        error = `'${file.name}' would exceed the context limit (~${APPROX_MAX_TOKENS.toLocaleString()} tokens). Current usage: ~${usedTokens.toLocaleString()} tokens.`;
+        continue;
+      }
+
+      const lang = langTagFromFilename(file.name);
+      // Wrap in a fenced code block with the filename as a header for clarity.
+      blocks.push(`**${file.name}**\n\`\`\`${lang}\n${text}\n\`\`\``);
+      usedChars += fileChars;
+    }
+
+    if (blocks.length > 0) {
+      const separator = currentPrompt.length > 0 ? "\n\n" : "";
+      setPrompt(currentPrompt + separator + blocks.join("\n\n"));
+    }
+    if (error) setThreadError(activeThreadId, error);
+  };
+
   const addComposerImages = (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
 
     if (pendingUserInputs.length > 0) {
       toastManager.add({
         type: "error",
-        title: "Attach images after answering plan questions.",
+        title: "Attach files after answering plan questions.",
       });
       return;
     }
 
+    // Route text/code files through prompt injection; images go through the attachment system.
+    const imageFiles = files.filter((f) => f.type.startsWith("image/") && !isTextFile(f));
+    const textFiles = files.filter((f) => isTextFile(f));
+
+    if (textFiles.length > 0) {
+      void addComposerTextFiles(textFiles);
+    }
+
+    if (imageFiles.length === 0) return;
+
     const nextImages: ComposerImageAttachment[] = [];
     let nextImageCount = composerImagesRef.current.length;
     let error: string | null = null;
-    for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        error = `Unsupported file type for '${file.name}'. Please attach image files only.`;
-        continue;
-      }
+    for (const file of imageFiles) {
       if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-        error = `'${file.name}' exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`;
+        error = `'${file.name}' exceeds the ${IMAGE_SIZE_LIMIT_LABEL} image size limit.`;
         continue;
       }
       if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
@@ -4658,7 +4830,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept="image/*"
+                          accept="image/*,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cpp,.h,.hpp,.cs,.php,.sh,.bash,.zsh,.fish,.md,.mdx,.txt,.log,.json,.jsonc,.yaml,.yml,.toml,.ini,.env,.xml,.html,.htm,.css,.scss,.sass,.less,.sql,.graphql,.gql,.tf,.hcl,.bicep"
                           multiple
                           className="hidden"
                           onChange={(e) => {
@@ -4685,7 +4857,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           >
                             <PaperclipIcon className="size-4" />
                           </TooltipTrigger>
-                          <TooltipPopup side="top">Attach image</TooltipPopup>
+                          <TooltipPopup side="top">Attach file or image</TooltipPopup>
                         </Tooltip>
 
                         {/* Provider/model picker */}
@@ -4704,6 +4876,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               }
                             : {})}
                           onProviderModelChange={onProviderModelSelect}
+                          // Wire Ollama pull/quit through the shared WS RPC client.
+                          // Cast result to mutable type to satisfy the prop signature (RPC returns readonly).
+                          onOllamaPullModel={async (model) => {
+                            try {
+                              const result = await getWsRpcClient().ollama.pullModel({ model });
+                              return { success: result.success, ...(result.error !== undefined ? { error: result.error } : {}) };
+                            } catch (err) {
+                              return { success: false, error: String(err) };
+                            }
+                          }}
+                          onOllamaQuitServer={() => {
+                            void getWsRpcClient().ollama.quitServer().catch(console.error);
+                          }}
                         />
 
                         {isComposerFooterCompact ? (

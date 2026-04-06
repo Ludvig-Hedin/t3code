@@ -31,6 +31,7 @@ import {
   resolveDesktopUpdateButtonAction,
 } from "../../components/desktopUpdate.logic";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { getWsRpcClient } from "../../wsRpcClient";
 import { resolveAndPersistPreferredEditor, usePreferredEditor } from "../../editorPreferences";
 import {
   THEME_PRESETS,
@@ -1475,6 +1476,19 @@ export function GitSettingsPanel() {
               modelOptionsByProvider={modelOptionsByProvider}
               onProviderModelChange={handleModelChange}
               compact
+              // Wire Ollama pull/quit through the shared WS RPC client.
+              // Cast result to mutable type to satisfy the prop signature (RPC returns readonly).
+              onOllamaPullModel={async (model) => {
+                try {
+                  const result = await getWsRpcClient().ollama.pullModel({ model });
+                  return { success: result.success, ...(result.error !== undefined ? { error: result.error } : {}) };
+                } catch (err) {
+                  return { success: false, error: String(err) };
+                }
+              }}
+              onOllamaQuitServer={() => {
+                void getWsRpcClient().ollama.quitServer().catch(console.error);
+              }}
             />
           }
         />
