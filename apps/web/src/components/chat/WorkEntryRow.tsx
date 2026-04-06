@@ -57,51 +57,51 @@ const CATEGORY_CONFIG: Record<WorkEntryCategory, CategoryConfig> = {
     // Reasoning entries are handled by a separate ReasoningBlock component;
     // this fallback is here for completeness but should rarely be rendered.
     icon: WrenchIcon,
-    iconClass: "text-foreground/55",
-    textClass: "text-muted-foreground/60",
+    iconClass: "text-foreground/65",
+    textClass: "text-muted-foreground/70",
   },
   command: {
     icon: TerminalIcon,
-    iconClass: "text-foreground/70",
-    textClass: "text-muted-foreground/80",
+    iconClass: "text-foreground/80",
+    textClass: "text-muted-foreground/90",
   },
   "file-read": {
     icon: EyeIcon,
-    iconClass: "text-foreground/50",
-    textClass: "text-muted-foreground/55",
+    iconClass: "text-foreground/60",
+    textClass: "text-muted-foreground/65",
   },
   "file-write": {
     icon: SquarePenIcon,
-    iconClass: "text-foreground/65",
-    textClass: "text-muted-foreground/75",
+    iconClass: "text-foreground/75",
+    textClass: "text-muted-foreground/85",
   },
   "web-search": {
     icon: GlobeIcon,
-    iconClass: "text-foreground/60",
-    textClass: "text-muted-foreground/70",
+    iconClass: "text-foreground/70",
+    textClass: "text-muted-foreground/80",
   },
   "sub-agent": {
     icon: GitBranchIcon,
     // Blue accent to visually distinguish sub-agent activity
-    iconClass: "text-blue-400/70 dark:text-blue-400/70",
-    textClass: "text-muted-foreground/80",
+    iconClass: "text-blue-400/80 dark:text-blue-400/80",
+    textClass: "text-muted-foreground/90",
   },
   skill: {
     icon: SparklesIcon,
     // Amber/gold accent — distinct from sub-agents (blue) and regular tools (muted)
-    iconClass: "text-amber-400/75 dark:text-amber-400/75",
-    textClass: "text-muted-foreground/80",
+    iconClass: "text-amber-400/85 dark:text-amber-400/85",
+    textClass: "text-muted-foreground/90",
   },
   "tool-call": {
     icon: WrenchIcon,
-    iconClass: "text-foreground/55",
-    textClass: "text-muted-foreground/60",
+    iconClass: "text-foreground/65",
+    textClass: "text-muted-foreground/70",
   },
 };
 
 // Error tone overrides applied on top of the per-category config.
-const ERROR_ICON_CLASS = "text-rose-400/70";
-const ERROR_TEXT_CLASS = "text-rose-300/60";
+const ERROR_ICON_CLASS = "text-rose-400/80";
+const ERROR_TEXT_CLASS = "text-rose-300/70";
 
 // ---------------------------------------------------------------------------
 // Label derivation helpers
@@ -209,9 +209,9 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
       className={cn(
         "rounded-lg px-1 py-1",
         // Sub-agent entries get a subtle blue left border for visual hierarchy
-        category === "sub-agent" && "border-l-2 border-blue-400/30 pl-2",
+        category === "sub-agent" && "border-l-2 border-blue-400/40 pl-2",
         // Skill entries get a subtle amber left border to distinguish from sub-agents
-        category === "skill" && "border-l-2 border-amber-400/35 pl-2",
+        category === "skill" && "border-l-2 border-amber-400/45 pl-2",
       )}
     >
       <div className="flex items-center gap-2 transition-[opacity,translate] duration-200">
@@ -230,7 +230,7 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
               {primary}
             </span>
             {/* Secondary line (rationale / detail) in a softer muted tone */}
-            {secondary && <span className="text-muted-foreground/45"> — {secondary}</span>}
+            {secondary && <span className="text-muted-foreground/55"> — {secondary}</span>}
           </p>
         </div>
       </div>
@@ -241,14 +241,14 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
           {extraChangedFiles.slice(0, 3).map((filePath) => (
             <span
               key={`${entry.id}:${filePath}`}
-              className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
+              className="rounded-md border border-border/65 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/85"
               title={filePath}
             >
               {filePath}
             </span>
           ))}
           {extraChangedFiles.length > 3 && (
-            <span className="px-1 text-[10px] text-muted-foreground/55">
+            <span className="px-1 text-[10px] text-muted-foreground/65">
               +{extraChangedFiles.length - 3}
             </span>
           )}
