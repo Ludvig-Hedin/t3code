@@ -50,9 +50,6 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
 
 export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
 const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter((option) => !option.available);
-const COMING_SOON_PROVIDER_OPTIONS = [
-  { id: "opencode", label: "OpenCode", icon: OpenCodeIcon },
-] as const;
 
 // Install & auth metadata for each provider — shown in the setup dialog
 type ProviderInstallEntry = {
@@ -122,6 +119,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   onProviderModelChange: (provider: ProviderKind, model: string) => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
   const [isCustomModelDialogOpen, setIsCustomModelDialogOpen] = useState(false);
   const [customModelValue, setCustomModelValue] = useState("");
   const [customModelError, setCustomModelError] = useState<string | null>(null);
@@ -144,6 +142,17 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       : null;
   const showRuntimeModel = runtimeModel !== null && runtimeModel !== requestedModel;
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
+
+  // OpenCode model search — filtered client-side so users can find models in a long list
+  const openCodeModels = getProviderModelsForProvider(props.modelOptionsByProvider, "opencode");
+  const filteredOpenCodeModels =
+    modelSearchQuery.trim().length === 0
+      ? openCodeModels
+      : openCodeModels.filter(
+          (m) =>
+            m.name.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
+            m.slug.toLowerCase().includes(modelSearchQuery.toLowerCase()),
+        );
 
   const handleModelChange = (provider: ProviderKind, value: string) => {
     if (props.disabled) return;
@@ -195,6 +204,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             setIsMenuOpen(false);
             return;
           }
+          if (!open) setModelSearchQuery("");
           setIsMenuOpen(open);
         }}
       >
@@ -359,6 +369,69 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     </MenuItem>
                   );
                 }
+                // OpenCode gets a dedicated search bar so users can filter its large model list
+                if (option.value === "opencode") {
+                  return (
+                    <MenuSub key={option.value}>
+                      <MenuSubTrigger>
+                        <OptionIcon
+                          aria-hidden="true"
+                          className={cn(
+                            "size-4 shrink-0",
+                            providerIconClassName(option.value, "text-muted-foreground/85"),
+                          )}
+                        />
+                        {option.label}
+                        {props.provider === "opencode" &&
+                          runtimeModel !== null &&
+                          runtimeModel !== requestedModel && (
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {runtimeModel}
+                            </span>
+                          )}
+                      </MenuSubTrigger>
+                      <MenuSubPopup
+                        className="[--available-height:min(24rem,70vh)]"
+                        sideOffset={4}
+                      >
+                        <div className="px-2 py-1.5">
+                          <Input
+                            autoFocus
+                            placeholder="Search models…"
+                            value={modelSearchQuery}
+                            onChange={(e) => setModelSearchQuery(e.target.value)}
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                        <MenuDivider />
+                        <MenuGroup>
+                          <MenuRadioGroup
+                            value={props.provider === "opencode" ? props.model : ""}
+                            onValueChange={(value) => {
+                              setModelSearchQuery("");
+                              handleModelChange("opencode", value);
+                            }}
+                          >
+                            {filteredOpenCodeModels.length === 0 && (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                No models found
+                              </div>
+                            )}
+                            {filteredOpenCodeModels.map((modelOption) => (
+                              <MenuRadioItem
+                                key={`opencode:${modelOption.slug}`}
+                                value={modelOption.slug}
+                              >
+                                {modelOption.name}
+                              </MenuRadioItem>
+                            ))}
+                          </MenuRadioGroup>
+                        </MenuGroup>
+                      </MenuSubPopup>
+                    </MenuSub>
+                  );
+                }
+
                 return (
                   <MenuSub key={option.value}>
                     <MenuSubTrigger>
@@ -409,42 +482,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                       aria-hidden="true"
                       className="size-4 shrink-0 text-muted-foreground/85 opacity-80"
                     />
-                    <span>{option.label}</span>
-                    <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
-                      Coming soon
-                    </span>
-                  </MenuItem>
-                );
-              })}
-              {COMING_SOON_PROVIDER_OPTIONS.length > 0 && <MenuDivider />}
-              {COMING_SOON_PROVIDER_OPTIONS.map((option) => {
-                const OptionIcon = option.icon;
-                const installData = PROVIDER_INSTALL_DATA[option.id];
-                // Show Install action if we have a command, otherwise fall back to "Coming soon"
-                if (installData?.installCommands.length) {
-                  return (
-                    <MenuItem
-                      key={option.id}
-                      onSelect={() => {
-                        setSetupDialog({
-                          providerId: option.id,
-                          providerLabel: option.label,
-                          action: "install",
-                        });
-                        setIsMenuOpen(false);
-                      }}
-                    >
-                      <OptionIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />
-                      <span>{option.label}</span>
-                      <span className="ms-auto text-[11px] text-blue-500 uppercase tracking-[0.08em] font-medium">
-                        Install
-                      </span>
-                    </MenuItem>
-                  );
-                }
-                return (
-                  <MenuItem key={option.id} disabled>
-                    <OptionIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />
                     <span>{option.label}</span>
                     <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
                       Coming soon
