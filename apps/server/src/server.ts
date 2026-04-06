@@ -4,6 +4,7 @@ import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 import { ServerConfig } from "./config";
 import { attachmentsRouteLayer, projectFaviconRouteLayer, staticAndDevRouteLayer } from "./http";
 import { mobileCompanionRouteLayer } from "./mobile";
+import { gitStatusRouteLayer, importScanRouteLayer, importExecuteRouteLayer } from "./setupRoutes";
 import { fixPath } from "./os-jank";
 import { websocketRpcRouteLayer } from "./ws";
 import { OpenLive } from "./open";
@@ -16,6 +17,7 @@ import { ProviderSessionRuntimeRepositoryLive } from "./persistence/Layers/Provi
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { GeminiAdapterLive } from "./provider/Layers/GeminiAdapter";
+import { ManifestAdapterLive } from "./provider/Layers/ManifestAdapter";
 import { OllamaAdapterLive } from "./provider/Layers/OllamaAdapter";
 import { OpenCodeAdapterLive } from "./provider/Layers/OpenCodeAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
@@ -158,12 +160,15 @@ const ProviderLayerLive = Layer.unwrap(
     const geminiAdapterLayer = GeminiAdapterLive;
     const ollamaAdapterLayer = OllamaAdapterLive;
     const openCodeAdapterLayer = OpenCodeAdapterLive;
+    // ManifestAdapterLive reads settings from ServerSettingsService (injected by the outer layer)
+    const manifestAdapterLayer = ManifestAdapterLive;
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
       Layer.provide(geminiAdapterLayer),
       Layer.provide(ollamaAdapterLayer),
       Layer.provide(openCodeAdapterLayer),
+      Layer.provide(manifestAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(
@@ -231,7 +236,11 @@ export const makeRoutesLayer = Layer.mergeAll(
   mobileCompanionRouteLayer,
   previewProxyRouteLayer,
   projectFaviconRouteLayer,
-  staticAndDevRouteLayer,
+  // Onboarding setup routes (git status check + conversation import)
+  gitStatusRouteLayer,
+  importScanRouteLayer,
+  importExecuteRouteLayer,
+  staticAndDevRouteLayer, // must remain last — wildcard catch-all
   websocketRpcRouteLayer,
 );
 
