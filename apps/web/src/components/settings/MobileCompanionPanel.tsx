@@ -357,7 +357,12 @@ export function BirdCodeMobileCompanionPanel() {
     setTunnelStatus({ status: "connecting" });
     try {
       const result = await window.desktopBridge?.enableRemoteAccess?.();
-      if (result && !result.ok) {
+      if (result == null) {
+        // Bridge unavailable (e.g. running in browser) — reset rather than spin forever.
+        setTunnelStatus({ status: "idle" });
+        return;
+      }
+      if (!result.ok) {
         setTunnelStatus({ status: "error", message: result.error ?? "Unknown error" });
       }
     } catch (err: unknown) {
@@ -437,15 +442,20 @@ export function BirdCodeMobileCompanionPanel() {
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   Works by creating a private encrypted tunnel between your phone and this Mac
                   through your own free{" "}
-                  <button
-                    type="button"
+                  <a
+                    href="https://cloudflare.com"
+                    target="_blank"
+                    rel="noreferrer"
                     className="underline underline-offset-2 transition-colors hover:text-foreground"
-                    onClick={() =>
-                      void window.desktopBridge?.openExternal?.("https://cloudflare.com")
-                    }
+                    onClick={(e) => {
+                      if (window.desktopBridge?.openExternal) {
+                        e.preventDefault();
+                        void window.desktopBridge.openExternal("https://cloudflare.com");
+                      }
+                    }}
                   >
                     Cloudflare
-                  </button>{" "}
+                  </a>{" "}
                   account. Bird Code never sees your data — the tunnel runs entirely under your
                   account and only your devices can connect.
                 </p>
@@ -469,8 +479,12 @@ export function BirdCodeMobileCompanionPanel() {
             {(tunnelStatus.status === "downloading" ||
               tunnelStatus.status === "authenticating" ||
               tunnelStatus.status === "connecting") && (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center gap-3 text-sm text-muted-foreground"
+              >
+                <div className="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" aria-hidden="true" />
                 {tunnelStatus.status === "downloading"
                   ? `Downloading secure tunnel software… ${tunnelStatus.progress}%`
                   : tunnelStatus.status === "authenticating"
