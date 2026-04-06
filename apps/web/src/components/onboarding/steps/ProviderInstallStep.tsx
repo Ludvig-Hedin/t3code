@@ -34,8 +34,8 @@ const PROVIDERS: ProviderInstallInfo[] = [
     label: "Codex",
     Icon: OpenAI,
     commands: {
-      macos:   ["npm install -g @openai/codex"],
-      linux:   ["npm install -g @openai/codex"],
+      macos: ["npm install -g @openai/codex"],
+      linux: ["npm install -g @openai/codex"],
       windows: ["npm install -g @openai/codex"],
     },
   },
@@ -44,8 +44,8 @@ const PROVIDERS: ProviderInstallInfo[] = [
     label: "Claude",
     Icon: ClaudeAI,
     commands: {
-      macos:   ["npm install -g @anthropic-ai/claude-code"],
-      linux:   ["npm install -g @anthropic-ai/claude-code"],
+      macos: ["npm install -g @anthropic-ai/claude-code"],
+      linux: ["npm install -g @anthropic-ai/claude-code"],
       windows: ["npm install -g @anthropic-ai/claude-code"],
     },
   },
@@ -54,8 +54,8 @@ const PROVIDERS: ProviderInstallInfo[] = [
     label: "Gemini",
     Icon: Gemini,
     commands: {
-      macos:   ["npm install -g @google/gemini-cli"],
-      linux:   ["npm install -g @google/gemini-cli"],
+      macos: ["npm install -g @google/gemini-cli"],
+      linux: ["npm install -g @google/gemini-cli"],
       windows: ["npm install -g @google/gemini-cli"],
     },
   },
@@ -64,8 +64,8 @@ const PROVIDERS: ProviderInstallInfo[] = [
     label: "OpenCode",
     Icon: OpenCodeIcon,
     commands: {
-      macos:   ["curl -fsSL https://opencode.ai/install | sh"],
-      linux:   ["curl -fsSL https://opencode.ai/install | sh"],
+      macos: ["curl -fsSL https://opencode.ai/install | sh"],
+      linux: ["curl -fsSL https://opencode.ai/install | sh"],
       windows: ["npm install -g opencode"],
     },
   },
@@ -74,8 +74,8 @@ const PROVIDERS: ProviderInstallInfo[] = [
     label: "Ollama",
     Icon: OllamaIcon,
     commands: {
-      macos:   ["brew install ollama"],
-      linux:   ["curl -fsSL https://ollama.ai/install.sh | sh"],
+      macos: ["brew install ollama"],
+      linux: ["curl -fsSL https://ollama.ai/install.sh | sh"],
       windows: ["winget install Ollama.Ollama"],
     },
   },
@@ -99,7 +99,11 @@ function CopyCommandButton({ command }: { command: string }) {
       className="ml-1.5 shrink-0 rounded p-0.5 text-muted-foreground/60 hover:text-foreground transition-colors"
       aria-label="Copy command"
     >
-      {copied ? <CheckIcon className="size-3.5 text-green-500" /> : <CopyIcon className="size-3.5" />}
+      {copied ? (
+        <CheckIcon className="size-3.5 text-green-500" />
+      ) : (
+        <CopyIcon className="size-3.5" />
+      )}
     </button>
   );
 }
@@ -147,10 +151,7 @@ export function ProviderInstallStep() {
           return (
             <div
               key={provider.id}
-              className={cn(
-                "rounded-xl border bg-card px-4 py-3",
-                isInstalled && "opacity-60",
-              )}
+              className={cn("rounded-xl border bg-card px-4 py-3", isInstalled && "opacity-60")}
             >
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">

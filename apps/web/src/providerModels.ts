@@ -31,6 +31,7 @@ export function getProviderModelsByProvider(
     gemini: getProviderModels(providers, "gemini"),
     opencode: getProviderModels(providers, "opencode"),
     ollama: getProviderModels(providers, "ollama"),
+    manifest: getProviderModels(providers, "manifest"),
   };
 }
 

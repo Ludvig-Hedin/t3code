@@ -77,6 +77,7 @@ describe("MessagesTimeline", () => {
         completionDividerBeforeEntryId={null}
         completionSummary={null}
         turnDiffSummaryByAssistantMessageId={new Map()}
+        modelByTurnId={new Map()}
         nowIso="2026-03-17T19:12:30.000Z"
         expandedWorkGroups={{}}
         onToggleWorkGroup={() => {}}
@@ -122,6 +123,7 @@ describe("MessagesTimeline", () => {
         completionDividerBeforeEntryId={null}
         completionSummary={null}
         turnDiffSummaryByAssistantMessageId={new Map()}
+        modelByTurnId={new Map()}
         nowIso="2026-03-17T19:12:30.000Z"
         expandedWorkGroups={{}}
         onToggleWorkGroup={() => {}}

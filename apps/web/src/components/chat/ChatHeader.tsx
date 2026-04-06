@@ -7,8 +7,9 @@ import {
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
 import { CodeReviewControl } from "../CodeReviewControl";
-import { DiffIcon, MonitorPlayIcon, TerminalSquareIcon } from "lucide-react";
+import { DiffIcon, ExternalLinkIcon, MonitorPlayIcon, TerminalSquareIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
 import { Toggle } from "../ui/toggle";
@@ -42,6 +43,8 @@ interface ChatHeaderProps {
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
   onToggleTerminal: () => void;
   onToggleDiff: () => void;
+  /** Opens this thread in a detached popout window (or focuses the existing one). */
+  onPopout: () => void;
 }
 
 export const ChatHeader = memo(function ChatHeader({
@@ -71,6 +74,7 @@ export const ChatHeader = memo(function ChatHeader({
   onDeleteProjectScript,
   onToggleTerminal,
   onToggleDiff,
+  onPopout,
 }: ChatHeaderProps) {
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
@@ -126,81 +130,103 @@ export const ChatHeader = memo(function ChatHeader({
             />
           )}
         </div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                className="relative shrink-0"
-                pressed={previewOpen}
-                onPressedChange={onTogglePreview}
-                aria-label="Toggle preview panel"
-                variant="outline"
-                size="xs"
-                disabled={!previewAvailable}
-              >
-                <MonitorPlayIcon className="size-3" />
-                {hasRunningPreviewApp && (
-                  <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-green-500" />
-                )}
-              </Toggle>
-            }
-          />
-          <TooltipPopup side="bottom">
-            {!previewAvailable
-              ? "Preview is unavailable until this thread has an active project."
-              : previewOpen
-                ? "Close preview panel"
-                : "Open preview panel"}
-          </TooltipPopup>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                className="shrink-0"
-                pressed={terminalOpen}
-                onPressedChange={onToggleTerminal}
-                aria-label="Toggle terminal drawer"
-                variant="outline"
-                size="xs"
-                disabled={!terminalAvailable}
-              >
-                <TerminalSquareIcon className="size-3" />
-              </Toggle>
-            }
-          />
-          <TooltipPopup side="bottom">
-            {!terminalAvailable
-              ? "Terminal is unavailable until this thread has an active project."
-              : terminalToggleShortcutLabel
-                ? `Toggle terminal drawer (${terminalToggleShortcutLabel})`
-                : "Toggle terminal drawer"}
-          </TooltipPopup>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                className="shrink-0"
-                pressed={diffOpen}
-                onPressedChange={onToggleDiff}
-                aria-label="Toggle diff panel"
-                variant="outline"
-                size="xs"
-                disabled={!isGitRepo}
-              >
-                <DiffIcon className="size-3" />
-              </Toggle>
-            }
-          />
-          <TooltipPopup side="bottom">
-            {!isGitRepo
-              ? "Diff panel is unavailable because this project is not a git repository."
-              : diffToggleShortcutLabel
-                ? `Toggle diff panel (${diffToggleShortcutLabel})`
-                : "Toggle diff panel"}
-          </TooltipPopup>
-        </Tooltip>
+        {/* Desktop-only panel toggles — preview, terminal, diff, and popout are not
+            available or useful inside the mobile WKWebView, so hide them below md. */}
+        <div className="hidden md:contents">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="relative shrink-0"
+                  pressed={previewOpen}
+                  onPressedChange={onTogglePreview}
+                  aria-label="Toggle preview panel"
+                  variant="outline"
+                  size="xs"
+                  disabled={!previewAvailable}
+                >
+                  <MonitorPlayIcon className="size-3" />
+                  {hasRunningPreviewApp && (
+                    <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-green-500" />
+                  )}
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {!previewAvailable
+                ? "Preview is unavailable until this thread has an active project."
+                : previewOpen
+                  ? "Close preview panel"
+                  : "Open preview panel"}
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0"
+                  pressed={terminalOpen}
+                  onPressedChange={onToggleTerminal}
+                  aria-label="Toggle terminal drawer"
+                  variant="outline"
+                  size="xs"
+                  disabled={!terminalAvailable}
+                >
+                  <TerminalSquareIcon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {!terminalAvailable
+                ? "Terminal is unavailable until this thread has an active project."
+                : terminalToggleShortcutLabel
+                  ? `Toggle terminal drawer (${terminalToggleShortcutLabel})`
+                  : "Toggle terminal drawer"}
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0"
+                  pressed={diffOpen}
+                  onPressedChange={onToggleDiff}
+                  aria-label="Toggle diff panel"
+                  variant="outline"
+                  size="xs"
+                  disabled={!isGitRepo}
+                >
+                  <DiffIcon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {!isGitRepo
+                ? "Diff panel is unavailable because this project is not a git repository."
+                : diffToggleShortcutLabel
+                  ? `Toggle diff panel (${diffToggleShortcutLabel})`
+                  : "Toggle diff panel"}
+            </TooltipPopup>
+          </Tooltip>
+          {/* Popout button — opens this thread in a separate browser window */}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  aria-label="Pop out thread to new window"
+                  className="shrink-0"
+                  onClick={onPopout}
+                />
+              }
+            >
+              <ExternalLinkIcon className="size-3" />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">Pop out to new window</TooltipPopup>
+          </Tooltip>
+        </div>
       </div>
     </div>
   );

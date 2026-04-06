@@ -66,6 +66,14 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     placeholder: "your-ollama-model-slug",
     example: "llama3.2",
   },
+  // manifest always uses "auto" — the router decides the actual model. No custom slugs needed.
+  manifest: {
+    provider: "manifest",
+    title: "Auto",
+    description: "Manifest auto-router — routes each request to the cheapest capable model.",
+    placeholder: "auto",
+    example: "auto",
+  },
 };
 
 export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
@@ -162,12 +170,13 @@ export function resolveAppModelSelection(
   selectedModel: string | null | undefined,
 ): string {
   const resolvedProvider = resolveSelectableProvider(providers, provider);
-  // Gemini, OpenCode, and Ollama use dynamic model slugs that bypass the selectable-options
-  // resolution path — normalise directly to the canonical slug instead.
+  // Gemini, OpenCode, Ollama, and Manifest use dynamic model slugs that bypass the
+  // selectable-options resolution path — normalise directly to the canonical slug instead.
   if (
     resolvedProvider === "gemini" ||
     resolvedProvider === "opencode" ||
-    resolvedProvider === "ollama"
+    resolvedProvider === "ollama" ||
+    resolvedProvider === "manifest"
   ) {
     return (
       normalizeModelSlug(selectedModel, resolvedProvider) ??
@@ -217,6 +226,13 @@ export function getCustomModelOptionsByProvider(
       providers,
       "ollama",
       selectedProvider === "ollama" ? selectedModel : undefined,
+    ),
+    // manifest always has a single "auto" model — no custom slugs
+    manifest: getAppModelOptions(
+      settings,
+      providers,
+      "manifest",
+      selectedProvider === "manifest" ? selectedModel : undefined,
     ),
   };
 }

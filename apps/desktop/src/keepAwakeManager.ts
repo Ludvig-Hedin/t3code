@@ -31,11 +31,10 @@ export class KeepAwakeManager {
 
     // caffeinate -s: prevent sleep on AC. -w {pid}: tie lifetime to our process.
     if (process.platform === "darwin") {
-      this.caffeinateProcess = ChildProcess.spawn(
-        "caffeinate",
-        ["-s", "-w", String(process.pid)],
-        { stdio: "ignore", detached: false },
-      );
+      this.caffeinateProcess = ChildProcess.spawn("caffeinate", ["-s", "-w", String(process.pid)], {
+        stdio: "ignore",
+        detached: false,
+      });
       this.caffeinateProcess.unref();
     }
   }

@@ -11,11 +11,7 @@ import * as os from "node:os";
 import * as nodePath from "node:path";
 import { promisify } from "node:util";
 import { Effect, Layer } from "effect";
-import {
-  HttpRouter,
-  HttpServerRequest,
-  HttpServerResponse,
-} from "effect/unstable/http";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import {
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -24,9 +20,8 @@ import {
   ProjectId,
   TrimmedNonEmptyString,
   ThreadId,
-  type ClientOrchestrationCommand,
+  type OrchestrationCommand,
 } from "@t3tools/contracts";
-import { normalizeDispatchCommand } from "./orchestration/Normalizer";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 
 const execAsync = promisify(exec);
@@ -36,7 +31,7 @@ const execAsync = promisify(exec);
 /** Known candidate paths for each provider's conversation history. */
 const PROVIDER_HISTORY_CANDIDATES: Record<string, (home: string) => string[]> = {
   codex: (home) => [
-    process.env["CODEX_HOME"] ?? "",
+    ...(process.env["CODEX_HOME"] ? [process.env["CODEX_HOME"]] : []),
     nodePath.join(home, ".codex", "sessions"),
     nodePath.join(home, ".codex"),
   ],
@@ -44,10 +39,7 @@ const PROVIDER_HISTORY_CANDIDATES: Record<string, (home: string) => string[]> = 
     nodePath.join(home, ".claude", "projects"),
     nodePath.join(home, ".claude"),
   ],
-  gemini: (home) => [
-    nodePath.join(home, ".gemini", "sessions"),
-    nodePath.join(home, ".gemini"),
-  ],
+  gemini: (home) => [nodePath.join(home, ".gemini", "sessions"), nodePath.join(home, ".gemini")],
   opencode: (home) => [
     nodePath.join(home, ".config", "opencode"),
     nodePath.join(home, ".opencode"),
@@ -70,8 +62,15 @@ async function resolveProviderHistoryRoot(provider: string): Promise<string | nu
 
 async function scanProviderHistory(
   historyRoot: string,
-): Promise<Array<{ projectName: string; projectPath: string; historyPath: string; threadCount: number }>> {
-  const results: Array<{ projectName: string; projectPath: string; historyPath: string; threadCount: number }> = [];
+): Promise<
+  Array<{ projectName: string; projectPath: string; historyPath: string; threadCount: number }>
+> {
+  const results: Array<{
+    projectName: string;
+    projectPath: string;
+    historyPath: string;
+    threadCount: number;
+  }> = [];
   try {
     const entries = await nodeFs.readdir(historyRoot, { withFileTypes: true });
     for (const entry of entries) {
@@ -84,11 +83,13 @@ async function scanProviderHistory(
       } catch {
         // Unreadable inner dir — count stays 0
       }
+      // Only include directories that have conversation files — skip config dirs etc.
+      if (threadCount === 0) continue;
       results.push({
         projectName: entry.name,
         projectPath: historyPath,
         historyPath,
-        threadCount: Math.max(threadCount, 1),
+        threadCount,
       });
     }
   } catch {
@@ -147,15 +148,15 @@ export const importScanRouteLayer = HttpRouter.add(
     }> = [];
 
     for (const provider of PROVIDERS_TO_SCAN) {
-      const historyRoot = yield* Effect.tryPromise(() =>
-        resolveProviderHistoryRoot(provider),
-      ).pipe(Effect.orElseSucceed(() => null));
+      const historyRoot = yield* Effect.tryPromise(() => resolveProviderHistoryRoot(provider)).pipe(
+        Effect.orElseSucceed(() => null),
+      );
 
       if (!historyRoot) continue;
 
-      const projects = yield* Effect.tryPromise(() =>
-        scanProviderHistory(historyRoot),
-      ).pipe(Effect.orElseSucceed(() => []));
+      const projects = yield* Effect.tryPromise(() => scanProviderHistory(historyRoot)).pipe(
+        Effect.orElseSucceed(() => []),
+      );
 
       for (const project of projects) {
         allProjects.push({ provider, ...project });
@@ -182,7 +183,9 @@ export const importExecuteRouteLayer = Layer.unwrap(
       Effect.gen(function* () {
         // Parse request body using the ImportRequest schema from contracts
         const body = yield* HttpServerRequest.schemaBodyJson(ImportRequest).pipe(
-          Effect.catch(() => Effect.succeed({ selections: [] as typeof ImportRequest.Type["selections"] })),
+          Effect.catch(() =>
+            Effect.succeed({ selections: [] as (typeof ImportRequest.Type)["selections"] }),
+          ),
         );
 
         let importedProjectCount = 0;
@@ -192,7 +195,9 @@ export const importExecuteRouteLayer = Layer.unwrap(
         for (const selection of body.selections) {
           const projectId = ProjectId.makeUnsafe(crypto.randomUUID());
           const createdAt = new Date().toISOString();
-          const title = TrimmedNonEmptyString.makeUnsafe(selection.projectName.slice(0, 200) || "Imported Project");
+          const title = TrimmedNonEmptyString.makeUnsafe(
+            selection.projectName.slice(0, 200) || "Imported Project",
+          );
           const workspaceRoot = TrimmedNonEmptyString.makeUnsafe(selection.projectPath);
 
           // ── Create project ────────────────────────────────────────────────
@@ -224,11 +229,11 @@ export const importExecuteRouteLayer = Layer.unwrap(
 
           // ── Scan for thread files ─────────────────────────────────────────
           const conversationFiles = yield* Effect.tryPromise(() =>
-            nodeFs.readdir(selection.historyPath).then((entries) =>
-              entries
-                .filter((f) => f.endsWith(".json") || f.endsWith(".md"))
-                .slice(0, 50),
-            ),
+            nodeFs
+              .readdir(selection.historyPath)
+              .then((entries) =>
+                entries.filter((f) => f.endsWith(".json") || f.endsWith(".md")).slice(0, 50),
+              ),
           ).pipe(Effect.orElseSucceed(() => [] as string[]));
 
           const filesToImport =
@@ -237,11 +242,12 @@ export const importExecuteRouteLayer = Layer.unwrap(
               : [`${selection.projectName} (imported)`];
 
           for (const file of filesToImport) {
-            const rawTitle = file
-              .replace(/\.(json|md)$/, "")
-              .replace(/[_-]/g, " ")
-              .trim()
-              .slice(0, 80) || "Imported conversation";
+            const rawTitle =
+              file
+                .replace(/\.(json|md)$/, "")
+                .replace(/[_-]/g, " ")
+                .trim()
+                .slice(0, 80) || "Imported conversation";
 
             const threadId = ThreadId.makeUnsafe(crypto.randomUUID());
             const threadTitle = TrimmedNonEmptyString.makeUnsafe(rawTitle);
@@ -253,7 +259,10 @@ export const importExecuteRouteLayer = Layer.unwrap(
               projectId,
               title: threadTitle,
               // Use manifest (auto-routing) as the default model for imported thread stubs
-              modelSelection: { provider: "manifest", model: TrimmedNonEmptyString.makeUnsafe("auto") },
+              modelSelection: {
+                provider: "manifest",
+                model: TrimmedNonEmptyString.makeUnsafe("auto"),
+              },
               runtimeMode: DEFAULT_RUNTIME_MODE,
               interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
               branch: null,

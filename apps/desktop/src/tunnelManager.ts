@@ -10,8 +10,7 @@ import { readRemoteSettings, writeRemoteSettings } from "./remoteSettings";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const CLOUDFLARED_BASE_URL =
-  "https://github.com/cloudflare/cloudflared/releases/latest/download";
+const CLOUDFLARED_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
 const MAX_RESTART_ATTEMPTS = 5;
 
 function getCloudflaredAssetName(): string {
@@ -153,10 +152,13 @@ export class TunnelManager extends EventEmitter {
       });
       // Track so stop() can kill this if called while auth is in progress.
       this.activeSetupProcess = proc;
-      const timeout = setTimeout(() => {
-        proc.kill();
-        reject(new Error("Cloudflare login timed out after 5 minutes. Please try again."));
-      }, 5 * 60 * 1000);
+      const timeout = setTimeout(
+        () => {
+          proc.kill();
+          reject(new Error("Cloudflare login timed out after 5 minutes. Please try again."));
+        },
+        5 * 60 * 1000,
+      );
       proc.on("close", (code) => {
         this.activeSetupProcess = null;
         clearTimeout(timeout);
@@ -216,8 +218,9 @@ export class TunnelManager extends EventEmitter {
     });
 
     // Parse UUID from output: "Created tunnel {name} with id {uuid}"
-    const match =
-      /\bid ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(output);
+    const match = /\bid ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(
+      output,
+    );
     if (!match) {
       throw new Error(`Could not parse tunnel UUID from cloudflared output:\n${output}`);
     }

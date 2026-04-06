@@ -7,6 +7,7 @@ import { Effect, Layer, Stream } from "effect";
 import { ClaudeAdapter, ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { CodexAdapter, CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { GeminiAdapter, GeminiAdapterShape } from "../Services/GeminiAdapter.ts";
+import { ManifestAdapter, ManifestAdapterShape } from "../Services/ManifestAdapter.ts";
 import { OllamaAdapter, OllamaAdapterShape } from "../Services/OllamaAdapter.ts";
 import { OpenCodeAdapter, OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
@@ -104,6 +105,24 @@ const fakeOllamaAdapter: OllamaAdapterShape = {
   streamEvents: Stream.empty,
 };
 
+const fakeManifestAdapter: ManifestAdapterShape = {
+  provider: "manifest",
+  capabilities: { sessionModelSwitch: "in-session" },
+  startSession: vi.fn(),
+  sendTurn: vi.fn(),
+  interruptTurn: vi.fn(),
+  respondToRequest: vi.fn(),
+  respondToUserInput: vi.fn(),
+  stopSession: vi.fn(),
+  listSessions: vi.fn(),
+  hasSession: vi.fn(),
+  readThread: vi.fn(),
+  rollbackThread: vi.fn(),
+  stopAll: vi.fn(),
+  refreshRateLimits: () => Effect.void,
+  streamEvents: Stream.empty,
+};
+
 const layer = it.layer(
   Layer.mergeAll(
     Layer.provide(
@@ -114,6 +133,7 @@ const layer = it.layer(
         Layer.succeed(GeminiAdapter, fakeGeminiAdapter),
         Layer.succeed(OpenCodeAdapter, fakeOpenCodeAdapter),
         Layer.succeed(OllamaAdapter, fakeOllamaAdapter),
+        Layer.succeed(ManifestAdapter, fakeManifestAdapter),
       ),
     ),
     NodeServices.layer,
@@ -129,14 +149,23 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const gemini = yield* registry.getByProvider("gemini");
       const opencode = yield* registry.getByProvider("opencode");
       const ollama = yield* registry.getByProvider("ollama");
+      const manifest = yield* registry.getByProvider("manifest");
       assert.equal(codex, fakeCodexAdapter);
       assert.equal(claude, fakeClaudeAdapter);
       assert.equal(gemini, fakeGeminiAdapter);
       assert.equal(opencode, fakeOpenCodeAdapter);
       assert.equal(ollama, fakeOllamaAdapter);
+      assert.equal(manifest, fakeManifestAdapter);
 
       const providers = yield* registry.listProviders();
-      assert.deepEqual(providers, ["codex", "claudeAgent", "gemini", "opencode", "ollama"]);
+      assert.deepEqual(providers, [
+        "codex",
+        "claudeAgent",
+        "gemini",
+        "opencode",
+        "ollama",
+        "manifest",
+      ]);
     }),
   );
 

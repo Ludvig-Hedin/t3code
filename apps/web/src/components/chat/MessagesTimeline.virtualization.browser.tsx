@@ -157,6 +157,7 @@ function createBaseTimelineProps(input: {
     completionDividerBeforeEntryId: input.completionDividerBeforeEntryId ?? null,
     completionSummary: null,
     turnDiffSummaryByAssistantMessageId: input.turnDiffSummaryByAssistantMessageId ?? new Map(),
+    modelByTurnId: new Map(),
     nowIso: isoAt(10_000),
     expandedWorkGroups: input.expandedWorkGroups ?? {},
     onToggleWorkGroup: () => {},

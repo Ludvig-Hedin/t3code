@@ -55,6 +55,7 @@ import {
   findLatestProposedPlan,
   deriveWorkLogEntries,
   deriveLatestTurnStartedModel,
+  deriveModelByTurnId,
   hasActionableProposedPlan,
   hasToolActivityForTurn,
   isLatestTurnSettled,
@@ -171,9 +172,12 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./Compose
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import { PopoutChatHeader } from "./chat/PopoutChatHeader";
 import { PreviewPanel } from "./PreviewPanel";
 import { PreviewFloatingWindow } from "./PreviewFloatingWindow";
 import { AppPageHeader, AppPageHeaderLeading } from "./AppPageHeader";
+import { isPopoutWindow } from "../env";
+import { openThreadPopout } from "../popoutWindowStore";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
@@ -708,6 +712,13 @@ function PersistentThreadTerminalDrawer({
         onCloseTerminal={closeTerminal}
         onHeightChange={setTerminalHeight}
         onAddTerminalContext={handleAddTerminalContext}
+        onPopout={() => {
+          window.open(
+            `/terminal-popout/${threadId}`,
+            `terminal-popout-${threadId}`,
+            "width=960,height=640,noopener",
+          );
+        }}
       />
     </div>
   );
@@ -1239,6 +1250,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => deriveLatestTurnStartedModel(threadActivities),
     [threadActivities],
   );
+  // Maps turnId → model slug for displaying the model used in each AI response.
+  const modelByTurnId = useMemo(() => deriveModelByTurnId(threadActivities), [threadActivities]);
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
@@ -4438,48 +4451,89 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-      {/* Top bar */}
-      <header
-        className={cn(
-          "border-b border-border px-3 sm:px-5",
-          isElectron ? "drag-region flex h-[52px] items-center" : "py-2 sm:py-3",
-        )}
-      >
-        {/* Collapsed-sidebar controls (toggle + new-thread + search, Electron only) */}
-        <AppPageHeaderLeading />
-        <ChatHeader
-          activeThreadId={activeThread.id}
-          activeThreadTitle={activeThread.title}
-          activeProjectName={activeProject?.name}
-          activeProjectCwd={activeProject?.cwd ?? null}
-          isGitRepo={isGitRepo}
-          openInCwd={gitCwd}
-          activeProjectScripts={activeProject?.scripts}
-          preferredScriptId={
-            activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
-          }
-          keybindings={keybindings}
-          availableEditors={availableEditors}
-          terminalAvailable={activeProject !== undefined}
-          terminalOpen={terminalState.terminalOpen}
-          terminalToggleShortcutLabel={terminalToggleShortcutLabel}
-          diffToggleShortcutLabel={diffPanelShortcutLabel}
-          gitCwd={gitCwd}
-          diffOpen={diffOpen}
-          previewAvailable={previewAvailable}
-          previewOpen={previewOpen}
-          hasRunningPreviewApp={hasRunningPreviewApp}
-          onRunProjectScript={(script) => {
-            void runProjectScript(script);
-          }}
-          onAddProjectScript={saveProjectScript}
-          onUpdateProjectScript={updateProjectScript}
-          onDeleteProjectScript={deleteProjectScript}
-          onToggleTerminal={toggleTerminalVisibility}
-          onToggleDiff={onToggleDiff}
-          onTogglePreview={onTogglePreview}
-        />
-      </header>
+      {/* Top bar
+          In popout windows we render PopoutChatHeader (centred title, close button,
+          overflow menu) instead of the regular ChatHeader + sidebar controls.       */}
+      {isPopoutWindow ? (
+        <header className="border-b border-border px-3 py-2">
+          <PopoutChatHeader
+            activeThreadId={activeThread.id}
+            activeThreadTitle={activeThread.title}
+            activeProjectName={activeProject?.name}
+            activeProjectCwd={activeProject?.cwd ?? null}
+            isGitRepo={isGitRepo}
+            openInCwd={gitCwd}
+            activeProjectScripts={activeProject?.scripts}
+            preferredScriptId={
+              activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
+            }
+            keybindings={keybindings}
+            availableEditors={availableEditors}
+            terminalAvailable={activeProject !== undefined}
+            terminalOpen={terminalState.terminalOpen}
+            terminalToggleShortcutLabel={terminalToggleShortcutLabel}
+            diffToggleShortcutLabel={diffPanelShortcutLabel}
+            gitCwd={gitCwd}
+            diffOpen={diffOpen}
+            previewAvailable={previewAvailable}
+            previewOpen={previewOpen}
+            hasRunningPreviewApp={hasRunningPreviewApp}
+            onRunProjectScript={(script) => {
+              void runProjectScript(script);
+            }}
+            onAddProjectScript={saveProjectScript}
+            onUpdateProjectScript={updateProjectScript}
+            onDeleteProjectScript={deleteProjectScript}
+            onToggleTerminal={toggleTerminalVisibility}
+            onToggleDiff={onToggleDiff}
+            onTogglePreview={onTogglePreview}
+            onClose={() => window.close()}
+          />
+        </header>
+      ) : (
+        <header
+          className={cn(
+            "border-b border-border px-3 sm:px-5",
+            isElectron ? "drag-region flex h-[52px] items-center" : "py-2 sm:py-3",
+          )}
+        >
+          {/* Collapsed-sidebar controls (toggle + new-thread + search, Electron only) */}
+          <AppPageHeaderLeading />
+          <ChatHeader
+            activeThreadId={activeThread.id}
+            activeThreadTitle={activeThread.title}
+            activeProjectName={activeProject?.name}
+            activeProjectCwd={activeProject?.cwd ?? null}
+            isGitRepo={isGitRepo}
+            openInCwd={gitCwd}
+            activeProjectScripts={activeProject?.scripts}
+            preferredScriptId={
+              activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
+            }
+            keybindings={keybindings}
+            availableEditors={availableEditors}
+            terminalAvailable={activeProject !== undefined}
+            terminalOpen={terminalState.terminalOpen}
+            terminalToggleShortcutLabel={terminalToggleShortcutLabel}
+            diffToggleShortcutLabel={diffPanelShortcutLabel}
+            gitCwd={gitCwd}
+            diffOpen={diffOpen}
+            previewAvailable={previewAvailable}
+            previewOpen={previewOpen}
+            hasRunningPreviewApp={hasRunningPreviewApp}
+            onRunProjectScript={(script) => {
+              void runProjectScript(script);
+            }}
+            onAddProjectScript={saveProjectScript}
+            onUpdateProjectScript={updateProjectScript}
+            onDeleteProjectScript={deleteProjectScript}
+            onToggleTerminal={toggleTerminalVisibility}
+            onToggleDiff={onToggleDiff}
+            onTogglePreview={onTogglePreview}
+            onPopout={() => openThreadPopout(activeThread.id)}
+          />
+        </header>
+      )}
 
       {/* Error banner */}
       <ProviderStatusBanner status={activeProviderStatus} />
@@ -4578,6 +4632,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                   completionSummary={completionSummary}
                   turnDiffSummaryByAssistantMessageId={displayTurnDiffSummaryByAssistantMessageId}
+                  modelByTurnId={modelByTurnId}
                   nowIso={nowIso}
                   expandedWorkGroups={expandedWorkGroups}
                   onToggleWorkGroup={onToggleWorkGroup}

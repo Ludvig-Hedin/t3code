@@ -137,12 +137,15 @@ describe("WsRpcAtomClient", () => {
         gemini: {
           ...DEFAULT_SERVER_SETTINGS.providers.gemini,
         },
-        // Include new providers added as part of Ollama/OpenCode implementation
+        // Include new providers added as part of Ollama/OpenCode/Auto implementation
         opencode: {
           ...DEFAULT_SERVER_SETTINGS.providers.opencode,
         },
         ollama: {
           ...DEFAULT_SERVER_SETTINGS.providers.ollama,
+        },
+        manifest: {
+          ...DEFAULT_SERVER_SETTINGS.providers.manifest,
         },
       },
     };
@@ -197,12 +200,15 @@ describe("WsRpcAtomClient", () => {
         gemini: {
           ...DEFAULT_SERVER_SETTINGS.providers.gemini,
         },
-        // Include new providers added as part of Ollama/OpenCode implementation
+        // Include new providers added as part of Ollama/OpenCode/Auto implementation
         opencode: {
           ...DEFAULT_SERVER_SETTINGS.providers.opencode,
         },
         ollama: {
           ...DEFAULT_SERVER_SETTINGS.providers.ollama,
+        },
+        manifest: {
+          ...DEFAULT_SERVER_SETTINGS.providers.manifest,
         },
       },
     };

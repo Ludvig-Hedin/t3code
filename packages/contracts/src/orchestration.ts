@@ -3,6 +3,7 @@ import {
   ClaudeModelOptions,
   CodexModelOptions,
   GeminiModelOptions,
+  ManifestModelOptions,
   OllamaModelOptions,
   OpenCodeModelOptions,
 } from "./model";
@@ -35,6 +36,8 @@ export const ProviderKind = Schema.Literals([
   "gemini",
   "opencode",
   "ollama",
+  // manifest = Manifest smart router: routes each request to the cheapest capable model automatically
+  "manifest",
 ]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
@@ -88,12 +91,21 @@ export const OllamaModelSelection = Schema.Struct({
 });
 export type OllamaModelSelection = typeof OllamaModelSelection.Type;
 
+// ManifestModelSelection: routes to Manifest smart router (auto model selection)
+export const ManifestModelSelection = Schema.Struct({
+  provider: Schema.Literal("manifest"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optionalKey(ManifestModelOptions),
+});
+export type ManifestModelSelection = typeof ManifestModelSelection.Type;
+
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   ClaudeModelSelection,
   GeminiModelSelection,
   OpenCodeModelSelection,
   OllamaModelSelection,
+  ManifestModelSelection,
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
 

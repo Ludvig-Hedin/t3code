@@ -28,7 +28,16 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
-import { ClaudeAI, CursorIcon, Gemini, Icon, OllamaIcon, OpenAI, OpenCodeIcon } from "../Icons";
+import {
+  AutoIcon,
+  ClaudeAI,
+  CursorIcon,
+  Gemini,
+  Icon,
+  OllamaIcon,
+  OpenAI,
+  OpenCodeIcon,
+} from "../Icons";
 import { PullModelDialog } from "./PullModelDialog";
 import { cn } from "~/lib/utils";
 import { getProviderModelsForProvider, getProviderSnapshot } from "../../providerModels";
@@ -42,6 +51,8 @@ function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): o
 }
 
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
+  // manifest = Auto: sparkle icon conveys automatic/intelligent model routing
+  manifest: AutoIcon,
   codex: OpenAI,
   claudeAgent: ClaudeAI,
   gemini: Gemini,
@@ -394,6 +405,32 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     </MenuItem>
                   );
                 }
+                // Manifest "Auto" renders as a direct top-level item — no submenu needed
+                // because there is only one logical model ("auto"). One click selects it.
+                if (option.value === "manifest") {
+                  const isActive = props.provider === "manifest";
+                  return (
+                    <MenuItem
+                      key={option.value}
+                      onSelect={() => handleModelChange("manifest", "auto")}
+                    >
+                      <OptionIcon
+                        aria-hidden="true"
+                        className={cn(
+                          "size-4 shrink-0",
+                          isActive ? "text-foreground/80" : "text-muted-foreground/85",
+                        )}
+                      />
+                      <span className={cn(isActive ? "font-medium" : undefined)}>
+                        {option.label}
+                      </span>
+                      {isActive && (
+                        <CheckIcon aria-hidden="true" className="ms-auto size-3.5 shrink-0" />
+                      )}
+                    </MenuItem>
+                  );
+                }
+
                 // OpenCode gets a dedicated search bar so users can filter its large model list
                 if (option.value === "opencode") {
                   return (

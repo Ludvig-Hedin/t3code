@@ -27,6 +27,8 @@ export const PROVIDER_OPTIONS: Array<{
   label: string;
   available: boolean;
 }> = [
+  // manifest = Manifest smart router: shows as "Auto" and picks the cheapest capable model
+  { value: "manifest", label: "Auto", available: true },
   { value: "codex", label: "Codex", available: true },
   { value: "claudeAgent", label: "Claude", available: true },
   { value: "gemini", label: "Gemini", available: true },
@@ -847,6 +849,28 @@ export function deriveLatestTurnStartedModel(
     }
   }
   return null;
+}
+
+/**
+ * Builds a map from turnId → model slug using `turn.started` activity payloads.
+ * Used to display the model name next to each AI response in the chat timeline.
+ */
+export function deriveModelByTurnId(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const activity of activities) {
+    if (activity.kind !== "turn.started" || !activity.turnId) continue;
+    const payload =
+      activity.payload && typeof activity.payload === "object" && !Array.isArray(activity.payload)
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const model = payload?.model;
+    if (typeof model === "string" && model.trim().length > 0) {
+      result.set(activity.turnId, model.trim());
+    }
+  }
+  return result;
 }
 
 export function deriveTimelineEntries(

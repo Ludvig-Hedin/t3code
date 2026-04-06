@@ -16,8 +16,8 @@ function detectPlatform(): Platform {
 }
 
 const GIT_INSTALL_COMMANDS: Record<Platform, string> = {
-  macos:   "xcode-select --install",
-  linux:   "sudo apt install git",
+  macos: "xcode-select --install",
+  linux: "sudo apt install git",
   windows: "winget install Git.Git",
 };
 
@@ -38,7 +38,11 @@ function CopyButton({ text }: { text: string }) {
       onClick={copy}
       className="ml-1.5 shrink-0 rounded p-0.5 text-muted-foreground/60 hover:text-foreground transition-colors"
     >
-      {copied ? <CheckIcon className="size-3.5 text-green-500" /> : <CopyIcon className="size-3.5" />}
+      {copied ? (
+        <CheckIcon className="size-3.5 text-green-500" />
+      ) : (
+        <CopyIcon className="size-3.5" />
+      )}
     </button>
   );
 }
@@ -87,12 +91,7 @@ export function GitSetupStep() {
             Git lets Bird Code track changes and manage branches alongside your agent.
           </p>
         </div>
-        <Button
-          size="xs"
-          variant="ghost"
-          onClick={() => void fetchStatus()}
-          disabled={loading}
-        >
+        <Button size="xs" variant="ghost" onClick={() => void fetchStatus()} disabled={loading}>
           <RefreshCwIcon className={cn("size-3.5", loading && "animate-spin")} />
         </Button>
       </div>
@@ -123,10 +122,7 @@ export function GitSetupStep() {
           )}
         </div>
         {!loading && !status?.installed && (
-          <CommandRow
-            label="Install git:"
-            command={GIT_INSTALL_COMMANDS[platform]}
-          />
+          <CommandRow label="Install git:" command={GIT_INSTALL_COMMANDS[platform]} />
         )}
       </div>
 

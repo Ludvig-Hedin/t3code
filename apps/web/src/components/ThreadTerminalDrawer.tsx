@@ -1,5 +1,12 @@
 import { FitAddon } from "@xterm/addon-fit";
-import { Plus, SquareSplitHorizontal, TerminalSquare, Trash2, XIcon } from "lucide-react";
+import {
+  ExternalLink,
+  Plus,
+  SquareSplitHorizontal,
+  TerminalSquare,
+  Trash2,
+  XIcon,
+} from "lucide-react";
 import {
   type TerminalEvent,
   type TerminalSessionSnapshot,
@@ -43,8 +50,12 @@ function maxDrawerHeight(): number {
   return Math.max(MIN_DRAWER_HEIGHT, Math.floor(window.innerHeight * MAX_DRAWER_HEIGHT_RATIO));
 }
 
-function clampDrawerHeight(height: number): number {
+function clampDrawerHeight(height: number, unconstrained = false): number {
   const safeHeight = Number.isFinite(height) ? height : DEFAULT_THREAD_TERMINAL_HEIGHT;
+  // unconstrained=true skips the viewport-ratio cap so the terminal can fill an entire popout window.
+  if (unconstrained) {
+    return Math.max(Math.round(safeHeight), MIN_DRAWER_HEIGHT);
+  }
   const maxHeight = maxDrawerHeight();
   return Math.min(Math.max(Math.round(safeHeight), MIN_DRAWER_HEIGHT), maxHeight);
 }
@@ -366,6 +377,22 @@ function TerminalViewport({
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
+      // Shift+Enter sends a line-continuation sequence (backslash + newline).
+      // This mirrors how real text editors handle soft newlines in the terminal.
+      if (
+        event.type === "keydown" &&
+        event.key === "Enter" &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        void sendTerminalInput("\\\n", "Failed to send line continuation");
+        return false;
+      }
+
       const navigationData = terminalNavigationShortcutData(event);
       if (navigationData !== null) {
         event.preventDefault();
@@ -478,8 +505,67 @@ function TerminalViewport({
       clearSelectionAction();
       selectionGestureActiveRef.current = event.button === 0;
     };
+
+    // Click-to-move-cursor: on left mousedown, calculate which terminal cell
+    // was clicked and send ANSI arrow sequences to move the shell cursor there.
+    // We skip this when a TUI (vim, less, etc.) has enabled mouse-reporting mode,
+    // since those apps handle mouse events themselves via the terminal protocol.
+    const handleTerminalMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+
+      const activeTerminal = terminalRef.current;
+      const mountEl = containerRef.current;
+      if (!activeTerminal || !mountEl) return;
+
+      // TUI apps (vim, less, etc.) handle mouse themselves — don't interfere.
+      if (activeTerminal.modes.mouseTrackingMode !== "none") return;
+
+      const buffer = activeTerminal.buffer.active;
+
+      // If the cursor is above the viewport the user has scrolled up — skip.
+      if (buffer.cursorY < buffer.viewportY) return;
+
+      const rect = mountEl.getBoundingClientRect();
+      const cellWidth = rect.width / activeTerminal.cols;
+      const cellHeight = rect.height / activeTerminal.rows;
+
+      // Clicked cell (clamped to terminal grid bounds).
+      const clickCellX = Math.max(
+        0,
+        Math.min(Math.floor((event.clientX - rect.left) / cellWidth), activeTerminal.cols - 1),
+      );
+      const clickCellY = Math.max(
+        0,
+        Math.min(Math.floor((event.clientY - rect.top) / cellHeight), activeTerminal.rows - 1),
+      );
+
+      // Current cursor position relative to the visible viewport.
+      const cursorX = buffer.cursorX;
+      const cursorY = buffer.cursorY - buffer.viewportY;
+
+      const deltaX = clickCellX - cursorX;
+      const deltaY = clickCellY - cursorY;
+      if (deltaX === 0 && deltaY === 0) return;
+
+      // Build movement sequence using standard ANSI cursor-movement codes.
+      // Up/down arrows navigate readline history for single-line commands but
+      // correctly move through multi-line (continued) commands.
+      let movement = "";
+      if (deltaY > 0)
+        movement += "\x1b[B".repeat(deltaY); // down
+      else if (deltaY < 0) movement += "\x1b[A".repeat(-deltaY); // up
+      if (deltaX > 0)
+        movement += "\x1b[C".repeat(deltaX); // right
+      else if (deltaX < 0) movement += "\x1b[D".repeat(-deltaX); // left
+
+      if (movement) {
+        void sendTerminalInput(movement, "Failed to move cursor");
+      }
+    };
+
     window.addEventListener("mouseup", handleMouseUp);
     mount.addEventListener("pointerdown", handlePointerDown);
+    mount.addEventListener("mousedown", handleTerminalMouseDown);
 
     const themeObserver = new MutationObserver(() => {
       const activeTerminal = terminalRef.current;
@@ -669,6 +755,7 @@ function TerminalViewport({
       }
       window.removeEventListener("mouseup", handleMouseUp);
       mount.removeEventListener("pointerdown", handlePointerDown);
+      mount.removeEventListener("mousedown", handleTerminalMouseDown);
       themeObserver.disconnect();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -741,6 +828,10 @@ interface ThreadTerminalDrawerProps {
   onCloseTerminal: (terminalId: string) => void;
   onHeightChange: (height: number) => void;
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
+  /** When true, skips the viewport-ratio cap on drawer height (for full-screen popout windows). */
+  unconstrained?: boolean;
+  /** Called when the user clicks the popout button. Omit to hide the button. */
+  onPopout?: () => void;
 }
 
 interface TerminalActionButtonProps {
@@ -793,11 +884,13 @@ export default function ThreadTerminalDrawer({
   onCloseTerminal,
   onHeightChange,
   onAddTerminalContext,
+  unconstrained = false,
+  onPopout,
 }: ThreadTerminalDrawerProps) {
-  const [drawerHeight, setDrawerHeight] = useState(() => clampDrawerHeight(height));
+  const [drawerHeight, setDrawerHeight] = useState(() => clampDrawerHeight(height, unconstrained));
   const [resizeEpoch, setResizeEpoch] = useState(0);
   const drawerHeightRef = useRef(drawerHeight);
-  const lastSyncedHeightRef = useRef(clampDrawerHeight(height));
+  const lastSyncedHeightRef = useRef(clampDrawerHeight(height, unconstrained));
   const onHeightChangeRef = useRef(onHeightChange);
   const resizeStateRef = useRef<{
     pointerId: number;
@@ -933,19 +1026,26 @@ export default function ThreadTerminalDrawer({
     drawerHeightRef.current = drawerHeight;
   }, [drawerHeight]);
 
+  // Stable reference to the clamp function so callbacks can use it without
+  // closing over a stale `unconstrained` value.
+  const clampHeightRef = useRef((h: number) => clampDrawerHeight(h, unconstrained));
+  useEffect(() => {
+    clampHeightRef.current = (h: number) => clampDrawerHeight(h, unconstrained);
+  }, [unconstrained]);
+
   const syncHeight = useCallback((nextHeight: number) => {
-    const clampedHeight = clampDrawerHeight(nextHeight);
+    const clampedHeight = clampHeightRef.current(nextHeight);
     if (lastSyncedHeightRef.current === clampedHeight) return;
     lastSyncedHeightRef.current = clampedHeight;
     onHeightChangeRef.current(clampedHeight);
   }, []);
 
   useEffect(() => {
-    const clampedHeight = clampDrawerHeight(height);
+    const clampedHeight = clampDrawerHeight(height, unconstrained);
     setDrawerHeight(clampedHeight);
     drawerHeightRef.current = clampedHeight;
     lastSyncedHeightRef.current = clampedHeight;
-  }, [height, threadId]);
+  }, [height, threadId, unconstrained]);
 
   const handleResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -963,7 +1063,7 @@ export default function ThreadTerminalDrawer({
     const resizeState = resizeStateRef.current;
     if (!resizeState || resizeState.pointerId !== event.pointerId) return;
     event.preventDefault();
-    const clampedHeight = clampDrawerHeight(
+    const clampedHeight = clampHeightRef.current(
       resizeState.startHeight + (resizeState.startY - event.clientY),
     );
     if (clampedHeight === drawerHeightRef.current) {
@@ -997,7 +1097,7 @@ export default function ThreadTerminalDrawer({
     }
 
     const onWindowResize = () => {
-      const clampedHeight = clampDrawerHeight(drawerHeightRef.current);
+      const clampedHeight = clampHeightRef.current(drawerHeightRef.current);
       const changed = clampedHeight !== drawerHeightRef.current;
       if (changed) {
         setDrawerHeight(clampedHeight);
@@ -1070,6 +1170,18 @@ export default function ThreadTerminalDrawer({
             >
               <Trash2 className="size-3.25" />
             </TerminalActionButton>
+            {onPopout && (
+              <>
+                <div className="h-4 w-px bg-border/80" />
+                <TerminalActionButton
+                  className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+                  onClick={onPopout}
+                  label="Open in new window"
+                >
+                  <ExternalLink className="size-3.25" />
+                </TerminalActionButton>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1165,6 +1277,15 @@ export default function ThreadTerminalDrawer({
                   >
                     <Trash2 className="size-3.25" />
                   </TerminalActionButton>
+                  {onPopout && (
+                    <TerminalActionButton
+                      className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
+                      onClick={onPopout}
+                      label="Open in new window"
+                    >
+                      <ExternalLink className="size-3.25" />
+                    </TerminalActionButton>
+                  )}
                 </div>
               </div>
 

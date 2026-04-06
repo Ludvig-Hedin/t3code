@@ -436,3 +436,62 @@ export const OllamaIcon: Icon = (props) => (
     <circle cx="13.5" cy="8" r="0.7" fill="white" />
   </svg>
 );
+
+// AutoIcon: sparkle/wand icon representing the Manifest smart router "Auto" mode.
+// Shows as a 4-point star with smaller accents — conveys automatic/intelligent routing.
+export const AutoIcon: Icon = (props) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path
+      d="M12 2 L13.5 9 L20 12 L13.5 15 L12 22 L10.5 15 L4 12 L10.5 9 Z"
+      fill="currentColor"
+      stroke="none"
+    />
+    <path
+      d="M19 3 L19.5 5 L21.5 5.5 L19.5 6 L19 8 L18.5 6 L16.5 5.5 L18.5 5 Z"
+      fill="currentColor"
+      stroke="none"
+      opacity="0.7"
+    />
+    <path
+      d="M5 17 L5.35 18.5 L6.85 18.85 L5.35 19.2 L5 20.7 L4.65 19.2 L3.15 18.85 L4.65 18.5 Z"
+      fill="currentColor"
+      stroke="none"
+      opacity="0.5"
+    />
+  </svg>
+);
+
+// WindsurfIcon: Windsurf IDE (by Codeium) — stylised W wave in a rounded square
+export const WindsurfIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 24 24" fill="none">
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" opacity="0.12" />
+    <path
+      d="M6.5 16L9.5 8.5L12 13L14.5 8.5L17.5 16"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// XcodeIcon: Apple Xcode — hammer silhouette in a rounded square (Xcode's iconic imagery)
+export const XcodeIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 24 24" fill="none">
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" opacity="0.12" />
+    {/* Hammer head */}
+    <rect x="7" y="6" width="7" height="4.5" rx="1.2" fill="currentColor" />
+    {/* Hammer neck connecting head to handle */}
+    <rect x="10" y="10.5" width="2.5" height="1.5" fill="currentColor" />
+    {/* Hammer handle, angled downward-left */}
+    <path d="M11.25 12L7.5 17.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);

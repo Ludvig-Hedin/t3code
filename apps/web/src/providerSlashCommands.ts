@@ -159,6 +159,8 @@ export const PROVIDER_SLASH_COMMANDS: Record<ProviderKind, readonly ProviderSlas
   opencode: [],
   // ollama is a local provider with no CLI slash commands
   ollama: [],
+  // manifest routes to Manifest smart router — no provider-specific slash commands
+  manifest: [],
 };
 
 /**

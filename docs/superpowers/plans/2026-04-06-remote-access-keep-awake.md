@@ -12,22 +12,23 @@
 
 ## File Map
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `packages/contracts/src/ipc.ts` | Modify | Add `TunnelState`, `RemoteSettings` types; extend `DesktopBridge` |
-| `apps/desktop/src/remoteSettings.ts` | Create | Read/write `userData/remote-settings.json` |
-| `apps/desktop/src/tunnelManager.ts` | Create | cloudflared binary download, auth, named-tunnel lifecycle |
-| `apps/desktop/src/keepAwakeManager.ts` | Create | `powerSaveBlocker` + `caffeinate` |
-| `apps/desktop/src/main.ts` | Modify | Create managers, register IPC channels, update `backendPairingUrl` on tunnel active |
-| `apps/desktop/src/preload.ts` | Modify | Expose new bridge methods |
-| `apps/desktop/src/remoteSettings.test.ts` | Create | Unit tests for settings read/write |
-| `apps/web/src/components/settings/MobileCompanionPanel.tsx` | Modify | Add Remote Access section + Keep Awake toggle |
+| File                                                        | Action | Purpose                                                                             |
+| ----------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
+| `packages/contracts/src/ipc.ts`                             | Modify | Add `TunnelState`, `RemoteSettings` types; extend `DesktopBridge`                   |
+| `apps/desktop/src/remoteSettings.ts`                        | Create | Read/write `userData/remote-settings.json`                                          |
+| `apps/desktop/src/tunnelManager.ts`                         | Create | cloudflared binary download, auth, named-tunnel lifecycle                           |
+| `apps/desktop/src/keepAwakeManager.ts`                      | Create | `powerSaveBlocker` + `caffeinate`                                                   |
+| `apps/desktop/src/main.ts`                                  | Modify | Create managers, register IPC channels, update `backendPairingUrl` on tunnel active |
+| `apps/desktop/src/preload.ts`                               | Modify | Expose new bridge methods                                                           |
+| `apps/desktop/src/remoteSettings.test.ts`                   | Create | Unit tests for settings read/write                                                  |
+| `apps/web/src/components/settings/MobileCompanionPanel.tsx` | Modify | Add Remote Access section + Keep Awake toggle                                       |
 
 ---
 
 ## Task 1: Contracts — add tunnel types and extend DesktopBridge
 
 **Files:**
+
 - Modify: `packages/contracts/src/ipc.ts`
 
 - [ ] **Step 1: Add types after `DesktopMobileDevicesResult`**
@@ -83,6 +84,7 @@ git commit -m "feat(contracts): add TunnelStatus, RemoteSettings types and Deskt
 ## Task 2: `remoteSettings.ts` — persist settings to userData
 
 **Files:**
+
 - Create: `apps/desktop/src/remoteSettings.ts`
 - Create: `apps/desktop/src/remoteSettings.test.ts`
 
@@ -115,7 +117,12 @@ describe("remoteSettings", () => {
   });
 
   it("round-trips settings", () => {
-    const s = { remoteAccessEnabled: true, keepAwakeEnabled: true, tunnelName: "birdcode-abc", tunnelUrl: "https://abc.cfargotunnel.com" };
+    const s = {
+      remoteAccessEnabled: true,
+      keepAwakeEnabled: true,
+      tunnelName: "birdcode-abc",
+      tunnelUrl: "https://abc.cfargotunnel.com",
+    };
     writeRemoteSettings(tmpDir, s);
     expect(readRemoteSettings(tmpDir)).toEqual(s);
   });
@@ -194,6 +201,7 @@ git commit -m "feat(desktop): add remoteSettings read/write with defaults"
 ## Task 3: `tunnelManager.ts` — binary download + checksum
 
 **Files:**
+
 - Create: `apps/desktop/src/tunnelManager.ts`
 
 - [ ] **Step 1: Create the file with download + checksum logic**
@@ -214,8 +222,7 @@ import { readRemoteSettings, writeRemoteSettings } from "./remoteSettings";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const CLOUDFLARED_VERSION = "latest";
-const CLOUDFLARED_BASE_URL =
-  "https://github.com/cloudflare/cloudflared/releases/latest/download";
+const CLOUDFLARED_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
 const MAX_RESTART_ATTEMPTS = 5;
 
 function getCloudflaredAssetName(): string {
@@ -363,6 +370,7 @@ git commit -m "feat(desktop): TunnelManager scaffold with cloudflared binary dow
 ## Task 4: `tunnelManager.ts` — auth, tunnel create, run, stop
 
 **Files:**
+
 - Modify: `apps/desktop/src/tunnelManager.ts`
 
 - [ ] **Step 1: Add `authenticate()` method**
@@ -586,6 +594,7 @@ git commit -m "feat(desktop): TunnelManager auth, ensureTunnel, start/stop, auto
 ## Task 5: `keepAwakeManager.ts`
 
 **Files:**
+
 - Create: `apps/desktop/src/keepAwakeManager.ts`
 
 - [ ] **Step 1: Create the file**
@@ -626,11 +635,10 @@ export class KeepAwakeManager {
 
     // caffeinate -s: prevent sleep on AC. -w {pid}: tie lifetime to our process.
     if (process.platform === "darwin") {
-      this.caffeinateProcess = ChildProcess.spawn(
-        "caffeinate",
-        ["-s", "-w", String(process.pid)],
-        { stdio: "ignore", detached: false },
-      );
+      this.caffeinateProcess = ChildProcess.spawn("caffeinate", ["-s", "-w", String(process.pid)], {
+        stdio: "ignore",
+        detached: false,
+      });
       this.caffeinateProcess.unref();
     }
   }
@@ -673,6 +681,7 @@ git commit -m "feat(desktop): KeepAwakeManager using powerSaveBlocker + caffeina
 ## Task 6: Wire managers into `main.ts` + expose via `preload.ts`
 
 **Files:**
+
 - Modify: `apps/desktop/src/main.ts`
 - Modify: `apps/desktop/src/preload.ts`
 
@@ -703,37 +712,37 @@ const KEEP_AWAKE_SET_CHANNEL = "desktop:keep-awake-set";
 Inside `bootstrap()`, after `backendPairingCode = resolvePairingCode();`, add:
 
 ```typescript
-  // Initialize remote access managers.
-  tunnelManager = new TunnelManager(app.getPath("userData"), backendPort);
-  keepAwakeManager = new KeepAwakeManager();
+// Initialize remote access managers.
+tunnelManager = new TunnelManager(app.getPath("userData"), backendPort);
+keepAwakeManager = new KeepAwakeManager();
 
-  // Listen for tunnel status changes: update backendPairingUrl + push to renderer.
-  tunnelManager.on("status", (status: import("@t3tools/contracts").TunnelStatus) => {
-    if (status.status === "active") {
-      // Permanent tunnel URL — update so subsequent getPairingUrl() calls return it.
-      backendPairingUrl = status.url;
-      backendPairingCode = resolvePairingCode();
-    } else if (status.status === "idle") {
-      // Restore LAN URL when tunnel is disabled.
-      backendPairingUrl = resolvePairingHttpUrl();
-      backendPairingCode = resolvePairingCode();
-    }
-    // Push status to all open renderer windows.
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(TUNNEL_STATUS_CHANNEL, status);
-      }
-    });
-  });
-
-  // Restore keep-awake if it was enabled last session.
-  const savedSettings = readRemoteSettings(app.getPath("userData"));
-  if (savedSettings.keepAwakeEnabled) {
-    keepAwakeManager.enable();
+// Listen for tunnel status changes: update backendPairingUrl + push to renderer.
+tunnelManager.on("status", (status: import("@t3tools/contracts").TunnelStatus) => {
+  if (status.status === "active") {
+    // Permanent tunnel URL — update so subsequent getPairingUrl() calls return it.
+    backendPairingUrl = status.url;
+    backendPairingCode = resolvePairingCode();
+  } else if (status.status === "idle") {
+    // Restore LAN URL when tunnel is disabled.
+    backendPairingUrl = resolvePairingHttpUrl();
+    backendPairingCode = resolvePairingCode();
   }
+  // Push status to all open renderer windows.
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(TUNNEL_STATUS_CHANNEL, status);
+    }
+  });
+});
 
-  // Resume tunnel if remote access was previously enabled.
-  void tunnelManager.resumeIfEnabled();
+// Restore keep-awake if it was enabled last session.
+const savedSettings = readRemoteSettings(app.getPath("userData"));
+if (savedSettings.keepAwakeEnabled) {
+  keepAwakeManager.enable();
+}
+
+// Resume tunnel if remote access was previously enabled.
+void tunnelManager.resumeIfEnabled();
 ```
 
 - [ ] **Step 3: Register IPC handlers for remote access**
@@ -741,43 +750,43 @@ Inside `bootstrap()`, after `backendPairingCode = resolvePairingCode();`, add:
 Inside `registerIpcHandlers()`, after the last existing `ipcMain.on` / `ipcMain.handle` block, add:
 
 ```typescript
-  ipcMain.removeAllListeners(REMOTE_SETTINGS_GET_CHANNEL);
-  ipcMain.on(REMOTE_SETTINGS_GET_CHANNEL, (event) => {
-    event.returnValue = readRemoteSettings(app.getPath("userData"));
-  });
+ipcMain.removeAllListeners(REMOTE_SETTINGS_GET_CHANNEL);
+ipcMain.on(REMOTE_SETTINGS_GET_CHANNEL, (event) => {
+  event.returnValue = readRemoteSettings(app.getPath("userData"));
+});
 
-  ipcMain.removeHandler(TUNNEL_ENABLE_CHANNEL);
-  ipcMain.handle(TUNNEL_ENABLE_CHANNEL, async () => {
-    if (!tunnelManager) return { ok: false, error: "Tunnel manager not initialized." };
-    try {
-      await tunnelManager.enable();
-      return { ok: true };
-    } catch (err: unknown) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+ipcMain.removeHandler(TUNNEL_ENABLE_CHANNEL);
+ipcMain.handle(TUNNEL_ENABLE_CHANNEL, async () => {
+  if (!tunnelManager) return { ok: false, error: "Tunnel manager not initialized." };
+  try {
+    await tunnelManager.enable();
+    return { ok: true };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
 
-  ipcMain.removeHandler(TUNNEL_DISABLE_CHANNEL);
-  ipcMain.handle(TUNNEL_DISABLE_CHANNEL, async () => {
-    tunnelManager?.disable();
-  });
+ipcMain.removeHandler(TUNNEL_DISABLE_CHANNEL);
+ipcMain.handle(TUNNEL_DISABLE_CHANNEL, async () => {
+  tunnelManager?.disable();
+});
 
-  ipcMain.removeHandler(KEEP_AWAKE_SET_CHANNEL);
-  ipcMain.handle(KEEP_AWAKE_SET_CHANNEL, async (_event, enabled: unknown) => {
-    if (!keepAwakeManager) return;
-    const remoteSettings = readRemoteSettings(app.getPath("userData"));
-    if (enabled === true) {
-      keepAwakeManager.enable();
-      import("./remoteSettings").then(({ writeRemoteSettings }) => {
-        writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: true });
-      });
-    } else {
-      keepAwakeManager.disable();
-      import("./remoteSettings").then(({ writeRemoteSettings }) => {
-        writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: false });
-      });
-    }
-  });
+ipcMain.removeHandler(KEEP_AWAKE_SET_CHANNEL);
+ipcMain.handle(KEEP_AWAKE_SET_CHANNEL, async (_event, enabled: unknown) => {
+  if (!keepAwakeManager) return;
+  const remoteSettings = readRemoteSettings(app.getPath("userData"));
+  if (enabled === true) {
+    keepAwakeManager.enable();
+    import("./remoteSettings").then(({ writeRemoteSettings }) => {
+      writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: true });
+    });
+  } else {
+    keepAwakeManager.disable();
+    import("./remoteSettings").then(({ writeRemoteSettings }) => {
+      writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: false });
+    });
+  }
+});
 ```
 
 - [ ] **Step 4: Push initial tunnel status when renderer connects**
@@ -785,11 +794,11 @@ Inside `registerIpcHandlers()`, after the last existing `ipcMain.on` / `ipcMain.
 Find the `createWindow()` function in `main.ts`. Inside it, after `mainWindow.webContents` is created, add a listener that sends the current tunnel status when the page finishes loading:
 
 ```typescript
-    mainWindow.webContents.on("did-finish-load", () => {
-      if (tunnelManager && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(TUNNEL_STATUS_CHANNEL, tunnelManager.status);
-      }
-    });
+mainWindow.webContents.on("did-finish-load", () => {
+  if (tunnelManager && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(TUNNEL_STATUS_CHANNEL, tunnelManager.status);
+  }
+});
 ```
 
 - [ ] **Step 5: Add new bridge methods to `preload.ts`**
@@ -845,9 +854,11 @@ git commit -m "feat(desktop): wire TunnelManager + KeepAwakeManager into IPC, up
 ## Task 7: `MobileCompanionPanel.tsx` — Remote Access + Keep Awake UI
 
 **Files:**
+
 - Modify: `apps/web/src/components/settings/MobileCompanionPanel.tsx`
 
 The plan for this task is to add two new cards **above** the existing "Pair a phone" card:
+
 1. **Remote Access card** — guides through setup, shows status, toggle
 2. **Keep Awake card** — simple toggle with honest sleep-on-battery note
 
@@ -870,32 +881,32 @@ import { Switch } from "../ui/switch";
 Inside `BirdCodeMobileCompanionPanel`, after the existing `useState` declarations, add:
 
 ```typescript
-  const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>(() => {
-    // Initialise from the current tunnel state (sync IPC on mount).
-    const settings = window.desktopBridge?.getRemoteSettings?.();
-    if (settings?.remoteAccessEnabled && settings.tunnelUrl) {
-      return { status: "connecting" }; // optimistic — will be updated via push
+const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>(() => {
+  // Initialise from the current tunnel state (sync IPC on mount).
+  const settings = window.desktopBridge?.getRemoteSettings?.();
+  if (settings?.remoteAccessEnabled && settings.tunnelUrl) {
+    return { status: "connecting" }; // optimistic — will be updated via push
+  }
+  return { status: "idle" };
+});
+
+const [remoteSettings, setRemoteSettings] = useState<RemoteSettings | null>(
+  () => window.desktopBridge?.getRemoteSettings?.() ?? null,
+);
+
+const [isEnabling, setIsEnabling] = useState(false);
+
+// Listen for tunnel status pushes from the main process.
+useEffect(() => {
+  const unsub = window.desktopBridge?.onTunnelStatus?.((status) => {
+    setTunnelStatus(status);
+    // When tunnel becomes active, re-read pairingUrl so QR refreshes.
+    if (status.status === "active" || status.status === "idle") {
+      setRemoteSettings(window.desktopBridge?.getRemoteSettings?.() ?? null);
     }
-    return { status: "idle" };
   });
-
-  const [remoteSettings, setRemoteSettings] = useState<RemoteSettings | null>(() =>
-    window.desktopBridge?.getRemoteSettings?.() ?? null,
-  );
-
-  const [isEnabling, setIsEnabling] = useState(false);
-
-  // Listen for tunnel status pushes from the main process.
-  useEffect(() => {
-    const unsub = window.desktopBridge?.onTunnelStatus?.((status) => {
-      setTunnelStatus(status);
-      // When tunnel becomes active, re-read pairingUrl so QR refreshes.
-      if (status.status === "active" || status.status === "idle") {
-        setRemoteSettings(window.desktopBridge?.getRemoteSettings?.() ?? null);
-      }
-    });
-    return unsub;
-  }, []);
+  return unsub;
+}, []);
 ```
 
 - [ ] **Step 3: Make `serverURL` and `pairingCode` reactive to tunnel status**
@@ -903,16 +914,16 @@ Inside `BirdCodeMobileCompanionPanel`, after the existing `useState` declaration
 Replace the existing `const serverURL = useMemo(...)` and `const pairingCode = useMemo(...)` with:
 
 ```typescript
-  // Re-resolve whenever tunnel status changes so QR auto-updates to tunnel URL.
-  const serverURL = useMemo(
-    () => resolveDesktopPairingUrl(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tunnelStatus.status],
-  );
-  const pairingCode = useMemo(() => {
-    if (!serverURL) return "";
-    return buildPairingCode(buildPairingPayload(serverURL));
-  }, [serverURL]);
+// Re-resolve whenever tunnel status changes so QR auto-updates to tunnel URL.
+const serverURL = useMemo(
+  () => resolveDesktopPairingUrl(),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [tunnelStatus.status],
+);
+const pairingCode = useMemo(() => {
+  if (!serverURL) return "";
+  return buildPairingCode(buildPairingPayload(serverURL));
+}, [serverURL]);
 ```
 
 - [ ] **Step 4: Add handler functions**
@@ -920,33 +931,33 @@ Replace the existing `const serverURL = useMemo(...)` and `const pairingCode = u
 After `handleCopyCode`, add:
 
 ```typescript
-  const handleEnableRemoteAccess = async () => {
-    setIsEnabling(true);
-    setTunnelStatus({ status: "connecting" });
-    try {
-      const result = await window.desktopBridge?.enableRemoteAccess?.();
-      if (result && !result.ok) {
-        setTunnelStatus({ status: "error", message: result.error ?? "Unknown error" });
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to enable remote access.";
-      setTunnelStatus({ status: "error", message });
-    } finally {
-      setIsEnabling(false);
-      setRemoteSettings(window.desktopBridge?.getRemoteSettings?.() ?? null);
+const handleEnableRemoteAccess = async () => {
+  setIsEnabling(true);
+  setTunnelStatus({ status: "connecting" });
+  try {
+    const result = await window.desktopBridge?.enableRemoteAccess?.();
+    if (result && !result.ok) {
+      setTunnelStatus({ status: "error", message: result.error ?? "Unknown error" });
     }
-  };
-
-  const handleDisableRemoteAccess = async () => {
-    await window.desktopBridge?.disableRemoteAccess?.();
-    setTunnelStatus({ status: "idle" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to enable remote access.";
+    setTunnelStatus({ status: "error", message });
+  } finally {
+    setIsEnabling(false);
     setRemoteSettings(window.desktopBridge?.getRemoteSettings?.() ?? null);
-  };
+  }
+};
 
-  const handleToggleKeepAwake = async (enabled: boolean) => {
-    await window.desktopBridge?.setKeepAwake?.(enabled);
-    setRemoteSettings(window.desktopBridge?.getRemoteSettings?.() ?? null);
-  };
+const handleDisableRemoteAccess = async () => {
+  await window.desktopBridge?.disableRemoteAccess?.();
+  setTunnelStatus({ status: "idle" });
+  setRemoteSettings(window.desktopBridge?.getRemoteSettings?.() ?? null);
+};
+
+const handleToggleKeepAwake = async (enabled: boolean) => {
+  await window.desktopBridge?.setKeepAwake?.(enabled);
+  setRemoteSettings(window.desktopBridge?.getRemoteSettings?.() ?? null);
+};
 ```
 
 - [ ] **Step 5: Add the Remote Access card to the JSX**
@@ -954,132 +965,131 @@ After `handleCopyCode`, add:
 In the `return (...)` block, inside the `<div className="flex flex-col gap-4 pb-8">`, insert the two new cards **before** the existing "Pair a phone" card (before the `<div className="overflow-hidden rounded-2xl border bg-card...">` that contains the QR code):
 
 ```tsx
-        {/* Remote Access card */}
-        <div className="overflow-hidden rounded-2xl border bg-card shadow-xs/5">
-          <div className="border-b px-4 py-3 sm:px-5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <GlobeIcon className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold text-foreground">Remote Access</h2>
-              </div>
-              {tunnelStatus.status === "active" && (
-                <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500">
-                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  Active
-                </span>
-              )}
-            </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Connect from any network — home, office, or LTE — without re-scanning.
-            </p>
-          </div>
+{
+  /* Remote Access card */
+}
+<div className="overflow-hidden rounded-2xl border bg-card shadow-xs/5">
+  <div className="border-b px-4 py-3 sm:px-5">
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <GlobeIcon className="size-4 text-muted-foreground" />
+        <h2 className="text-sm font-semibold text-foreground">Remote Access</h2>
+      </div>
+      {tunnelStatus.status === "active" && (
+        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500">
+          <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
+          Active
+        </span>
+      )}
+    </div>
+    <p className="mt-0.5 text-xs text-muted-foreground">
+      Connect from any network — home, office, or LTE — without re-scanning.
+    </p>
+  </div>
 
-          <div className="p-4 sm:p-5">
-            {tunnelStatus.status === "idle" && (
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Works by creating a private encrypted tunnel between your phone and this Mac
-                  through your own free{" "}
-                  <button
-                    type="button"
-                    className="underline underline-offset-2 hover:text-foreground transition-colors"
-                    onClick={() => window.desktopBridge?.openExternal?.("https://cloudflare.com")}
-                  >
-                    Cloudflare
-                  </button>{" "}
-                  account. Bird Code never sees your data — the tunnel runs entirely under your
-                  account and only your devices can connect.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  You'll be asked to log in to Cloudflare once. After that, it works automatically
-                  every time you open Bird Code.
-                </p>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleEnableRemoteAccess}
-                  disabled={isEnabling}
-                  className="w-full sm:w-auto"
-                >
-                  <WifiIcon className="size-3.5" />
-                  Set Up Remote Access
-                </Button>
-              </div>
-            )}
+  <div className="p-4 sm:p-5">
+    {tunnelStatus.status === "idle" && (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Works by creating a private encrypted tunnel between your phone and this Mac through your
+          own free{" "}
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-foreground transition-colors"
+            onClick={() => window.desktopBridge?.openExternal?.("https://cloudflare.com")}
+          >
+            Cloudflare
+          </button>{" "}
+          account. Bird Code never sees your data — the tunnel runs entirely under your account and
+          only your devices can connect.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          You'll be asked to log in to Cloudflare once. After that, it works automatically every
+          time you open Bird Code.
+        </p>
+        <Button
+          variant="default"
+          size="sm"
+          onClick={handleEnableRemoteAccess}
+          disabled={isEnabling}
+          className="w-full sm:w-auto"
+        >
+          <WifiIcon className="size-3.5" />
+          Set Up Remote Access
+        </Button>
+      </div>
+    )}
 
-            {(tunnelStatus.status === "downloading" || tunnelStatus.status === "authenticating" || tunnelStatus.status === "connecting") && (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
-                {tunnelStatus.status === "downloading"
-                  ? `Downloading secure tunnel software… ${tunnelStatus.progress}%`
-                  : tunnelStatus.status === "authenticating"
-                    ? "Waiting for Cloudflare login — complete it in the browser window that opened…"
-                    : "Connecting tunnel…"}
-              </div>
-            )}
+    {(tunnelStatus.status === "downloading" ||
+      tunnelStatus.status === "authenticating" ||
+      tunnelStatus.status === "connecting") && (
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
+        {tunnelStatus.status === "downloading"
+          ? `Downloading secure tunnel software… ${tunnelStatus.progress}%`
+          : tunnelStatus.status === "authenticating"
+            ? "Waiting for Cloudflare login — complete it in the browser window that opened…"
+            : "Connecting tunnel…"}
+      </div>
+    )}
 
-            {tunnelStatus.status === "active" && (
-              <div className="space-y-3">
-                <div className="rounded-xl border bg-background/60 px-3 py-2.5">
-                  <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    Your permanent remote URL
-                  </p>
-                  <p className="mt-1 break-all font-mono text-xs text-foreground">
-                    {tunnelStatus.url}
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  The QR code below now encodes this URL — scan it once from your iPhone and
-                  it will always connect, even on different Wi-Fi or LTE.
-                </p>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={handleDisableRemoteAccess}
-                >
-                  Disable Remote Access
-                </Button>
-              </div>
-            )}
-
-            {tunnelStatus.status === "error" && (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-3 py-2.5 text-sm text-destructive">
-                  {tunnelStatus.message}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleEnableRemoteAccess}
-                  disabled={isEnabling}
-                >
-                  Retry
-                </Button>
-              </div>
-            )}
-          </div>
+    {tunnelStatus.status === "active" && (
+      <div className="space-y-3">
+        <div className="rounded-xl border bg-background/60 px-3 py-2.5">
+          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Your permanent remote URL
+          </p>
+          <p className="mt-1 break-all font-mono text-xs text-foreground">{tunnelStatus.url}</p>
         </div>
+        <p className="text-xs text-muted-foreground">
+          The QR code below now encodes this URL — scan it once from your iPhone and it will always
+          connect, even on different Wi-Fi or LTE.
+        </p>
+        <Button variant="outline" size="xs" onClick={handleDisableRemoteAccess}>
+          Disable Remote Access
+        </Button>
+      </div>
+    )}
 
-        {/* Keep Awake card */}
-        <div className="overflow-hidden rounded-2xl border bg-card shadow-xs/5">
-          <div className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5">
-            <div className="flex items-center gap-2 min-w-0">
-              <MoonIcon className="size-4 shrink-0 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Keep Mac Awake</p>
-                <p className="text-xs text-muted-foreground">
-                  Mac stays on and reachable while plugged in. Closing the lid on battery will
-                  still sleep.
-                </p>
-              </div>
-            </div>
-            <Switch
-              checked={remoteSettings?.keepAwakeEnabled ?? false}
-              onCheckedChange={handleToggleKeepAwake}
-              aria-label="Keep Mac awake"
-            />
-          </div>
+    {tunnelStatus.status === "error" && (
+      <div className="space-y-3">
+        <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-3 py-2.5 text-sm text-destructive">
+          {tunnelStatus.message}
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleEnableRemoteAccess}
+          disabled={isEnabling}
+        >
+          Retry
+        </Button>
+      </div>
+    )}
+  </div>
+</div>;
+
+{
+  /* Keep Awake card */
+}
+<div className="overflow-hidden rounded-2xl border bg-card shadow-xs/5">
+  <div className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5">
+    <div className="flex items-center gap-2 min-w-0">
+      <MoonIcon className="size-4 shrink-0 text-muted-foreground" />
+      <div>
+        <p className="text-sm font-semibold text-foreground">Keep Mac Awake</p>
+        <p className="text-xs text-muted-foreground">
+          Mac stays on and reachable while plugged in. Closing the lid on battery will still sleep.
+        </p>
+      </div>
+    </div>
+    <Switch
+      checked={remoteSettings?.keepAwakeEnabled ?? false}
+      onCheckedChange={handleToggleKeepAwake}
+      aria-label="Keep Mac awake"
+    />
+  </div>
+</div>;
 ```
 
 - [ ] **Step 6: Typecheck + lint**

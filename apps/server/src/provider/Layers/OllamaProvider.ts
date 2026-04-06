@@ -118,11 +118,13 @@ export const checkOllamaProviderStatus = Effect.fn("checkOllamaProviderStatus")(
     });
   }
 
-  const tagsResponse = tagsResult.success;
+  // Result.isFailure check above narrows to Success; access .success for the wrapped value
+  const tagsResponse = Result.isSuccess(tagsResult) ? tagsResult.success : undefined;
 
   // Build ServerProviderModel entries from the live HTTP response.
   // These are treated as "built-in" models (discovered from Ollama, not user-defined).
-  const liveModels: ReadonlyArray<ServerProviderModel> = (tagsResponse?.models ?? []).map(
+  const rawModels: OllamaTagsResponse["models"] = tagsResponse?.models ?? [];
+  const liveModels: ReadonlyArray<ServerProviderModel> = rawModels.map(
     (m): ServerProviderModel => ({
       slug: m.name,
       name: m.name,

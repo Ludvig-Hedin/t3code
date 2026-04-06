@@ -18,6 +18,7 @@ import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
 import { AUTO_SCROLL_BOTTOM_THRESHOLD_PX } from "../../chat-scroll";
 import { type TurnDiffSummary } from "../../types";
 import { summarizeTurnDiffStats } from "../../lib/turnDiffTree";
+import { formatModelDisplayName } from "../../lib/modelDisplayName";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChevronRightIcon, Undo2Icon } from "lucide-react";
 import { cn } from "~/lib/utils";
@@ -62,6 +63,8 @@ interface MessagesTimelineProps {
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
+  /** Maps turnId → model slug so each AI response can show the model that generated it. */
+  modelByTurnId: Map<string, string>;
   nowIso: string;
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
@@ -97,6 +100,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   completionDividerBeforeEntryId,
   completionSummary,
   turnDiffSummaryByAssistantMessageId,
+  modelByTurnId,
   nowIso,
   expandedWorkGroups,
   onToggleWorkGroup,
@@ -507,15 +511,27 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     />
                   );
                 })()}
-                <p className="mt-1.5 text-[10px] text-muted-foreground/30">
-                  {formatMessageMeta(
-                    row.message.createdAt,
-                    row.message.streaming
-                      ? formatElapsed(row.durationStart, nowIso)
-                      : formatElapsed(row.durationStart, row.message.completedAt),
-                    timestampFormat,
+                {/* Model + timestamp meta row */}
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <p className="text-[10px] text-muted-foreground/30">
+                    {formatMessageMeta(
+                      row.message.createdAt,
+                      row.message.streaming
+                        ? formatElapsed(row.durationStart, nowIso)
+                        : formatElapsed(row.durationStart, row.message.completedAt),
+                      timestampFormat,
+                    )}
+                  </p>
+                  {/* Show the human-readable model name used for this turn */}
+                  {row.message.turnId && modelByTurnId.get(row.message.turnId) && (
+                    <span
+                      className="rounded px-1 py-0.5 text-[9px] leading-none text-muted-foreground/30 bg-muted/30"
+                      title={modelByTurnId.get(row.message.turnId)}
+                    >
+                      {formatModelDisplayName(modelByTurnId.get(row.message.turnId)!)}
+                    </span>
                   )}
-                </p>
+                </div>
               </div>
             </>
           );

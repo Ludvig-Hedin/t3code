@@ -45,7 +45,8 @@ export const ClientSettingsSchema = Schema.Struct({
   disabledPlugins: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
 
   // Appearance
-  usePointerCursors: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  // Enabled by default — pointer cursors are generally preferred UX
+  usePointerCursors: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   uiFontSize: Schema.Number.pipe(Schema.withDecodingDefault(() => 14)),
   codeFontSize: Schema.Number.pipe(Schema.withDecodingDefault(() => 13)),
   uiFont: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
@@ -131,6 +132,24 @@ export const OllamaSettings = Schema.Struct({
 });
 export type OllamaSettings = typeof OllamaSettings.Type;
 
+/**
+ * ManifestSettings: configures the "Auto" provider.
+ *
+ * By default (baseUrl = "") the server auto-detects the first ready provider
+ * (Ollama → Codex → Claude Code → Gemini) and routes the request to it.
+ *
+ * Set baseUrl to a non-empty OpenAI-compatible endpoint (e.g. a custom router)
+ * to override auto-detection and call that endpoint directly.
+ */
+export const ManifestSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  // baseUrl: empty = auto-detect local providers; non-empty = use as OpenAI-compatible endpoint
+  baseUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
+  // apiKey: bearer token for the custom endpoint (only used when baseUrl is set)
+  apiKey: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
+});
+export type ManifestSettings = typeof ManifestSettings.Type;
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
@@ -174,6 +193,7 @@ export const ServerSettings = Schema.Struct({
     gemini: GeminiSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     ollama: OllamaSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    manifest: ManifestSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(() => ({}))),
   codeReview: CodeReviewSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -248,6 +268,12 @@ const ModelSelectionPatch = Schema.Union([
     model: Schema.optionalKey(TrimmedNonEmptyString),
     options: Schema.optionalKey(OllamaModelOptionsPatch),
   }),
+  // manifest has no configurable model options
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("manifest")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(Schema.Struct({})),
+  }),
 ]);
 
 const CodexSettingsPatch = Schema.Struct({
@@ -274,6 +300,12 @@ const OllamaSettingsPatch = Schema.Struct({
   baseUrl: Schema.optionalKey(Schema.String),
 });
 
+const ManifestSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  baseUrl: Schema.optionalKey(Schema.String),
+  apiKey: Schema.optionalKey(Schema.String),
+});
+
 const OpenCodeSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(Schema.String),
@@ -297,6 +329,7 @@ export const ServerSettingsPatch = Schema.Struct({
       gemini: Schema.optionalKey(GeminiSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
       ollama: Schema.optionalKey(OllamaSettingsPatch),
+      manifest: Schema.optionalKey(ManifestSettingsPatch),
     }),
   ),
   codeReview: Schema.optionalKey(

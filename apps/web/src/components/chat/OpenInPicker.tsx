@@ -1,76 +1,48 @@
-import { EditorId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { EDITORS, EditorId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
 import { usePreferredEditor } from "../../editorPreferences";
+import { EDITOR_ICONS } from "../../editorIcons";
 import { ChevronDownIcon, FolderClosedIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "../ui/menu";
-import {
-  AntigravityIcon,
-  CursorIcon,
-  Icon,
-  TraeIcon,
-  IntelliJIdeaIcon,
-  VisualStudioCode,
-  Zed,
-} from "../Icons";
+import { type Icon } from "../Icons";
 import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 
+/**
+ * resolveOptions — builds the ordered list of editor choices shown in the picker,
+ * filtered to only those actually detected on the user's machine.
+ *
+ * Labels for the file-manager entry are platform-specific (Finder / Explorer / Files).
+ * All other labels come from the shared EDITORS contract so they stay in sync.
+ */
 const resolveOptions = (platform: string, availableEditors: ReadonlyArray<EditorId>) => {
-  const baseOptions: ReadonlyArray<{ label: string; Icon: Icon; value: EditorId }> = [
-    {
-      label: "Cursor",
-      Icon: CursorIcon,
-      value: "cursor",
+  return EDITORS.flatMap(
+    (editor): ReadonlyArray<{ label: string; Icon: Icon; value: EditorId }> => {
+      if (!availableEditors.includes(editor.id)) return [];
+      const icon = EDITOR_ICONS[editor.id];
+      if (!icon) return [];
+
+      // File manager gets a platform-specific display name
+      if (editor.id === "file-manager") {
+        return [
+          {
+            label: isMacPlatform(platform)
+              ? "Finder"
+              : isWindowsPlatform(platform)
+                ? "Explorer"
+                : "Files",
+            Icon: FolderClosedIcon as unknown as Icon,
+            value: editor.id,
+          },
+        ];
+      }
+
+      return [{ label: editor.label, Icon: icon, value: editor.id }];
     },
-    {
-      label: "Trae",
-      Icon: TraeIcon,
-      value: "trae",
-    },
-    {
-      label: "VS Code",
-      Icon: VisualStudioCode,
-      value: "vscode",
-    },
-    {
-      label: "VS Code Insiders",
-      Icon: VisualStudioCode,
-      value: "vscode-insiders",
-    },
-    {
-      label: "VSCodium",
-      Icon: VisualStudioCode,
-      value: "vscodium",
-    },
-    {
-      label: "Zed",
-      Icon: Zed,
-      value: "zed",
-    },
-    {
-      label: "Antigravity",
-      Icon: AntigravityIcon,
-      value: "antigravity",
-    },
-    {
-      label: "IntelliJ IDEA",
-      Icon: IntelliJIdeaIcon,
-      value: "idea",
-    },
-    {
-      label: isMacPlatform(platform)
-        ? "Finder"
-        : isWindowsPlatform(platform)
-          ? "Explorer"
-          : "Files",
-      Icon: FolderClosedIcon,
-      value: "file-manager",
-    },
-  ];
-  return baseOptions.filter((option) => availableEditors.includes(option.value));
+  );
 };
 
 export const OpenInPicker = memo(function OpenInPicker({

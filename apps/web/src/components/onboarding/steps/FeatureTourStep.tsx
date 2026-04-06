@@ -16,7 +16,8 @@ const FEATURES = [
   {
     icon: FolderOpenIcon,
     title: "Projects & Threads",
-    description: "Organize sessions by directory. Pick up any conversation exactly where you left off.",
+    description:
+      "Organize sessions by directory. Pick up any conversation exactly where you left off.",
   },
   {
     icon: TerminalIcon,
@@ -53,17 +54,12 @@ export function FeatureTourStep() {
         {FEATURES.map((feature) => {
           const Icon = feature.icon;
           return (
-            <div
-              key={feature.title}
-              className="rounded-xl border bg-card px-4 py-3 space-y-1.5"
-            >
+            <div key={feature.title} className="rounded-xl border bg-card px-4 py-3 space-y-1.5">
               <div className="flex items-center gap-2">
                 <Icon className="size-4 text-muted-foreground shrink-0" />
                 <span className="text-sm font-medium leading-tight">{feature.title}</span>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {feature.description}
-              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{feature.description}</p>
             </div>
           );
         })}

@@ -59,8 +59,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
  * the macOS traffic-light buttons (~90 px) without touching every route file.
  */
 function SidebarCollapseEffect() {
-  const { open } = useSidebar();
-  const collapsed = (isElectron || isMobileWebView) && !open;
+  const { open, openMobile } = useSidebar();
+  // On Electron we track the desktop open state (sidebar panel visible/hidden).
+  // On iOS WKWebView we track openMobile (the Sheet drawer open/closed), because
+  // the desktop `open` state stays true (defaultOpen) while the Sheet is visually closed.
+  const collapsed = isElectron ? !open : isMobileWebView ? !openMobile : false;
 
   useEffect(() => {
     if (collapsed) {

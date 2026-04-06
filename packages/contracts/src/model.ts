@@ -31,12 +31,17 @@ export type OpenCodeModelOptions = typeof OpenCodeModelOptions.Type;
 export const OllamaModelOptions = Schema.Struct({});
 export type OllamaModelOptions = typeof OllamaModelOptions.Type;
 
+// ManifestModelOptions: no per-request options — routing decisions are made server-side
+export const ManifestModelOptions = Schema.Struct({});
+export type ManifestModelOptions = typeof ManifestModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
   gemini: Schema.optional(GeminiModelOptions),
   opencode: Schema.optional(OpenCodeModelOptions),
   ollama: Schema.optional(OllamaModelOptions),
+  manifest: Schema.optional(ManifestModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 
@@ -69,6 +74,8 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
   gemini: "gemini-2.5-pro",
   opencode: "moonshot/kimi-k2-5",
   ollama: "llama3.2",
+  // manifest always uses "auto" — the router picks the actual model internally
+  manifest: "auto",
 };
 
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
@@ -80,6 +87,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   gemini: "gemini-2.5-flash",
   opencode: "moonshot/kimi-k2-5",
   ollama: "llama3.2",
+  manifest: "auto",
 };
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, string>> = {
@@ -141,6 +149,8 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     qwen: "qwen2.5-coder",
     mistral: "mistral",
   },
+  // manifest has no aliases — "auto" is the only slug and always maps to itself
+  manifest: {},
 };
 
 // ── Provider display names ────────────────────────────────────────────
@@ -151,4 +161,6 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   gemini: "Gemini",
   opencode: "OpenCode",
   ollama: "Ollama",
+  // "Auto" is the user-facing name — Manifest is the implementation detail
+  manifest: "Auto",
 };

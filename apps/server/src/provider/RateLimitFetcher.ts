@@ -12,7 +12,7 @@
  * Results are returned as `ProviderRateLimitEntry` items using the normalized
  * `FetchedRateLimits` shape (discriminated by `_source: "api"`).
  */
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -185,19 +185,28 @@ interface ClaudeOAuthUsage {
   } | null;
 }
 
-function readClaudeOAuthToken(): string | null {
-  try {
+/** Async keychain read — avoids blocking the event loop (execFileSync would stall Effect fibers). */
+function readClaudeOAuthToken(): Promise<string | null> {
+  return new Promise((resolve) => {
     // Same keychain key as codexbar: "Claude Code-credentials"
-    const json = execFileSync(
+    execFile(
       "/usr/bin/security",
       ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
       { encoding: "utf-8", timeout: 5000 },
-    ).trim();
-    const data = JSON.parse(json) as { claudeAiOauth?: { accessToken?: string } };
-    return data.claudeAiOauth?.accessToken ?? null;
-  } catch {
-    return null;
-  }
+      (err, stdout) => {
+        if (err || !stdout.trim()) {
+          resolve(null);
+          return;
+        }
+        try {
+          const data = JSON.parse(stdout.trim()) as { claudeAiOauth?: { accessToken?: string } };
+          resolve(data.claudeAiOauth?.accessToken ?? null);
+        } catch {
+          resolve(null);
+        }
+      },
+    );
+  });
 }
 
 // Only the keys that map to ClaudeOAuthUsageWindow (not extra_usage)
@@ -225,7 +234,7 @@ const CLAUDE_WINDOW_CONFIG: ReadonlyArray<{
 
 async function fetchClaudeRateLimits(): Promise<ProviderRateLimitEntry | null> {
   try {
-    const token = readClaudeOAuthToken();
+    const token = await readClaudeOAuthToken();
     if (!token) return null;
 
     const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
@@ -364,14 +373,26 @@ async function fetchGeminiRateLimits(): Promise<ProviderRateLimitEntry | null> {
     const buckets = quotaData.buckets ?? [];
     if (buckets.length === 0) return null;
 
-    // One window per model (lowest remaining fraction = worst case)
-    const best = pickBestBucket(buckets);
-    const windows: RateLimitWindow[] = Array.from(best.values()).map((b) => ({
-      id: b.modelId,
-      label: geminiModelLabel(b.modelId),
-      usedPercent: (1 - b.remainingFraction) * 100,
-      resetsAt: isoToUnix(b.resetTime),
-    }));
+    // Step 1: best bucket per modelId (lowest remainingFraction = most used)
+    const bestByModelId = pickBestBucket(buckets);
+
+    // Step 2: merge by display label — multiple model versions (e.g. gemini-2.5-flash,
+    // gemini-3-flash-preview) map to the same label. Keep worst case (highest usedPercent).
+    const byLabel = new Map<string, RateLimitWindow>();
+    for (const b of bestByModelId.values()) {
+      const label = geminiModelLabel(b.modelId);
+      const usedPercent = (1 - b.remainingFraction) * 100;
+      const existing = byLabel.get(label);
+      if (!existing || usedPercent > existing.usedPercent) {
+        byLabel.set(label, {
+          id: label.toLowerCase().replace(/\s+/g, "_"),
+          label,
+          usedPercent,
+          resetsAt: isoToUnix(b.resetTime),
+        });
+      }
+    }
+    const windows: RateLimitWindow[] = Array.from(byLabel.values());
 
     if (windows.length === 0) return null;
 

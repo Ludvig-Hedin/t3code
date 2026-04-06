@@ -60,7 +60,11 @@ import {
 import { ensureNativeApi, readNativeApi } from "../../nativeApi";
 import { useStore } from "../../store";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { SettingsPageContainer, SettingsRow as SettingsLayoutRow, SettingsSection } from "./SettingsLayout";
+import {
+  SettingsPageContainer,
+  SettingsRow as SettingsLayoutRow,
+  SettingsSection,
+} from "./SettingsLayout";
 import { UsageStatsSection } from "./UsageStatsSection";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
@@ -1469,10 +1473,7 @@ export function ProvidersSettingsPanel() {
       </SettingsSection>
 
       {/* Import conversations from provider history directories */}
-      <SettingsSection
-        title="Import Conversations"
-        icon={<DownloadIcon className="size-3.5" />}
-      >
+      <SettingsSection title="Import Conversations" icon={<DownloadIcon className="size-3.5" />}>
         <SettingsLayoutRow>
           <p className="text-xs text-muted-foreground mb-4">
             Import existing conversations from your AI provider history. Imported projects and

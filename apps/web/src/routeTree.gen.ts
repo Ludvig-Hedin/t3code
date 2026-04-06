@@ -14,6 +14,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AutomationsRouteImport } from './routes/automations'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as TerminalPopoutThreadIdRouteImport } from './routes/terminal-popout.$threadId'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsPersonalizationRouteImport } from './routes/settings.personalization'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
@@ -23,6 +24,7 @@ import { Route as SettingsGitRouteImport } from './routes/settings.git'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
+import { Route as PopoutThreadIdRouteImport } from './routes/popout.$threadId'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
 
 const SkillsRoute = SkillsRouteImport.update({
@@ -48,6 +50,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => ChatRoute,
+} as any)
+const TerminalPopoutThreadIdRoute = TerminalPopoutThreadIdRouteImport.update({
+  id: '/terminal-popout/$threadId',
+  path: '/terminal-popout/$threadId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   id: '/providers',
@@ -94,6 +101,11 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   path: '/appearance',
   getParentRoute: () => SettingsRoute,
 } as any)
+const PopoutThreadIdRoute = PopoutThreadIdRouteImport.update({
+  id: '/popout/$threadId',
+  path: '/popout/$threadId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
   id: '/$threadId',
   path: '/$threadId',
@@ -106,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
+  '/popout/$threadId': typeof PopoutThreadIdRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -115,12 +128,14 @@ export interface FileRoutesByFullPath {
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/personalization': typeof SettingsPersonalizationRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
 }
 export interface FileRoutesByTo {
   '/automations': typeof AutomationsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
+  '/popout/$threadId': typeof PopoutThreadIdRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -130,6 +145,7 @@ export interface FileRoutesByTo {
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/personalization': typeof SettingsPersonalizationRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
   '/': typeof ChatIndexRoute
 }
 export interface FileRoutesById {
@@ -139,6 +155,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/_chat/$threadId': typeof ChatThreadIdRoute
+  '/popout/$threadId': typeof PopoutThreadIdRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -148,6 +165,7 @@ export interface FileRoutesById {
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/personalization': typeof SettingsPersonalizationRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
   '/_chat/': typeof ChatIndexRoute
 }
 export interface FileRouteTypes {
@@ -158,6 +176,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/skills'
     | '/$threadId'
+    | '/popout/$threadId'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
@@ -167,12 +186,14 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/personalization'
     | '/settings/providers'
+    | '/terminal-popout/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/automations'
     | '/settings'
     | '/skills'
     | '/$threadId'
+    | '/popout/$threadId'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
@@ -182,6 +203,7 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/personalization'
     | '/settings/providers'
+    | '/terminal-popout/$threadId'
     | '/'
   id:
     | '__root__'
@@ -190,6 +212,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/skills'
     | '/_chat/$threadId'
+    | '/popout/$threadId'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
@@ -199,6 +222,7 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/personalization'
     | '/settings/providers'
+    | '/terminal-popout/$threadId'
     | '/_chat/'
   fileRoutesById: FileRoutesById
 }
@@ -207,6 +231,8 @@ export interface RootRouteChildren {
   AutomationsRoute: typeof AutomationsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   SkillsRoute: typeof SkillsRoute
+  PopoutThreadIdRoute: typeof PopoutThreadIdRoute
+  TerminalPopoutThreadIdRoute: typeof TerminalPopoutThreadIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -245,6 +271,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
+    }
+    '/terminal-popout/$threadId': {
+      id: '/terminal-popout/$threadId'
+      path: '/terminal-popout/$threadId'
+      fullPath: '/terminal-popout/$threadId'
+      preLoaderRoute: typeof TerminalPopoutThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/settings/providers': {
       id: '/settings/providers'
@@ -309,6 +342,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/popout/$threadId': {
+      id: '/popout/$threadId'
+      path: '/popout/$threadId'
+      fullPath: '/popout/$threadId'
+      preLoaderRoute: typeof PopoutThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_chat/$threadId': {
       id: '/_chat/$threadId'
       path: '/$threadId'
@@ -364,6 +404,8 @@ const rootRouteChildren: RootRouteChildren = {
   AutomationsRoute: AutomationsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   SkillsRoute: SkillsRoute,
+  PopoutThreadIdRoute: PopoutThreadIdRoute,
+  TerminalPopoutThreadIdRoute: TerminalPopoutThreadIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

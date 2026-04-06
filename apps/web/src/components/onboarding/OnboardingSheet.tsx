@@ -13,13 +13,7 @@
  */
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetPanel,
-  SheetFooter,
-} from "../ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetPanel, SheetFooter } from "../ui/sheet";
 import { type OnboardingStep, useOnboarding } from "../../hooks/useOnboarding";
 import { ProviderInstallStep } from "./steps/ProviderInstallStep";
 import { MobilePairingStep } from "./steps/MobilePairingStep";
@@ -83,22 +77,20 @@ function StepContent({ step, onImportDone }: { step: OnboardingStep; onImportDon
 // ── Main sheet ────────────────────────────────────────────────────────────────
 
 export function OnboardingSheet() {
-  const {
-    open,
-    currentStep,
-    closeOnboarding,
-    completeOnboarding,
-    nextStep,
-    prevStep,
-    skipStep,
-  } = useOnboarding();
+  const { open, currentStep, closeOnboarding, completeOnboarding, nextStep, prevStep, skipStep } =
+    useOnboarding();
 
   const isLastStep = currentStep === TOTAL_STEPS;
   // The import step manages its own primary CTA (the import button)
   const isImportStep = currentStep === 5;
 
   return (
-    <Sheet open={open} onOpenChange={(o) => { if (!o) closeOnboarding(); }}>
+    <Sheet
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) closeOnboarding();
+      }}
+    >
       <SheetContent
         side="right"
         showCloseButton={false}

@@ -8,12 +8,7 @@
  * Flow: scan → select projects → import → done
  */
 import { useEffect, useState } from "react";
-import {
-  CheckIcon,
-  DownloadIcon,
-  FolderIcon,
-  LoaderIcon,
-} from "lucide-react";
+import { CheckIcon, DownloadIcon, FolderIcon, LoaderIcon } from "lucide-react";
 import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 import type { ImportDetectedProject, ImportExecuteResult } from "@t3tools/contracts";
 import { Button } from "../ui/button";
@@ -276,9 +271,7 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
           >
             <DownloadIcon className="size-4 mr-2" />
             Import{" "}
-            {selectedCount > 0
-              ? `${totalThreads} thread${totalThreads !== 1 ? "s" : ""}`
-              : ""}
+            {selectedCount > 0 ? `${totalThreads} thread${totalThreads !== 1 ? "s" : ""}` : ""}
           </Button>
         </>
       )}

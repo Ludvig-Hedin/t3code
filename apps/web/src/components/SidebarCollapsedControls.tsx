@@ -25,7 +25,7 @@ const btnClass =
   "flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground";
 
 export function SidebarCollapsedControls() {
-  const { open, toggleSidebar } = useSidebar();
+  const { open, openMobile, isMobile, toggleSidebar } = useSidebar();
   const navigate = useNavigate();
   const setSearchOpen = useSearchModalStore((s) => s.setOpen);
   const keybindings = useServerKeybindings();
@@ -34,7 +34,9 @@ export function SidebarCollapsedControls() {
   if (!isElectron && !isMobileWebView) return null;
 
   const isMac = isMacPlatform(navigator.platform);
-  const sidebarCollapsed = !open;
+  // On mobile the sidebar is a Sheet drawer controlled by openMobile, not the
+  // desktop open state (which stays true). Read the correct state per platform.
+  const sidebarCollapsed = isMobile ? !openMobile : !open;
 
   const newThreadLabel =
     shortcutLabelForCommand(keybindings, "chat.newLocal", { platform: navigator.platform }) ??

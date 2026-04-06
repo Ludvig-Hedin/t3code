@@ -381,6 +381,17 @@ export function terminalNavigationShortcutData(
   if (event.shiftKey) return null;
 
   const key = normalizeEventKey(event.key);
+
+  // Home/End map to readline line-start/line-end (Ctrl+A / Ctrl+E equivalents).
+  // This gives the terminal a real text-editor feel without conflicting with
+  // existing modifier-key bindings (Cmd+Left / Alt+Left already handled below).
+  if (key === "home" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    return TERMINAL_LINE_START;
+  }
+  if (key === "end" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    return TERMINAL_LINE_END;
+  }
+
   if (key !== "arrowleft" && key !== "arrowright") {
     return null;
   }

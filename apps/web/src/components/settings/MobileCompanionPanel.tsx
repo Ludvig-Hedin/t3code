@@ -1,6 +1,16 @@
 "use client";
 
-import { CheckIcon, CopyIcon, GlobeIcon, MoonIcon, PencilIcon, QrCodeIcon, SmartphoneIcon, WifiIcon, XIcon } from "lucide-react";
+import {
+  CheckIcon,
+  CopyIcon,
+  GlobeIcon,
+  MoonIcon,
+  PencilIcon,
+  QrCodeIcon,
+  SmartphoneIcon,
+  WifiIcon,
+  XIcon,
+} from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -248,8 +258,8 @@ export function BirdCodeMobileCompanionPanel() {
     return { status: "idle" };
   });
 
-  const [remoteSettings, setRemoteSettings] = useState<RemoteSettings | null>(() =>
-    window.desktopBridge?.getRemoteSettings?.() ?? null,
+  const [remoteSettings, setRemoteSettings] = useState<RemoteSettings | null>(
+    () => window.desktopBridge?.getRemoteSettings?.() ?? null,
   );
 
   const [isEnabling, setIsEnabling] = useState(false);
@@ -484,7 +494,10 @@ export function BirdCodeMobileCompanionPanel() {
                 aria-live="polite"
                 className="flex items-center gap-3 text-sm text-muted-foreground"
               >
-                <div className="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" aria-hidden="true" />
+                <div
+                  className="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary"
+                  aria-hidden="true"
+                />
                 {tunnelStatus.status === "downloading"
                   ? `Downloading secure tunnel software… ${tunnelStatus.progress}%`
                   : tunnelStatus.status === "authenticating"
@@ -504,8 +517,8 @@ export function BirdCodeMobileCompanionPanel() {
                   </p>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  The QR code below now encodes this URL — scan it once from your iPhone and it
-                  will always connect, even on different Wi-Fi or LTE.
+                  The QR code below now encodes this URL — scan it once from your iPhone and it will
+                  always connect, even on different Wi-Fi or LTE.
                 </p>
                 <Button
                   variant="outline"
@@ -543,8 +556,8 @@ export function BirdCodeMobileCompanionPanel() {
               <div>
                 <p className="text-sm font-semibold text-foreground">Keep Mac Awake</p>
                 <p className="text-xs text-muted-foreground">
-                  Mac stays on and reachable while plugged in. Closing the lid on battery will
-                  still sleep.
+                  Mac stays on and reachable while plugged in. Closing the lid on battery will still
+                  sleep.
                 </p>
               </div>
             </div>

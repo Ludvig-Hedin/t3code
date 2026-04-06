@@ -2,6 +2,7 @@ import {
   ArchiveIcon,
   ArrowUpDownIcon,
   ChevronRightIcon,
+  ExternalLinkIcon,
   FolderIcon,
   GitPullRequestIcon,
   LoaderCircleIcon,
@@ -79,6 +80,7 @@ import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { focusThreadPopout, usePopoutWindowStore } from "../popoutWindowStore";
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import { toastManager } from "./ui/toast";
@@ -320,6 +322,9 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
     (state) =>
       selectThreadTerminalState(state.terminalStateByThreadId, props.threadId).runningTerminalIds,
   );
+  // Reactively track whether this thread is currently open in a popout window
+  // so we can show an indicator and focus the popout on click.
+  const isPopped = usePopoutWindowStore((state) => state.poppedThreadIds.has(props.threadId));
 
   if (!thread) {
     return null;
@@ -466,6 +471,17 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {/* Popout indicator: shown when the thread is open in a separate window */}
+          {isPopped && (
+            <span
+              role="img"
+              aria-label="Open in popout window"
+              title="Open in popout window"
+              className="inline-flex items-center justify-center text-muted-foreground/50"
+            >
+              <ExternalLinkIcon className="size-3" />
+            </span>
+          )}
           {terminalStatus && (
             <span
               role="img"
@@ -1253,6 +1269,8 @@ export default function Sidebar() {
         clearSelection();
       }
       setSelectionAnchor(threadId);
+      // Close the mobile sheet so the selected thread is immediately visible.
+      if (isMobile) setOpenMobile(false);
       void navigate({
         to: "/$threadId",
         params: { threadId },
@@ -1260,9 +1278,11 @@ export default function Sidebar() {
     },
     [
       clearSelection,
+      isMobile,
       navigate,
       rangeSelectTo,
       selectedThreadIds.size,
+      setOpenMobile,
       setSelectionAnchor,
       toggleThreadSelection,
     ],
@@ -1270,16 +1290,24 @@ export default function Sidebar() {
 
   const navigateToThread = useCallback(
     (threadId: ThreadId) => {
+      // If this thread is open in a popout window, focus that window instead of
+      // navigating the main window. This matches the user's expectation that
+      // clicking a popped-out thread brings the popout to the front.
+      if (focusThreadPopout(threadId)) {
+        return;
+      }
       if (selectedThreadIds.size > 0) {
         clearSelection();
       }
       setSelectionAnchor(threadId);
+      // Close the mobile sheet so the selected thread is immediately visible.
+      if (isMobile) setOpenMobile(false);
       void navigate({
         to: "/$threadId",
         params: { threadId },
       });
     },
-    [clearSelection, navigate, selectedThreadIds.size, setSelectionAnchor],
+    [clearSelection, isMobile, navigate, selectedThreadIds.size, setOpenMobile, setSelectionAnchor],
   );
 
   const handleProjectContextMenu = useCallback(

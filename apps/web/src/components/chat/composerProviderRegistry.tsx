@@ -255,6 +255,12 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       />
     ),
   },
+  // manifest = Manifest smart router. No per-turn traits — the router decides model internally.
+  manifest: {
+    getState: (input) => getProviderStateFromCapabilities(input),
+    renderTraitsMenuContent: () => null,
+    renderTraitsPicker: () => null,
+  },
 };
 
 export function getComposerProviderState(input: ComposerProviderStateInput): ComposerProviderState {

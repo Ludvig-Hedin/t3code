@@ -74,6 +74,7 @@ function createBaseServerConfig(): ServerConfig {
         gemini: { enabled: true, binaryPath: "", customModels: [] },
         opencode: { enabled: true, binaryPath: "", customModels: [] },
         ollama: { enabled: true, baseUrl: "http://localhost:11434" },
+        manifest: { enabled: true, baseUrl: "", apiKey: "" },
       },
     },
   };

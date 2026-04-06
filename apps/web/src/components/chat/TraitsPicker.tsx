@@ -399,7 +399,7 @@ export const TraitsPicker = memo(function TraitsPicker({
             variant={triggerVariant ?? "ghost"}
             // Native title tooltip — low-risk alternative to a custom Tooltip since the
             // trigger is nested inside MenuTrigger and restructuring would be complex.
-            title={triggerLabel ? `Reasoning: ${triggerLabel}` : "Model options"}
+            title={triggerLabel ? `Model options: ${triggerLabel}` : "Model options"}
             className={cn(
               isCodexStyle
                 ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:max-w-48 sm:px-3 [&_svg]:mx-0"
@@ -417,12 +417,12 @@ export const TraitsPicker = memo(function TraitsPicker({
             <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
           </span>
         ) : (
-          <>
+          <span className="flex items-center gap-2">
             {/* Brain icon signals this button controls reasoning/thinking settings */}
             <BrainIcon aria-hidden="true" className="size-3 shrink-0" />
             <span>{triggerLabel}</span>
-            <ChevronDownIcon aria-hidden="true" className="size-3 opacity-60" />
-          </>
+            <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
+          </span>
         )}
       </MenuTrigger>
       <MenuPopup align="start">

@@ -9,6 +9,7 @@ import { Effect, Equal, Layer, PubSub, Ref, Stream } from "effect";
 import { ClaudeProviderLive } from "./ClaudeProvider";
 import { CodexProviderLive } from "./CodexProvider";
 import { GeminiProviderLive } from "./GeminiProvider";
+import { ManifestProviderLive } from "./ManifestProvider";
 import { OllamaProviderLive } from "./OllamaProvider";
 import { OpenCodeProviderLive } from "./OpenCodeProvider";
 import type { ClaudeProviderShape } from "../Services/ClaudeProvider";
@@ -17,6 +18,8 @@ import type { CodexProviderShape } from "../Services/CodexProvider";
 import { CodexProvider } from "../Services/CodexProvider";
 import type { GeminiProviderShape } from "../Services/GeminiProvider";
 import { GeminiProvider } from "../Services/GeminiProvider";
+import type { ManifestProviderShape } from "../Services/ManifestProvider";
+import { ManifestProvider } from "../Services/ManifestProvider";
 import type { OllamaProviderShape } from "../Services/OllamaProvider";
 import { OllamaProvider } from "../Services/OllamaProvider";
 import type { OpenCodeProviderShape } from "../Services/OpenCodeProvider";
@@ -29,8 +32,16 @@ const loadProviders = (
   geminiProvider: GeminiProviderShape,
   openCodeProvider: OpenCodeProviderShape,
   ollamaProvider: OllamaProviderShape,
+  manifestProvider: ManifestProviderShape,
 ): Effect.Effect<
-  readonly [ServerProvider, ServerProvider, ServerProvider, ServerProvider, ServerProvider]
+  readonly [
+    ServerProvider,
+    ServerProvider,
+    ServerProvider,
+    ServerProvider,
+    ServerProvider,
+    ServerProvider,
+  ]
 > =>
   Effect.all(
     [
@@ -39,6 +50,7 @@ const loadProviders = (
       geminiProvider.getSnapshot,
       openCodeProvider.getSnapshot,
       ollamaProvider.getSnapshot,
+      manifestProvider.getSnapshot,
     ],
     {
       concurrency: "unbounded",
@@ -58,6 +70,7 @@ export const ProviderRegistryLive = Layer.effect(
     const geminiProvider = yield* GeminiProvider;
     const openCodeProvider = yield* OpenCodeProvider;
     const ollamaProvider = yield* OllamaProvider;
+    const manifestProvider = yield* ManifestProvider;
     const changesPubSub = yield* Effect.acquireRelease(
       PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
       PubSub.shutdown,
@@ -69,6 +82,7 @@ export const ProviderRegistryLive = Layer.effect(
         geminiProvider,
         openCodeProvider,
         ollamaProvider,
+        manifestProvider,
       ),
     );
 
@@ -82,6 +96,7 @@ export const ProviderRegistryLive = Layer.effect(
         geminiProvider,
         openCodeProvider,
         ollamaProvider,
+        manifestProvider,
       );
       yield* Ref.set(providersRef, providers);
 
@@ -107,6 +122,9 @@ export const ProviderRegistryLive = Layer.effect(
     yield* Stream.runForEach(ollamaProvider.streamChanges, () => syncProviders()).pipe(
       Effect.forkScoped,
     );
+    yield* Stream.runForEach(manifestProvider.streamChanges, () => syncProviders()).pipe(
+      Effect.forkScoped,
+    );
 
     const refresh = Effect.fn("refresh")(function* (provider?: ProviderKind) {
       switch (provider) {
@@ -125,6 +143,9 @@ export const ProviderRegistryLive = Layer.effect(
         case "ollama":
           yield* ollamaProvider.refresh;
           break;
+        case "manifest":
+          yield* manifestProvider.refresh;
+          break;
         default:
           yield* Effect.all(
             [
@@ -133,6 +154,7 @@ export const ProviderRegistryLive = Layer.effect(
               geminiProvider.refresh,
               openCodeProvider.refresh,
               ollamaProvider.refresh,
+              manifestProvider.refresh,
             ],
             {
               concurrency: "unbounded",
@@ -164,4 +186,5 @@ export const ProviderRegistryLive = Layer.effect(
   Layer.provideMerge(GeminiProviderLive),
   Layer.provideMerge(OpenCodeProviderLive),
   Layer.provideMerge(OllamaProviderLive),
+  Layer.provideMerge(ManifestProviderLive),
 );

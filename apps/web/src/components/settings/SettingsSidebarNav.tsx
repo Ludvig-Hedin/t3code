@@ -105,9 +105,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   const state = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
                   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, open: true }));
                   // Dispatch a storage event so the useOnboarding hook (same tab) picks it up
-                  window.dispatchEvent(
-                    new StorageEvent("storage", { key: STORAGE_KEY }),
-                  );
+                  window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
                 } catch {
                   // ignore
                 }

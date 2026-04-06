@@ -49,13 +49,14 @@ iPhone (WKWebView)
 ### 4.1 `cloudflared` binary management
 
 - On first "Enable Remote Access": download the correct binary (`cloudflared-darwin-arm64` or `amd64`) from Cloudflare's official GitHub releases into `userData/bin/cloudflared`.
-- Show a progress indicator: *"Downloading secure tunnel software (≈30 MB)…"*
+- Show a progress indicator: _"Downloading secure tunnel software (≈30 MB)…"_
 - Verify SHA256 checksum against Cloudflare's published checksums before executing.
 - Binary is cached permanently — subsequent launches skip download.
 
 ### 4.2 `TunnelManager` (`apps/desktop/src/tunnelManager.ts`)
 
 Responsibilities:
+
 - `authenticate()` — runs `cloudflared tunnel login`. Opens `dash.cloudflare.com` in the system browser. User logs in once. Cloudflare saves a credential certificate to `~/.cloudflared/cert.pem` (Cloudflare's standard location — the app never reads this file).
 - `ensureTunnel()` — runs `cloudflared tunnel create birdcode-{stableId}` on first setup. Saves tunnel name + UUID to `userData/remote-settings.json`. All subsequent launches re-use the same UUID → same permanent URL. Format: `https://<uuid>.cfargotunnel.com`.
 - `start(port)` — spawns `cloudflared tunnel --no-autoupdate run --url http://localhost:{port} {tunnelName}`. Parses stdout for the confirmed public URL. Emits status updates.
@@ -69,12 +70,12 @@ Responsibilities:
 - `disable()` — stops the powerSaveBlocker and kills the caffeinate process.
 - Behaviour table:
 
-  | Power state | Lid state | Result |
-  |------------|-----------|--------|
-  | Plugged in | Open | Awake ✅ |
-  | Plugged in | Closed | Awake ✅ |
-  | Battery | Open | Awake ✅ |
-  | Battery | Closed | Sleeps ⚠️ (macOS enforces this) |
+  | Power state | Lid state | Result                          |
+  | ----------- | --------- | ------------------------------- |
+  | Plugged in  | Open      | Awake ✅                        |
+  | Plugged in  | Closed    | Awake ✅                        |
+  | Battery     | Open      | Awake ✅                        |
+  | Battery     | Closed    | Sleeps ⚠️ (macOS enforces this) |
 
 ### 4.4 Settings persistence (`userData/remote-settings.json`)
 
@@ -89,14 +90,14 @@ Responsibilities:
 
 ### 4.5 IPC channels (additions to `apps/desktop/src/main.ts` + `preload.ts`)
 
-| Channel | Direction | Payload |
-|---------|-----------|---------|
-| `tunnel:authenticate` | renderer → main | — |
-| `tunnel:enable` | renderer → main | — |
-| `tunnel:disable` | renderer → main | — |
-| `tunnel:status` | main → renderer (push) | `{ state: TunnelState, url: string \| null }` |
-| `keepAwake:set` | renderer → main | `{ enabled: boolean }` |
-| `remote-settings:get` | renderer → main (sync) | — → `RemoteSettings` |
+| Channel               | Direction              | Payload                                       |
+| --------------------- | ---------------------- | --------------------------------------------- |
+| `tunnel:authenticate` | renderer → main        | —                                             |
+| `tunnel:enable`       | renderer → main        | —                                             |
+| `tunnel:disable`      | renderer → main        | —                                             |
+| `tunnel:status`       | main → renderer (push) | `{ state: TunnelState, url: string \| null }` |
+| `keepAwake:set`       | renderer → main        | `{ enabled: boolean }`                        |
+| `remote-settings:get` | renderer → main (sync) | — → `RemoteSettings`                          |
 
 ### 4.6 `backendPairingUrl` / `backendPairingCode` (update in `main.ts`)
 
@@ -107,6 +108,7 @@ Responsibilities:
 ### 4.7 `MobileCompanionPanel.tsx` — new "Remote Access" section
 
 **State: Not set up**
+
 ```
 ─────────────────────────────────────
 🌐 Remote Access                [Off]
@@ -124,13 +126,16 @@ Bird Code never sees your data.
 ```
 
 **State: Downloading / Connecting**
+
 ```
 ─────────────────────────────────────
 🌐 Remote Access            [spinner]
 Downloading secure tunnel… (30 MB)
 ─────────────────────────────────────
 ```
+
 or
+
 ```
 Waiting for Cloudflare login…
 (A browser window has opened — sign in
@@ -138,6 +143,7 @@ with your free Cloudflare account)
 ```
 
 **State: Active**
+
 ```
 ─────────────────────────────────────
 🟢 Remote Access               [On ●]
@@ -149,6 +155,7 @@ Accessible from any network.
 ```
 
 **Keep Awake toggle (always visible, independent)**
+
 ```
 ─────────────────────────────────────
 ☕ Keep Mac Awake             [toggle]
