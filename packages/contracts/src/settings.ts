@@ -43,8 +43,42 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   // Plugin names the user has explicitly disabled; defaults to empty (all plugins active)
   disabledPlugins: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+
+  // Appearance
+  usePointerCursors: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  uiFontSize: Schema.Number.pipe(Schema.withDecodingDefault(() => 14)),
+  codeFontSize: Schema.Number.pipe(Schema.withDecodingDefault(() => 13)),
+  uiFont: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  codeFont: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  themeAccentColor: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  themeAccentColorDark: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  themeBackgroundColor: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  themeBackgroundColorDark: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  themeForegroundColor: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  themeForegroundColorDark: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+
+  // Notifications
+  turnCompletionNotifications: Schema.Literals(["always", "never", "unfocused"]).pipe(
+    Schema.withDecodingDefault(() => "unfocused" as const),
+  ),
+  enablePermissionNotifications: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  enableQuestionNotifications: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+
+  // Personalization
+  customInstructions: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+
+  // Default provider for new chats
+  defaultProvider: Schema.Union(
+    Schema.Literal("use-latest"),
+    Schema.Literal("codex"),
+    Schema.Literal("claudeAgent"),
+    Schema.Literal("gemini"),
+  ).pipe(Schema.withDecodingDefault(() => "use-latest" as const)),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
+
+export type TurnCompletionNotifications = "always" | "never" | "unfocused";
+export type DefaultProvider = "use-latest" | "codex" | "claudeAgent" | "gemini";
 
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientSettingsSchema)({});
 
@@ -87,6 +121,13 @@ export const GeminiSettings = Schema.Struct({
 });
 export type GeminiSettings = typeof GeminiSettings.Type;
 
+export const OpenCodeSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  binaryPath: makeBinaryPathSetting("opencode"),
+  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+});
+export type OpenCodeSettings = typeof OpenCodeSettings.Type;
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
@@ -128,9 +169,11 @@ export const ServerSettings = Schema.Struct({
     codex: CodexSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     gemini: GeminiSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(() => ({}))),
   codeReview: CodeReviewSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+  commitInstructions: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -189,6 +232,11 @@ const ModelSelectionPatch = Schema.Union([
     model: Schema.optionalKey(TrimmedNonEmptyString),
     options: Schema.optionalKey(GeminiModelOptionsPatch),
   }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("opencode")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(Schema.Struct({})),
+  }),
 ]);
 
 const CodexSettingsPatch = Schema.Struct({
@@ -210,6 +258,12 @@ const GeminiSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const OpenCodeSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(Schema.String),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
@@ -225,6 +279,7 @@ export const ServerSettingsPatch = Schema.Struct({
       codex: Schema.optionalKey(CodexSettingsPatch),
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
       gemini: Schema.optionalKey(GeminiSettingsPatch),
+      opencode: Schema.optionalKey(OpenCodeSettingsPatch),
     }),
   ),
   codeReview: Schema.optionalKey(
@@ -233,5 +288,6 @@ export const ServerSettingsPatch = Schema.Struct({
       fixMode: Schema.optionalKey(CodeReviewFixMode),
     }),
   ),
+  commitInstructions: Schema.optionalKey(Schema.String),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
