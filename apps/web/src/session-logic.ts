@@ -31,6 +31,8 @@ export const PROVIDER_OPTIONS: Array<{
   { value: "claudeAgent", label: "Claude", available: true },
   { value: "gemini", label: "Gemini", available: true },
   { value: "opencode", label: "OpenCode", available: true },
+  // ollama and cursor are coming soon — not yet available in the picker
+  { value: "ollama", label: "Ollama", available: false },
   { value: "cursor", label: "Cursor", available: false },
 ];
 

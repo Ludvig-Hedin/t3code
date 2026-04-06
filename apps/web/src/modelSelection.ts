@@ -59,6 +59,13 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     placeholder: "your-opencode-model-slug",
     example: "moonshot/kimi-k2-5",
   },
+  ollama: {
+    provider: "ollama",
+    title: "Ollama",
+    description: "Save additional Ollama model slugs for the picker and `/model` command.",
+    placeholder: "your-ollama-model-slug",
+    example: "llama3.2",
+  },
 };
 
 export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
@@ -113,7 +120,8 @@ export function getAppModelOptions(
       .map((model) => model.slug),
   );
 
-  const customModels = settings.providers[provider].customModels;
+  // OllamaSettings does not have customModels — fall back to empty array
+  const customModels = (settings.providers[provider] as { customModels?: readonly string[] }).customModels ?? [];
   for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
     if (seen.has(slug)) {
       continue;
@@ -153,7 +161,9 @@ export function resolveAppModelSelection(
   selectedModel: string | null | undefined,
 ): string {
   const resolvedProvider = resolveSelectableProvider(providers, provider);
-  if (resolvedProvider === "gemini") {
+  // Gemini, OpenCode, and Ollama use dynamic model slugs that bypass the selectable-options
+  // resolution path — normalise directly to the canonical slug instead.
+  if (resolvedProvider === "gemini" || resolvedProvider === "opencode" || resolvedProvider === "ollama") {
     return (
       normalizeModelSlug(selectedModel, resolvedProvider) ??
       getDefaultServerModel(providers, resolvedProvider)
@@ -196,6 +206,12 @@ export function getCustomModelOptionsByProvider(
       providers,
       "opencode",
       selectedProvider === "opencode" ? selectedModel : undefined,
+    ),
+    ollama: getAppModelOptions(
+      settings,
+      providers,
+      "ollama",
+      selectedProvider === "ollama" ? selectedModel : undefined,
     ),
   };
 }

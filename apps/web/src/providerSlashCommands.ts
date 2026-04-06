@@ -157,6 +157,8 @@ export const PROVIDER_SLASH_COMMANDS: Record<ProviderKind, readonly ProviderSlas
   gemini: GEMINI_COMMANDS,
   // opencode uses pass-through commands — populated server-side when available
   opencode: [],
+  // ollama is a local provider with no CLI slash commands
+  ollama: [],
 };
 
 /**

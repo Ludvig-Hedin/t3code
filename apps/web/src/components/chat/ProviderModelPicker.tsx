@@ -46,6 +46,8 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   gemini: Gemini,
   cursor: CursorIcon,
   opencode: OpenCodeIcon,
+  // ollama does not have a dedicated icon yet — using CursorIcon as placeholder
+  ollama: CursorIcon,
 };
 
 export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
@@ -163,7 +165,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       props.modelOptionsByProvider[provider],
     );
     if (!resolvedModel) {
-      if (provider === "gemini") {
+      // Gemini and OpenCode both support dynamic model slugs (e.g. "anthropic/claude-sonnet-4-5")
+      // that may not be in the pre-registered selectable options list — normalise and pass through.
+      if (provider === "gemini" || provider === "opencode") {
         const normalized = normalizeModelSlug(value, provider);
         if (!normalized) return;
         props.onProviderModelChange(provider, normalized);

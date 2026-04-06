@@ -1,5 +1,5 @@
 import { Option, Schema, SchemaIssue, Struct } from "effect";
-import { ClaudeModelOptions, CodexModelOptions, GeminiModelOptions, OpenCodeModelOptions } from "./model";
+import { ClaudeModelOptions, CodexModelOptions, GeminiModelOptions, OllamaModelOptions, OpenCodeModelOptions } from "./model";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -69,11 +69,19 @@ export const OpenCodeModelSelection = Schema.Struct({
 });
 export type OpenCodeModelSelection = typeof OpenCodeModelSelection.Type;
 
+export const OllamaModelSelection = Schema.Struct({
+  provider: Schema.Literal("ollama"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optionalKey(OllamaModelOptions),
+});
+export type OllamaModelSelection = typeof OllamaModelSelection.Type;
+
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   ClaudeModelSelection,
   GeminiModelSelection,
   OpenCodeModelSelection,
+  OllamaModelSelection,
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
 

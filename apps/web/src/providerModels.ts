@@ -30,6 +30,7 @@ export function getProviderModelsByProvider(
     claudeAgent: getProviderModels(providers, "claudeAgent"),
     gemini: getProviderModels(providers, "gemini"),
     opencode: getProviderModels(providers, "opencode"),
+    ollama: getProviderModels(providers, "ollama"),
   };
 }
 
