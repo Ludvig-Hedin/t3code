@@ -28,7 +28,8 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
-import { ClaudeAI, CursorIcon, Gemini, Icon, OpenAI, OpenCodeIcon } from "../Icons";
+import { ClaudeAI, CursorIcon, Gemini, Icon, OllamaIcon, OpenAI, OpenCodeIcon } from "../Icons";
+import { PullModelDialog } from "./PullModelDialog";
 import { cn } from "~/lib/utils";
 import { getProviderModelsForProvider, getProviderSnapshot } from "../../providerModels";
 
@@ -46,8 +47,7 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   gemini: Gemini,
   cursor: CursorIcon,
   opencode: OpenCodeIcon,
-  // ollama does not have a dedicated icon yet — using CursorIcon as placeholder
-  ollama: CursorIcon,
+  ollama: OllamaIcon,
 };
 
 export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
@@ -119,6 +119,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
   onProviderModelChange: (provider: ProviderKind, model: string) => void;
+  onOllamaPullModel?: (model: string) => Promise<{ success: boolean; error?: string }>;
+  onOllamaQuitServer?: () => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState("");
@@ -127,6 +129,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const [customModelError, setCustomModelError] = useState<string | null>(null);
   // Tracks which provider's install/auth dialog is open
   const [setupDialog, setSetupDialog] = useState<ProviderSetupDialog>(null);
+  const [isPullModelDialogOpen, setIsPullModelDialogOpen] = useState(false);
   const activeProvider = props.lockedProvider ?? props.provider;
   const isGemini = activeProvider === "gemini";
   const selectedProviderOptions = getProviderModelsForProvider(
@@ -286,6 +289,27 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   ? getProviderSnapshot(props.providers, option.value)
                   : undefined;
                 if (liveProvider && liveProvider.status !== "ready") {
+                  // Ollama is a local server — show a direct download link rather than CLI install steps
+                  if (option.value === "ollama") {
+                    return (
+                      <MenuItem
+                        key={option.value}
+                        onSelect={() => {
+                          window.open("https://ollama.com/download", "_blank");
+                        }}
+                      >
+                        <OptionIcon
+                          aria-hidden="true"
+                          className="size-4 shrink-0 text-muted-foreground/85"
+                        />
+                        <span>{option.label}</span>
+                        <span className="ms-auto text-[11px] text-blue-500 uppercase tracking-[0.08em]">
+                          Install ↗
+                        </span>
+                      </MenuItem>
+                    );
+                  }
+
                   // Determine the appropriate action for this provider
                   const isNotInstalled = !liveProvider.installed;
                   const isUnauthenticated =
@@ -472,6 +496,30 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                             <MenuItem onSelect={openCustomModelDialog}>Custom model...</MenuItem>
                           </>
                         ) : null}
+                        {/* Ollama-specific actions: pull a new model or quit the local server */}
+                        {option.value === "ollama" ? (
+                          <>
+                            <MenuDivider />
+                            <MenuItem
+                              onSelect={() => {
+                                setIsPullModelDialogOpen(true);
+                                setIsMenuOpen(false);
+                              }}
+                            >
+                              Pull model…
+                            </MenuItem>
+                            {props.onOllamaQuitServer ? (
+                              <MenuItem
+                                onSelect={() => {
+                                  props.onOllamaQuitServer?.();
+                                  setIsMenuOpen(false);
+                                }}
+                              >
+                                Quit Ollama
+                              </MenuItem>
+                            ) : null}
+                          </>
+                        ) : null}
                       </MenuGroup>
                     </MenuSubPopup>
                   </MenuSub>
@@ -502,6 +550,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         setupDialog={setupDialog}
         onClose={() => setSetupDialog(null)}
       />
+      {/* PullModelDialog — only mounted when the parent supplies an onOllamaPullModel handler */}
+      {props.onOllamaPullModel ? (
+        <PullModelDialog
+          open={isPullModelDialogOpen}
+          onOpenChange={setIsPullModelDialogOpen}
+          onPull={props.onOllamaPullModel}
+        />
+      ) : null}
       <Dialog open={isCustomModelDialogOpen} onOpenChange={setIsCustomModelDialogOpen}>
         <DialogPopup className="max-w-sm">
           <DialogHeader>
