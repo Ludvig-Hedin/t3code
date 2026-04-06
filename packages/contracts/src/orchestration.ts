@@ -1,5 +1,5 @@
 import { Option, Schema, SchemaIssue, Struct } from "effect";
-import { ClaudeModelOptions, CodexModelOptions, GeminiModelOptions } from "./model";
+import { ClaudeModelOptions, CodexModelOptions, GeminiModelOptions, OpenCodeModelOptions } from "./model";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -23,7 +23,7 @@ export const ORCHESTRATION_WS_METHODS = {
   replayEvents: "orchestration.replayEvents",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "gemini"]);
+export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "gemini", "opencode"]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -62,10 +62,18 @@ export const GeminiModelSelection = Schema.Struct({
 });
 export type GeminiModelSelection = typeof GeminiModelSelection.Type;
 
+export const OpenCodeModelSelection = Schema.Struct({
+  provider: Schema.Literal("opencode"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optionalKey(OpenCodeModelOptions),
+});
+export type OpenCodeModelSelection = typeof OpenCodeModelSelection.Type;
+
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   ClaudeModelSelection,
   GeminiModelSelection,
+  OpenCodeModelSelection,
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
 
