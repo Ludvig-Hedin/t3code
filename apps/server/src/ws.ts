@@ -628,6 +628,79 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           providerRegistry.refresh().pipe(Effect.map((providers) => ({ providers }))),
           { "rpc.aggregate": "server" },
         ),
+      // Pull a model from the Ollama registry. After pulling, refresh the
+      // provider snapshot so the new model appears in the picker immediately.
+      [WS_METHODS.ollamaPullModel]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.ollamaPullModel,
+          Effect.gen(function* () {
+            const settings = yield* serverSettings.getSettings;
+            const baseUrl = settings.providers.ollama.baseUrl;
+            const result = yield* Effect.tryPromise({
+              try: async () => {
+                const res = await fetch(`${baseUrl}/api/pull`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: input.model, stream: false }),
+                });
+                if (!res.ok) {
+                  const body = await res.text().catch(() => "");
+                  return { success: false as const, error: `HTTP ${res.status}: ${body}` };
+                }
+                return { success: true as const };
+              },
+              catch: (err) => ({ success: false as const, error: String(err) }),
+            }).pipe(Effect.orElseSucceed(() => ({ success: false as const, error: "Unknown error" })));
+            // Refresh provider snapshot so new model appears in picker immediately
+            yield* providerRegistry.refresh("ollama").pipe(Effect.orElseSucceed(() => []));
+            return result;
+          }).pipe(
+            // ServerSettingsError is unrecoverable here — convert to a defect
+            // so the error channel remains `never` as the RPC contract requires.
+            Effect.orDie,
+          ),
+          { "rpc.aggregate": "ollama" },
+        ),
+      // Send a quit signal to the Ollama server. Older Ollama versions may not
+      // support the /api/close endpoint — the response message reflects that.
+      [WS_METHODS.ollamaQuitServer]: (_input) =>
+        observeRpcEffect(
+          WS_METHODS.ollamaQuitServer,
+          Effect.gen(function* () {
+            const settings = yield* serverSettings.getSettings;
+            const baseUrl = settings.providers.ollama.baseUrl;
+            return yield* Effect.tryPromise({
+              try: async () => {
+                const res = await fetch(`${baseUrl}/api/close`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                });
+                if (!res.ok) {
+                  return {
+                    success: false as const,
+                    message: `Ollama returned HTTP ${res.status}. Your version may not support remote quit.`,
+                  };
+                }
+                return { success: true as const, message: "Ollama has been quit." };
+              },
+              catch: (err) => ({
+                success: false as const,
+                message: `Could not quit Ollama: ${String(err)}`,
+              }),
+            }).pipe(
+              Effect.orElseSucceed(() => ({
+                success: false as const,
+                message: "Unknown error quitting Ollama.",
+              })),
+            );
+          }).pipe(
+            // ServerSettingsError is unrecoverable here — convert to a defect
+            // so the error channel remains `never` as the RPC contract requires.
+            Effect.orDie,
+          ),
+          { "rpc.aggregate": "ollama" },
+        ),
       [WS_METHODS.serverUpsertKeybinding]: (rule) =>
         observeRpcEffect(
           WS_METHODS.serverUpsertKeybinding,
