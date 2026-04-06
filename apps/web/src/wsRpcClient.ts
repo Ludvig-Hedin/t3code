@@ -133,6 +133,10 @@ export interface WsRpcClient {
     readonly install: (input: { source: string }) => Promise<PluginInfo>;
     readonly remove: (input: { location: string }) => Promise<void>;
   };
+  readonly ollama: {
+    readonly pullModel: RpcUnaryMethod<typeof WS_METHODS.ollamaPullModel>;
+    readonly quitServer: RpcUnaryNoArgMethod<typeof WS_METHODS.ollamaQuitServer>;
+  };
   readonly preview: {
     readonly detectApps: (input: { projectId: ProjectId }) => Promise<PreviewApp[]>;
     readonly start: (input: { projectId: ProjectId; appId: string }) => Promise<PreviewSession>;
@@ -303,6 +307,12 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
           .then((plugins) => [...plugins]),
       install: (input) => transport.request((client) => client[WS_METHODS.pluginsInstall](input)),
       remove: (input) => transport.request((client) => client[WS_METHODS.pluginsRemove](input)),
+    },
+    ollama: {
+      pullModel: (input) =>
+        transport.request((client) => client[WS_METHODS.ollamaPullModel](input)),
+      quitServer: () =>
+        transport.request((client) => client[WS_METHODS.ollamaQuitServer]({})),
     },
     preview: {
       // Spread readonly arrays to satisfy mutable PreviewApp[] / PreviewSession[] return types
