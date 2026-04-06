@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
+import { type ProviderKind } from "@t3tools/contracts";
 import { Badge } from "../../ui/badge";
 import { ClaudeAI, Gemini, OllamaIcon, OpenAI, OpenCodeIcon } from "../../Icons";
 import { useServerProviders } from "../../../rpc/serverState";
@@ -22,7 +23,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 interface ProviderInstallInfo {
-  id: string;
+  id: ProviderKind;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
   commands: Record<Platform, string[]>;
@@ -145,7 +146,7 @@ export function ProviderInstallStep() {
       {/* Provider rows */}
       <div className="space-y-2">
         {PROVIDERS.map((provider) => {
-          const isInstalled = installedIds.has(provider.id as never);
+          const isInstalled = installedIds.has(provider.id);
           const commands = provider.commands[platform];
           const Icon = provider.Icon;
           return (

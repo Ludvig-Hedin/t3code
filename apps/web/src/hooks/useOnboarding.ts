@@ -7,7 +7,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 
-const STORAGE_KEY = "birdcode:onboarding";
+/** Exported so Settings sidebar button can reference the same key without duplicating it. */
+export const STORAGE_KEY = "birdcode:onboarding";
 
 export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
 
@@ -23,13 +24,16 @@ const DEFAULT_STATE: OnboardingState = {
   open: false,
 };
 
-function loadState(): OnboardingState {
+function loadState(): { state: OnboardingState; wasStored: boolean } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_STATE;
-    return { ...DEFAULT_STATE, ...(JSON.parse(raw) as Partial<OnboardingState>) };
+    if (!raw) return { state: DEFAULT_STATE, wasStored: false };
+    return {
+      state: { ...DEFAULT_STATE, ...(JSON.parse(raw) as Partial<OnboardingState>) },
+      wasStored: true,
+    };
   } catch {
-    return DEFAULT_STATE;
+    return { state: DEFAULT_STATE, wasStored: false };
   }
 }
 
@@ -43,17 +47,16 @@ function saveState(state: OnboardingState): void {
 
 export function useOnboarding() {
   const [state, setState] = useState<OnboardingState>(() => {
-    const hasStoredState = localStorage.getItem(STORAGE_KEY) !== null;
-    const loaded = loadState();
+    const { state: loaded, wasStored } = loadState();
     // Auto-open on the very first visit (nothing stored yet)
-    return { ...loaded, open: !hasStoredState && !loaded.completed };
+    return { ...loaded, open: !wasStored && !loaded.completed };
   });
 
   // Sync state when another component writes to localStorage (e.g. Settings "Setup Guide" button)
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
-        setState(loadState());
+        setState(loadState().state);
       }
     };
     window.addEventListener("storage", handler);

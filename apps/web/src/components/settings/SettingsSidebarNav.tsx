@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { STORAGE_KEY as ONBOARDING_STORAGE_KEY } from "../../hooks/useOnboarding";
 import {
   SidebarContent,
   SidebarFooter,
@@ -100,12 +101,16 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               className="gap-2 px-2 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               onClick={() => {
                 try {
-                  const STORAGE_KEY = "birdcode:onboarding";
-                  const raw = localStorage.getItem(STORAGE_KEY);
+                  const raw = localStorage.getItem(ONBOARDING_STORAGE_KEY);
                   const state = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-                  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, open: true }));
+                  localStorage.setItem(
+                    ONBOARDING_STORAGE_KEY,
+                    JSON.stringify({ ...state, open: true }),
+                  );
                   // Dispatch a storage event so the useOnboarding hook (same tab) picks it up
-                  window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
+                  window.dispatchEvent(
+                    new StorageEvent("storage", { key: ONBOARDING_STORAGE_KEY }),
+                  );
                 } catch {
                   // ignore
                 }

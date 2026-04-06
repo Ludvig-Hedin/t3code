@@ -170,12 +170,34 @@ export const importScanRouteLayer = HttpRouter.add(
 // ── Import Execute Route ──────────────────────────────────────────────────────
 
 /**
- * Wraps in Layer.unwrap so OrchestrationEngineService + normalizeDispatchCommand
- * are available via closure inside the route handler.
+ * Wraps in Layer.unwrap so OrchestrationEngineService is available via
+ * closure inside the route handler.
+ *
+ * NOTE: We intentionally bypass normalizeDispatchCommand here. That helper
+ * needs WorkspacePaths / FileSystem / ServerConfig which are not provided in
+ * this layer's context. For the import flow the workspaceRoot is a resolved,
+ * already-validated path from PROVIDER_HISTORY_CANDIDATES so normalisation
+ * is not required.
  */
 export const importExecuteRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const engine = yield* OrchestrationEngineService;
+
+    // Build the set of allowed history roots once so we can validate each
+    // request's historyPath against it (defence-in-depth on a local server).
+    const home = os.homedir();
+    const allowedRoots = new Set<string>(
+      Object.values(PROVIDER_HISTORY_CANDIDATES).flatMap((fn) =>
+        fn(home).filter(Boolean),
+      ),
+    );
+
+    const isAllowedPath = (p: string) => {
+      for (const root of allowedRoots) {
+        if (p === root || p.startsWith(root + nodePath.sep)) return true;
+      }
+      return false;
+    };
 
     return HttpRouter.add(
       "POST",
@@ -193,6 +215,12 @@ export const importExecuteRouteLayer = Layer.unwrap(
         const errors: string[] = [];
 
         for (const selection of body.selections) {
+          // Security: only read from paths within known provider history roots
+          if (!isAllowedPath(selection.historyPath)) {
+            errors.push(`Skipped "${selection.projectName}": path not within an allowed root.`);
+            continue;
+          }
+
           const projectId = ProjectId.makeUnsafe(crypto.randomUUID());
           const createdAt = new Date().toISOString();
           const title = TrimmedNonEmptyString.makeUnsafe(
@@ -200,8 +228,8 @@ export const importExecuteRouteLayer = Layer.unwrap(
           );
           const workspaceRoot = TrimmedNonEmptyString.makeUnsafe(selection.projectPath);
 
-          // ── Create project ────────────────────────────────────────────────
-          const projectCommand: ClientOrchestrationCommand = {
+          // ── Create project (cast directly — workspaceRoot is already resolved) ──
+          const projectCommand: OrchestrationCommand = {
             type: "project.create",
             commandId: CommandId.makeUnsafe(`import:project:${crypto.randomUUID()}`),
             projectId,
@@ -210,18 +238,9 @@ export const importExecuteRouteLayer = Layer.unwrap(
             createdAt,
           };
 
-          const normalizedProject = yield* normalizeDispatchCommand(projectCommand).pipe(
+          yield* engine.dispatch(projectCommand).pipe(
             Effect.catch((err) => {
-              errors.push(`Project "${selection.projectName}": ${err.message}`);
-              return Effect.succeed(null);
-            }),
-          );
-
-          if (!normalizedProject) continue;
-
-          yield* engine.dispatch(normalizedProject).pipe(
-            Effect.catch((err) => {
-              errors.push(`Dispatch project "${selection.projectName}": ${err.message}`);
+              errors.push(`Dispatch project "${selection.projectName}": ${String(err)}`);
               return Effect.succeed({ sequence: -1 });
             }),
           );
@@ -252,13 +271,15 @@ export const importExecuteRouteLayer = Layer.unwrap(
             const threadId = ThreadId.makeUnsafe(crypto.randomUUID());
             const threadTitle = TrimmedNonEmptyString.makeUnsafe(rawTitle);
 
-            const threadCommand: ClientOrchestrationCommand = {
+            // thread.create passes through normalizeDispatchCommand unchanged
+            // so we cast directly here as well, keeping parity.
+            const threadCommand: OrchestrationCommand = {
               type: "thread.create",
               commandId: CommandId.makeUnsafe(`import:thread:${crypto.randomUUID()}`),
               threadId,
               projectId,
               title: threadTitle,
-              // Use manifest (auto-routing) as the default model for imported thread stubs
+              // manifest = smart-router: routes to cheapest capable model automatically
               modelSelection: {
                 provider: "manifest",
                 model: TrimmedNonEmptyString.makeUnsafe("auto"),
@@ -270,18 +291,9 @@ export const importExecuteRouteLayer = Layer.unwrap(
               createdAt,
             };
 
-            const normalizedThread = yield* normalizeDispatchCommand(threadCommand).pipe(
+            yield* engine.dispatch(threadCommand).pipe(
               Effect.catch((err) => {
-                errors.push(`Thread "${rawTitle}": ${err.message}`);
-                return Effect.succeed(null);
-              }),
-            );
-
-            if (!normalizedThread) continue;
-
-            yield* engine.dispatch(normalizedThread).pipe(
-              Effect.catch((err) => {
-                errors.push(`Dispatch thread "${rawTitle}": ${err.message}`);
+                errors.push(`Dispatch thread "${rawTitle}": ${String(err)}`);
                 return Effect.succeed({ sequence: -1 });
               }),
             );
