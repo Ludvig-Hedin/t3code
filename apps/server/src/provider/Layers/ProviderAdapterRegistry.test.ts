@@ -127,12 +127,16 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const codex = yield* registry.getByProvider("codex");
       const claude = yield* registry.getByProvider("claudeAgent");
       const gemini = yield* registry.getByProvider("gemini");
+      const opencode = yield* registry.getByProvider("opencode");
+      const ollama = yield* registry.getByProvider("ollama");
       assert.equal(codex, fakeCodexAdapter);
       assert.equal(claude, fakeClaudeAdapter);
       assert.equal(gemini, fakeGeminiAdapter);
+      assert.equal(opencode, fakeOpenCodeAdapter);
+      assert.equal(ollama, fakeOllamaAdapter);
 
       const providers = yield* registry.listProviders();
-      assert.deepEqual(providers, ["codex", "claudeAgent", "gemini"]);
+      assert.deepEqual(providers, ["codex", "claudeAgent", "gemini", "opencode", "ollama"]);
     }),
   );
 
