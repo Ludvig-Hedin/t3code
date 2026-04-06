@@ -187,9 +187,7 @@ export const importExecuteRouteLayer = Layer.unwrap(
     // request's historyPath against it (defence-in-depth on a local server).
     const home = os.homedir();
     const allowedRoots = new Set<string>(
-      Object.values(PROVIDER_HISTORY_CANDIDATES).flatMap((fn) =>
-        fn(home).filter(Boolean),
-      ),
+      Object.values(PROVIDER_HISTORY_CANDIDATES).flatMap((fn) => fn(home).filter(Boolean)),
     );
 
     const isAllowedPath = (p: string) => {

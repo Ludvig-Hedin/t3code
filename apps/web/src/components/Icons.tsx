@@ -483,15 +483,8 @@ export const WindsurfIcon: Icon = (props) => (
   </svg>
 );
 
-// XcodeIcon: Apple Xcode — hammer silhouette in a rounded square (Xcode's iconic imagery)
-export const XcodeIcon: Icon = (props) => (
-  <svg {...props} viewBox="0 0 24 24" fill="none">
-    <rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor" opacity="0.12" />
-    {/* Hammer head */}
-    <rect x="7" y="6" width="7" height="4.5" rx="1.2" fill="currentColor" />
-    {/* Hammer neck connecting head to handle */}
-    <rect x="10" y="10.5" width="2.5" height="1.5" fill="currentColor" />
-    {/* Hammer handle, angled downward-left */}
-    <path d="M11.25 12L7.5 17.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
+// XcodeIcon: Apple Xcode — served as a static asset to avoid inlining the large SVG string.
+// The src matches the file at apps/web/public/xcode.svg.
+export const XcodeIcon: Icon = ({ className }) => (
+  <img src="/xcode.svg" className={className} alt="Xcode" />
 );

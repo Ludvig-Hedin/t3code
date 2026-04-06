@@ -7,7 +7,7 @@
  * @module Open
  */
 import { spawn } from "node:child_process";
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 
 import { EDITORS, OpenError, type EditorId } from "@t3tools/contracts";
@@ -191,6 +191,34 @@ export function isCommandAvailable(
   return false;
 }
 
+/**
+ * macOS app bundle paths for editors that may be installed as GUI apps without
+ * registering their CLI tool on PATH. Checked in addition to isCommandAvailable()
+ * so that tools like Cursor and Windsurf are detected even without shell integration.
+ *
+ * Multiple candidate paths are listed per editor to cover different install conventions
+ * (e.g. community edition, alternate product names, Homebrew Cask vs direct download).
+ */
+const MACOS_APP_BUNDLE_PATHS: Partial<Record<EditorId, ReadonlyArray<string>>> = {
+  cursor: ["/Applications/Cursor.app"],
+  windsurf: ["/Applications/Windsurf.app"],
+  trae: ["/Applications/Trae.app", "/Applications/Trae AI.app"],
+  vscode: ["/Applications/Visual Studio Code.app"],
+  "vscode-insiders": ["/Applications/Visual Studio Code - Insiders.app"],
+  vscodium: ["/Applications/VSCodium.app"],
+  zed: ["/Applications/Zed.app", "/Applications/Zed Preview.app"],
+  antigravity: ["/Applications/Antigravity.app"],
+  xcode: ["/Applications/Xcode.app"],
+  idea: ["/Applications/IntelliJ IDEA.app", "/Applications/IntelliJ IDEA CE.app"],
+};
+
+function isMacOsAppBundleAvailable(editorId: EditorId, platform: NodeJS.Platform): boolean {
+  if (platform !== "darwin") return false;
+  const candidates = MACOS_APP_BUNDLE_PATHS[editorId];
+  if (!candidates) return false;
+  return candidates.some((appPath) => existsSync(appPath));
+}
+
 export function resolveAvailableEditors(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
@@ -199,7 +227,11 @@ export function resolveAvailableEditors(
 
   for (const editor of EDITORS) {
     const command = editor.command ?? fileManagerCommandForPlatform(platform);
-    if (isCommandAvailable(command, { platform, env })) {
+    const availableViaCli = isCommandAvailable(command, { platform, env });
+    // On macOS also check for installed .app bundles — editors like Cursor and Windsurf
+    // may not register their CLI on PATH unless the user explicitly does so.
+    const availableViaBundle = isMacOsAppBundleAvailable(editor.id, platform);
+    if (availableViaCli || availableViaBundle) {
       available.push(editor.id);
     }
   }
