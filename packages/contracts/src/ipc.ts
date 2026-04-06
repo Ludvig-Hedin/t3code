@@ -116,6 +116,21 @@ export interface DesktopMobileDevicesResult {
   devices: DesktopMobileDevice[];
 }
 
+export type TunnelStatus =
+  | { status: "idle" }
+  | { status: "downloading"; progress: number }
+  | { status: "authenticating" }
+  | { status: "connecting" }
+  | { status: "active"; url: string }
+  | { status: "error"; message: string };
+
+export interface RemoteSettings {
+  remoteAccessEnabled: boolean;
+  keepAwakeEnabled: boolean;
+  tunnelName: string | null;
+  tunnelUrl: string | null;
+}
+
 export interface DesktopUpdateCheckResult {
   checked: boolean;
   state: DesktopUpdateState;
@@ -128,6 +143,11 @@ export interface DesktopBridge {
   getDesktopAuthToken?: () => string | null;
   getMobileDevices?: () => DesktopMobileDevicesResult | null;
   revokeMobileDevice?: (input: { deviceId: string }) => Promise<DesktopMobileDevicesResult | null>;
+  getRemoteSettings?: () => RemoteSettings | null;
+  enableRemoteAccess?: () => Promise<{ ok: boolean; error?: string }>;
+  disableRemoteAccess?: () => Promise<void>;
+  setKeepAwake?: (enabled: boolean) => Promise<void>;
+  onTunnelStatus?: (listener: (status: TunnelStatus) => void) => () => void;
   pickFolder: () => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
   setTheme: (theme: DesktopTheme) => Promise<void>;
