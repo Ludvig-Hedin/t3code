@@ -157,6 +157,10 @@ export const WS_METHODS = {
   pluginsInstall: "plugins.install",
   pluginsRemove: "plugins.remove",
 
+  // Ollama management methods
+  ollamaPullModel: "ollama.pullModel",
+  ollamaQuitServer: "ollama.quitServer",
+
   // Streaming subscriptions
   subscribeOrchestrationDomainEvents: "subscribeOrchestrationDomainEvents",
   subscribeTerminalEvents: "subscribeTerminalEvents",
@@ -506,6 +510,18 @@ export const WsPluginsRemoveRpc = Rpc.make(WS_METHODS.pluginsRemove, {
   error: PluginError,
 });
 
+// ── Ollama RPCs ─────────────────────────────────────────────────────────
+
+export const WsOllamaPullModelRpc = Rpc.make(WS_METHODS.ollamaPullModel, {
+  payload: Schema.Struct({ model: Schema.String }),
+  success: Schema.Struct({ success: Schema.Boolean, error: Schema.optional(Schema.String) }),
+});
+
+export const WsOllamaQuitServerRpc = Rpc.make(WS_METHODS.ollamaQuitServer, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({ success: Schema.Boolean, message: Schema.optional(Schema.String) }),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -561,4 +577,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsPluginsListRpc,
   WsPluginsInstallRpc,
   WsPluginsRemoveRpc,
+  WsOllamaPullModelRpc,
+  WsOllamaQuitServerRpc,
 );
