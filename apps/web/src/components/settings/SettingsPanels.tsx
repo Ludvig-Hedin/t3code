@@ -78,6 +78,7 @@ import { ColorPickerField } from "../ui/color-picker";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ImportChatsFlow } from "../onboarding/ImportChatsFlow";
+import { useOnboarding } from "../../hooks/useOnboarding";
 import {
   useServerAvailableEditors,
   useServerKeybindingsConfigPath,
@@ -487,6 +488,23 @@ export function useSettingsRestore(onRestored?: () => void) {
     changedSettingLabels,
     restoreDefaults,
   };
+}
+
+function SetupGuideSection() {
+  const { openOnboarding } = useOnboarding();
+  return (
+    <SettingsSection title="Setup Guide">
+      <SettingsRow
+        title="Onboarding"
+        description="Re-run the setup guide to install providers, pair your mobile device, and import existing conversations."
+        control={
+          <Button size="xs" variant="outline" onClick={openOnboarding}>
+            Open setup guide
+          </Button>
+        }
+      />
+    </SettingsSection>
+  );
 }
 
 export function GeneralSettingsPanel() {
@@ -960,6 +978,8 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <SetupGuideSection />
 
       <SettingsSection title="About">
         {isElectron ? (
