@@ -9,6 +9,7 @@ import { Effect, Equal, Layer, PubSub, Ref, Stream } from "effect";
 import { ClaudeProviderLive } from "./ClaudeProvider";
 import { CodexProviderLive } from "./CodexProvider";
 import { GeminiProviderLive } from "./GeminiProvider";
+import { OllamaProviderLive } from "./OllamaProvider";
 import { OpenCodeProviderLive } from "./OpenCodeProvider";
 import type { ClaudeProviderShape } from "../Services/ClaudeProvider";
 import { ClaudeProvider } from "../Services/ClaudeProvider";
@@ -16,6 +17,8 @@ import type { CodexProviderShape } from "../Services/CodexProvider";
 import { CodexProvider } from "../Services/CodexProvider";
 import type { GeminiProviderShape } from "../Services/GeminiProvider";
 import { GeminiProvider } from "../Services/GeminiProvider";
+import type { OllamaProviderShape } from "../Services/OllamaProvider";
+import { OllamaProvider } from "../Services/OllamaProvider";
 import type { OpenCodeProviderShape } from "../Services/OpenCodeProvider";
 import { OpenCodeProvider } from "../Services/OpenCodeProvider";
 import { ProviderRegistry, type ProviderRegistryShape } from "../Services/ProviderRegistry";
@@ -25,13 +28,17 @@ const loadProviders = (
   claudeProvider: ClaudeProviderShape,
   geminiProvider: GeminiProviderShape,
   openCodeProvider: OpenCodeProviderShape,
-): Effect.Effect<readonly [ServerProvider, ServerProvider, ServerProvider, ServerProvider]> =>
+  ollamaProvider: OllamaProviderShape,
+): Effect.Effect<
+  readonly [ServerProvider, ServerProvider, ServerProvider, ServerProvider, ServerProvider]
+> =>
   Effect.all(
     [
       codexProvider.getSnapshot,
       claudeProvider.getSnapshot,
       geminiProvider.getSnapshot,
       openCodeProvider.getSnapshot,
+      ollamaProvider.getSnapshot,
     ],
     {
       concurrency: "unbounded",
@@ -50,12 +57,13 @@ export const ProviderRegistryLive = Layer.effect(
     const claudeProvider = yield* ClaudeProvider;
     const geminiProvider = yield* GeminiProvider;
     const openCodeProvider = yield* OpenCodeProvider;
+    const ollamaProvider = yield* OllamaProvider;
     const changesPubSub = yield* Effect.acquireRelease(
       PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
       PubSub.shutdown,
     );
     const providersRef = yield* Ref.make<ReadonlyArray<ServerProvider>>(
-      yield* loadProviders(codexProvider, claudeProvider, geminiProvider, openCodeProvider),
+      yield* loadProviders(codexProvider, claudeProvider, geminiProvider, openCodeProvider, ollamaProvider),
     );
 
     const syncProviders = Effect.fn("syncProviders")(function* (options?: {
@@ -67,6 +75,7 @@ export const ProviderRegistryLive = Layer.effect(
         claudeProvider,
         geminiProvider,
         openCodeProvider,
+        ollamaProvider,
       );
       yield* Ref.set(providersRef, providers);
 
@@ -89,6 +98,9 @@ export const ProviderRegistryLive = Layer.effect(
     yield* Stream.runForEach(openCodeProvider.streamChanges, () => syncProviders()).pipe(
       Effect.forkScoped,
     );
+    yield* Stream.runForEach(ollamaProvider.streamChanges, () => syncProviders()).pipe(
+      Effect.forkScoped,
+    );
 
     const refresh = Effect.fn("refresh")(function* (provider?: ProviderKind) {
       switch (provider) {
@@ -104,6 +116,9 @@ export const ProviderRegistryLive = Layer.effect(
         case "opencode":
           yield* openCodeProvider.refresh;
           break;
+        case "ollama":
+          yield* ollamaProvider.refresh;
+          break;
         default:
           yield* Effect.all(
             [
@@ -111,6 +126,7 @@ export const ProviderRegistryLive = Layer.effect(
               claudeProvider.refresh,
               geminiProvider.refresh,
               openCodeProvider.refresh,
+              ollamaProvider.refresh,
             ],
             {
               concurrency: "unbounded",
@@ -141,4 +157,5 @@ export const ProviderRegistryLive = Layer.effect(
   Layer.provideMerge(ClaudeProviderLive),
   Layer.provideMerge(GeminiProviderLive),
   Layer.provideMerge(OpenCodeProviderLive),
+  Layer.provideMerge(OllamaProviderLive),
 );
