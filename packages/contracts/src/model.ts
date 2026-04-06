@@ -28,11 +28,15 @@ export type GeminiModelOptions = typeof GeminiModelOptions.Type;
 export const OpenCodeModelOptions = Schema.Struct({});
 export type OpenCodeModelOptions = typeof OpenCodeModelOptions.Type;
 
+export const OllamaModelOptions = Schema.Struct({});
+export type OllamaModelOptions = typeof OllamaModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
   gemini: Schema.optional(GeminiModelOptions),
   opencode: Schema.optional(OpenCodeModelOptions),
+  ollama: Schema.optional(OllamaModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 
@@ -64,6 +68,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
   claudeAgent: "claude-sonnet-4-6",
   gemini: "gemini-2.5-pro",
   opencode: "moonshot/kimi-k2-5",
+  ollama: "llama3.2",
 };
 
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
@@ -74,6 +79,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   claudeAgent: "claude-haiku-4-5",
   gemini: "gemini-2.5-flash",
   opencode: "moonshot/kimi-k2-5",
+  ollama: "llama3.2",
 };
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, string>> = {
@@ -130,6 +136,11 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "gemini-3-flash-preview": "gemini-3-flash-preview",
   },
   opencode: {},
+  ollama: {
+    llama3: "llama3.2",
+    qwen: "qwen2.5-coder",
+    mistral: "mistral",
+  },
 };
 
 // ── Provider display names ────────────────────────────────────────────
@@ -139,4 +150,5 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   claudeAgent: "Claude",
   gemini: "Gemini",
   opencode: "OpenCode",
+  ollama: "Ollama",
 };
