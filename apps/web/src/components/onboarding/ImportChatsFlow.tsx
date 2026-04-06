@@ -144,8 +144,8 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
         {result.errors.length > 0 && (
           <div className="w-full rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2 text-left">
             <p className="text-xs font-medium text-amber-600 mb-1">Some projects had issues:</p>
-            {result.errors.map((e, i) => (
-              <p key={i} className="text-xs text-muted-foreground">
+            {result.errors.map((e) => (
+              <p key={e} className="text-xs text-muted-foreground">
                 {e}
               </p>
             ))}

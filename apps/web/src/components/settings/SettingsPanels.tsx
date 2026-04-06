@@ -2,15 +2,19 @@ import {
   ArchiveIcon,
   ArchiveX,
   ChevronDownIcon,
+  DownloadIcon,
   FileTextIcon,
   LoaderIcon,
+  MonitorIcon,
+  MoonIcon,
   PlusIcon,
   SaveIcon,
+  SunIcon,
   Undo2Icon,
   XIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CodeReviewFixMode,
   EDITORS,
@@ -33,6 +37,8 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { getWsRpcClient } from "../../wsRpcClient";
 import { resolveAndPersistPreferredEditor, usePreferredEditor } from "../../editorPreferences";
+import { EDITOR_ICONS } from "../../editorIcons";
+import { AutoIcon, ClaudeAI, Gemini, OpenAI, OpenCodeIcon, OllamaIcon } from "../Icons";
 import {
   THEME_PRESETS,
   UI_FONT_OPTIONS,
@@ -54,7 +60,8 @@ import {
 import { ensureNativeApi, readNativeApi } from "../../nativeApi";
 import { useStore } from "../../store";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { SettingsPageContainer, SettingsSection } from "./SettingsLayout";
+import { SettingsPageContainer, SettingsRow as SettingsLayoutRow, SettingsSection } from "./SettingsLayout";
+import { UsageStatsSection } from "./UsageStatsSection";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
@@ -63,8 +70,10 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
+import { ColorPickerField } from "../ui/color-picker";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { ImportChatsFlow } from "../onboarding/ImportChatsFlow";
 import {
   useServerAvailableEditors,
   useServerKeybindingsConfigPath,
@@ -73,19 +82,20 @@ import {
 } from "../../rpc/serverState";
 
 const THEME_OPTIONS = [
-  {
-    value: "system",
-    label: "System",
-  },
-  {
-    value: "light",
-    label: "Light",
-  },
-  {
-    value: "dark",
-    label: "Dark",
-  },
+  { value: "system", label: "System", icon: MonitorIcon },
+  { value: "light", label: "Light", icon: SunIcon },
+  { value: "dark", label: "Dark", icon: MoonIcon },
 ] as const;
+
+// Provider icon map — same order as chat model picker
+const PROVIDER_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  codex: OpenAI,
+  claudeAgent: ClaudeAI,
+  gemini: Gemini,
+  opencode: OpenCodeIcon,
+  ollama: OllamaIcon,
+  manifest: AutoIcon,
+};
 
 const TIMESTAMP_FORMAT_LABELS = {
   // "locale" uses Intl.DateTimeFormat(undefined) — inherits the browser's locale,
@@ -568,15 +578,37 @@ export function GeneralSettingsPanel() {
             >
               <SelectTrigger className="w-full sm:w-44" aria-label="Default editor">
                 <SelectValue>
-                  {EDITORS.find((e) => e.id === effectiveEditor)?.label ?? "Auto-detect"}
+                  {/* Show the editor logo alongside the label, matching the header picker */}
+                  {(() => {
+                    const def = EDITORS.find((e) => e.id === effectiveEditor);
+                    const EditorIcon = effectiveEditor ? EDITOR_ICONS[effectiveEditor] : undefined;
+                    return (
+                      <span className="flex items-center gap-1.5">
+                        {EditorIcon && (
+                          <EditorIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                        )}
+                        {def?.label ?? "Auto-detect"}
+                      </span>
+                    );
+                  })()}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 {(availableEditors ?? []).map((editorId) => {
                   const def = EDITORS.find((e) => e.id === editorId);
+                  const EditorIcon = EDITOR_ICONS[editorId];
                   return def ? (
                     <SelectItem hideIndicator key={editorId} value={editorId}>
-                      {def.label}
+                      {/* Mirror the icon+label layout from the header picker dropdown */}
+                      <span className="flex items-center gap-2">
+                        {EditorIcon && (
+                          <EditorIcon
+                            className="size-4 shrink-0 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                        )}
+                        {def.label}
+                      </span>
                     </SelectItem>
                   ) : null;
                 })}
@@ -612,23 +644,45 @@ export function GeneralSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-full sm:w-44" aria-label="Default provider">
+              <SelectTrigger className="w-full sm:w-52" aria-label="Default provider">
                 <SelectValue>
-                  {settings.defaultProvider === "use-latest"
-                    ? "Last used"
-                    : (PROVIDER_DISPLAY_NAMES[settings.defaultProvider as ProviderKind] ??
-                      settings.defaultProvider)}
+                  {(() => {
+                    if (settings.defaultProvider === "use-latest") {
+                      return <span className="text-muted-foreground">Last used</span>;
+                    }
+                    const Icon = PROVIDER_ICON_MAP[settings.defaultProvider];
+                    const label =
+                      PROVIDER_DISPLAY_NAMES[settings.defaultProvider as ProviderKind] ??
+                      settings.defaultProvider;
+                    return (
+                      <span className="flex items-center gap-1.5">
+                        {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+                        {label}
+                      </span>
+                    );
+                  })()}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="use-latest">
                   Last used
                 </SelectItem>
-                {serverProviders.map((p) => (
-                  <SelectItem hideIndicator key={p.provider} value={p.provider}>
-                    {PROVIDER_DISPLAY_NAMES[p.provider] ?? p.provider}
-                  </SelectItem>
-                ))}
+                {/* Show providers in same order as chat picker */}
+                {(["codex", "claudeAgent", "gemini", "opencode", "ollama"] as ProviderKind[])
+                  .filter((kind) => serverProviders.some((p) => p.provider === kind))
+                  .map((kind) => {
+                    const Icon = PROVIDER_ICON_MAP[kind];
+                    return (
+                      <SelectItem hideIndicator key={kind} value={kind}>
+                        <span className="flex items-center gap-2">
+                          {Icon ? (
+                            <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                          ) : null}
+                          {PROVIDER_DISPLAY_NAMES[kind] ?? kind}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
               </SelectPopup>
             </Select>
           }
@@ -1408,6 +1462,25 @@ export function ProvidersSettingsPanel() {
           );
         })}
       </SettingsSection>
+
+      {/* Usage statistics derived from all Bird Code sessions */}
+      <SettingsSection title="Usage Stats">
+        <UsageStatsSection />
+      </SettingsSection>
+
+      {/* Import conversations from provider history directories */}
+      <SettingsSection
+        title="Import Conversations"
+        icon={<DownloadIcon className="size-3.5" />}
+      >
+        <SettingsLayoutRow>
+          <p className="text-xs text-muted-foreground mb-4">
+            Import existing conversations from your AI provider history. Imported projects and
+            threads will appear in your sidebar and can be continued in Bird Code.
+          </p>
+          <ImportChatsFlow />
+        </SettingsLayoutRow>
+      </SettingsSection>
     </SettingsPageContainer>
   );
 }
@@ -1622,15 +1695,31 @@ export function AppearanceSettingsPanel() {
             >
               <SelectTrigger className="w-full sm:w-36" aria-label="Color scheme">
                 <SelectValue>
-                  {THEME_OPTIONS.find((o) => o.value === theme)?.label ?? "System"}
+                  {(() => {
+                    const opt = THEME_OPTIONS.find((o) => o.value === theme);
+                    if (!opt) return "System";
+                    const Icon = opt.icon;
+                    return (
+                      <span className="flex items-center gap-1.5">
+                        <Icon className="size-3.5 shrink-0" />
+                        {opt.label}
+                      </span>
+                    );
+                  })()}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
-                {THEME_OPTIONS.map((option) => (
-                  <SelectItem hideIndicator key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
+                {THEME_OPTIONS.map((option) => {
+                  const Icon = option.icon;
+                  return (
+                    <SelectItem hideIndicator key={option.value} value={option.value}>
+                      <span className="flex items-center gap-2">
+                        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                        {option.label}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectPopup>
             </Select>
           }
@@ -1816,49 +1905,80 @@ export function AppearanceSettingsPanel() {
           </div>
         </div>
 
-        {/* Accent color (light) */}
-        <SettingsRow
-          title="Accent color (light)"
-          description="Primary accent color for the light theme. Accepts CSS color values (oklch, hex, hsl)."
-          resetAction={
-            settings.themeAccentColor !== "" ? (
-              <SettingResetButton
-                label="accent color light"
-                onClick={() => updateSettings({ themeAccentColor: "" })}
-              />
-            ) : null
-          }
-          control={
-            <Input
-              value={settings.themeAccentColor}
-              onChange={(e) => updateSettings({ themeAccentColor: e.target.value })}
-              placeholder="e.g. oklch(0.55 0.18 145)"
-              className="w-full sm:w-56 font-mono text-xs"
-            />
-          }
-        />
-
-        {/* Accent color (dark) */}
-        <SettingsRow
-          title="Accent color (dark)"
-          description="Primary accent color for the dark theme."
-          resetAction={
-            settings.themeAccentColorDark !== "" ? (
-              <SettingResetButton
-                label="accent color dark"
-                onClick={() => updateSettings({ themeAccentColorDark: "" })}
-              />
-            ) : null
-          }
-          control={
-            <Input
-              value={settings.themeAccentColorDark}
-              onChange={(e) => updateSettings({ themeAccentColorDark: e.target.value })}
-              placeholder="e.g. oklch(0.65 0.18 145)"
-              className="w-full sm:w-56 font-mono text-xs"
-            />
-          }
-        />
+        {/* Per-color rows — accent, background, foreground, each with light/dark picker */}
+        {(
+          [
+            {
+              label: "Accent",
+              description: "Primary interactive color (buttons, focus rings).",
+              lightKey: "themeAccentColor",
+              darkKey: "themeAccentColorDark",
+            },
+            {
+              label: "Background",
+              description: "Main app background surface color.",
+              lightKey: "themeBackgroundColor",
+              darkKey: "themeBackgroundColorDark",
+            },
+            {
+              label: "Foreground",
+              description: "Primary text and icon color.",
+              lightKey: "themeForegroundColor",
+              darkKey: "themeForegroundColorDark",
+            },
+          ] as const
+        ).map(({ label, description, lightKey, darkKey }) => (
+          <SettingsRow key={label} title={label} description={description}>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground">Light</p>
+                <div className="flex items-center gap-1.5">
+                  <ColorPickerField
+                    value={settings[lightKey]}
+                    onChange={(v) => updateSettings({ [lightKey]: v })}
+                    placeholder="Theme default"
+                    label={`${label} (light)`}
+                    className="flex-1"
+                  />
+                  {settings[lightKey] !== "" && (
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      className="size-6 shrink-0 text-muted-foreground"
+                      onClick={() => updateSettings({ [lightKey]: "" })}
+                      aria-label={`Reset ${label} light`}
+                    >
+                      <XIcon className="size-3" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground">Dark</p>
+                <div className="flex items-center gap-1.5">
+                  <ColorPickerField
+                    value={settings[darkKey]}
+                    onChange={(v) => updateSettings({ [darkKey]: v })}
+                    placeholder="Theme default"
+                    label={`${label} (dark)`}
+                    className="flex-1"
+                  />
+                  {settings[darkKey] !== "" && (
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      className="size-6 shrink-0 text-muted-foreground"
+                      onClick={() => updateSettings({ [darkKey]: "" })}
+                      aria-label={`Reset ${label} dark`}
+                    >
+                      <XIcon className="size-3" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </SettingsRow>
+        ))}
 
         {/* Reset all colors */}
         {settings.themeAccentColor ||

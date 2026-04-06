@@ -5,6 +5,7 @@ import {
   BellIcon,
   CodeIcon,
   GitBranchIcon,
+  MapIcon,
   PaletteIcon,
   PlugIcon,
   QrCodeIcon,
@@ -92,6 +93,30 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       <SidebarSeparator />
       <SidebarFooter className="p-2">
         <SidebarMenu>
+          {/* Setup Guide — reopens onboarding sheet by writing open:true to localStorage */}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="gap-2 px-2 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => {
+                try {
+                  const STORAGE_KEY = "birdcode:onboarding";
+                  const raw = localStorage.getItem(STORAGE_KEY);
+                  const state = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, open: true }));
+                  // Dispatch a storage event so the useOnboarding hook (same tab) picks it up
+                  window.dispatchEvent(
+                    new StorageEvent("storage", { key: STORAGE_KEY }),
+                  );
+                } catch {
+                  // ignore
+                }
+              }}
+            >
+              <MapIcon className="size-4" />
+              <span>Setup Guide</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="sm"
