@@ -23,7 +23,7 @@ export const ORCHESTRATION_WS_METHODS = {
   replayEvents: "orchestration.replayEvents",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "gemini", "opencode"]);
+export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "gemini", "opencode", "ollama"]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
