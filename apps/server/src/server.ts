@@ -16,6 +16,7 @@ import { ProviderSessionRuntimeRepositoryLive } from "./persistence/Layers/Provi
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { GeminiAdapterLive } from "./provider/Layers/GeminiAdapter";
+import { OpenCodeAdapterLive } from "./provider/Layers/OpenCodeAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { OrchestrationEngineLive } from "./orchestration/Layers/OrchestrationEngine";
@@ -154,10 +155,12 @@ const ProviderLayerLive = Layer.unwrap(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
     const geminiAdapterLayer = GeminiAdapterLive;
+    const openCodeAdapterLayer = OpenCodeAdapterLive;
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
       Layer.provide(geminiAdapterLayer),
+      Layer.provide(openCodeAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(
