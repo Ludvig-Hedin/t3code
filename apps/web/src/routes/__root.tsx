@@ -16,6 +16,7 @@ import { Throttler } from "@tanstack/react-pacer";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import { isPopoutWindow } from "../env";
 import { BirdLogomark } from "../components/BirdLogo";
 import { Spinner } from "../components/ui/spinner";
 import { Button } from "../components/ui/button";
@@ -47,6 +48,7 @@ import { deriveOrchestrationBatchEffects } from "../orchestrationEventEffects";
 import { createOrchestrationRecoveryCoordinator } from "../orchestrationRecovery";
 import { deriveReplayRetryDecision } from "../orchestrationRecovery";
 import { getWsRpcClient } from "~/wsRpcClient";
+import { OnboardingSheet } from "../components/onboarding/OnboardingSheet";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -96,9 +98,16 @@ function AppBootstrapGate() {
     return <AppLoadingScreen />;
   }
 
+  // Popout windows skip the sidebar layout — they render as a bare thread view.
+  if (isPopoutWindow) {
+    return <Outlet />;
+  }
+
   return (
     <AppSidebarLayout>
       <Outlet />
+      {/* Onboarding sheet: auto-opens on first launch, reopenable from Settings → Setup Guide */}
+      <OnboardingSheet />
     </AppSidebarLayout>
   );
 }
