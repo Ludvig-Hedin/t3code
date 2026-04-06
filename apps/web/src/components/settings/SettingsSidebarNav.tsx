@@ -1,5 +1,16 @@
 import type { ComponentType } from "react";
-import { ArchiveIcon, ArrowLeftIcon, PlugIcon, QrCodeIcon, Settings2Icon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArrowLeftIcon,
+  BellIcon,
+  CodeIcon,
+  GitBranchIcon,
+  PaletteIcon,
+  PlugIcon,
+  QrCodeIcon,
+  Settings2Icon,
+  UserIcon,
+} from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
 import {
@@ -14,6 +25,11 @@ import {
 
 export type SettingsSectionPath =
   | "/settings/general"
+  | "/settings/appearance"
+  | "/settings/providers"
+  | "/settings/git"
+  | "/settings/notifications"
+  | "/settings/personalization"
   | "/settings/mobile"
   | "/settings/mcp"
   | "/settings/archived";
@@ -24,6 +40,11 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   icon: ComponentType<{ className?: string }>;
 }> = [
   { label: "General", to: "/settings/general", icon: Settings2Icon },
+  { label: "Appearance", to: "/settings/appearance", icon: PaletteIcon },
+  { label: "Providers", to: "/settings/providers", icon: CodeIcon },
+  { label: "Git & Code Review", to: "/settings/git", icon: GitBranchIcon },
+  { label: "Notifications", to: "/settings/notifications", icon: BellIcon },
+  { label: "Personalization", to: "/settings/personalization", icon: UserIcon },
   { label: "Mobile", to: "/settings/mobile", icon: QrCodeIcon },
   { label: "MCP & Plugins", to: "/settings/mcp", icon: PlugIcon },
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
