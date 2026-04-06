@@ -27,6 +27,10 @@ export class TunnelManager extends EventEmitter {
   private restartAttempts = 0;
   private restartTimer: NodeJS.Timeout | null = null;
   private settings: RemoteSettings;
+  // Guard flag to prevent concurrent enable() calls (e.g. double-click).
+  private _enabling = false;
+  // Tracks the in-flight authenticate/ensureTunnel process so stop() can kill it.
+  private activeSetupProcess: ChildProcess.ChildProcess | null = null;
 
   constructor(
     private readonly userDataPath: string,
@@ -147,16 +151,20 @@ export class TunnelManager extends EventEmitter {
       const proc = ChildProcess.spawn(this.binaryPath, ["tunnel", "login"], {
         stdio: ["ignore", "pipe", "pipe"],
       });
+      // Track so stop() can kill this if called while auth is in progress.
+      this.activeSetupProcess = proc;
       const timeout = setTimeout(() => {
         proc.kill();
         reject(new Error("Cloudflare login timed out after 5 minutes. Please try again."));
       }, 5 * 60 * 1000);
       proc.on("close", (code) => {
+        this.activeSetupProcess = null;
         clearTimeout(timeout);
         if (code === 0) resolve();
         else reject(new Error(`cloudflared tunnel login exited with code ${code}.`));
       });
       proc.on("error", (err) => {
+        this.activeSetupProcess = null;
         clearTimeout(timeout);
         reject(err);
       });
@@ -188,6 +196,8 @@ export class TunnelManager extends EventEmitter {
         ["tunnel", "--no-autoupdate", "create", tunnelName],
         { stdio: ["ignore", "pipe", "pipe"] },
       );
+      // Track so stop() can kill this if called while tunnel creation is in progress.
+      this.activeSetupProcess = proc;
       proc.stdout?.on("data", (d: Buffer) => {
         combined += d.toString();
       });
@@ -195,10 +205,14 @@ export class TunnelManager extends EventEmitter {
         combined += d.toString();
       });
       proc.on("close", (code) => {
+        this.activeSetupProcess = null;
         if (code === 0) resolve(combined);
         else reject(new Error(`cloudflared tunnel create failed (exit ${code}):\n${combined}`));
       });
-      proc.on("error", reject);
+      proc.on("error", (err) => {
+        this.activeSetupProcess = null;
+        reject(err);
+      });
     });
 
     // Parse UUID from output: "Created tunnel {name} with id {uuid}"
@@ -219,6 +233,10 @@ export class TunnelManager extends EventEmitter {
    * Auto-restarts on crash (up to MAX_RESTART_ATTEMPTS times with backoff).
    */
   async start(): Promise<void> {
+    // Guard against double-start: if a tunnel is already running, stop it first.
+    if (this.tunnelProcess) {
+      this.stop();
+    }
     if (!this.settings.tunnelName || !this.settings.tunnelUrl) {
       throw new Error("Tunnel not created yet — call ensureTunnel() first.");
     }
@@ -232,6 +250,12 @@ export class TunnelManager extends EventEmitter {
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
+    }
+    // Kill any in-flight setup process (authenticate / ensureTunnel) so it
+    // doesn't continue running orphaned after the user requests a stop.
+    if (this.activeSetupProcess) {
+      this.activeSetupProcess.kill("SIGTERM");
+      this.activeSetupProcess = null;
     }
     if (this.tunnelProcess) {
       this.tunnelProcess.removeAllListeners();
@@ -299,6 +323,10 @@ export class TunnelManager extends EventEmitter {
    * Emits status events throughout.
    */
   async enable(): Promise<void> {
+    // Concurrency guard: prevent double-click / concurrent IPC calls from
+    // spawning multiple setup flows simultaneously.
+    if (this._enabling || this._status.status !== "idle") return;
+    this._enabling = true;
     try {
       if (!this.isBinaryReady()) {
         await this.downloadBinary();
@@ -315,6 +343,8 @@ export class TunnelManager extends EventEmitter {
       const message = err instanceof Error ? err.message : String(err);
       this.setStatus({ status: "error", message });
       throw err;
+    } finally {
+      this._enabling = false;
     }
   }
 
