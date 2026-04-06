@@ -18,6 +18,11 @@ const GET_PAIRING_CODE_CHANNEL = "desktop:get-pairing-code";
 const GET_DESKTOP_AUTH_TOKEN_CHANNEL = "desktop:get-desktop-auth-token";
 const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
 const REVOKE_MOBILE_DEVICE_CHANNEL = "desktop:revoke-mobile-device";
+const REMOTE_SETTINGS_GET_CHANNEL = "desktop:remote-settings-get";
+const TUNNEL_ENABLE_CHANNEL = "desktop:tunnel-enable";
+const TUNNEL_DISABLE_CHANNEL = "desktop:tunnel-disable";
+const KEEP_AWAKE_SET_CHANNEL = "desktop:keep-awake-set";
+const TUNNEL_STATUS_CHANNEL = "tunnel:status";
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   getWsUrl: () => {
@@ -42,6 +47,22 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     return result as DesktopMobileDevicesResult;
   },
   revokeMobileDevice: (input) => ipcRenderer.invoke(REVOKE_MOBILE_DEVICE_CHANNEL, input),
+  getRemoteSettings: () => {
+    const result = ipcRenderer.sendSync(REMOTE_SETTINGS_GET_CHANNEL);
+    return typeof result === "object" && result !== null ? result : null;
+  },
+  enableRemoteAccess: () => ipcRenderer.invoke(TUNNEL_ENABLE_CHANNEL),
+  disableRemoteAccess: () => ipcRenderer.invoke(TUNNEL_DISABLE_CHANNEL),
+  setKeepAwake: (enabled: boolean) => ipcRenderer.invoke(KEEP_AWAKE_SET_CHANNEL, enabled),
+  onTunnelStatus: (listener: (status: import("@t3tools/contracts").TunnelStatus) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, status: unknown) => {
+      if (typeof status === "object" && status !== null) {
+        listener(status as import("@t3tools/contracts").TunnelStatus);
+      }
+    };
+    ipcRenderer.on(TUNNEL_STATUS_CHANNEL, wrapped);
+    return () => ipcRenderer.removeListener(TUNNEL_STATUS_CHANNEL, wrapped);
+  },
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),
   setTheme: (theme) => ipcRenderer.invoke(SET_THEME_CHANNEL, theme),

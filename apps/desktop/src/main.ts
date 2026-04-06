@@ -45,6 +45,9 @@ import {
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
+import { TunnelManager } from "./tunnelManager";
+import { KeepAwakeManager } from "./keepAwakeManager";
+import { readRemoteSettings, writeRemoteSettings } from "./remoteSettings";
 
 syncShellEnvironment();
 
@@ -111,6 +114,16 @@ let restoreStdIoCapture: (() => void) | null = null;
 let backendObservabilitySettings = readPersistedBackendObservabilitySettings();
 
 let destructiveMenuIconCache: Electron.NativeImage | null | undefined;
+
+// Remote access + keep-awake managers (initialized in bootstrap).
+let tunnelManager: TunnelManager | null = null;
+let keepAwakeManager: KeepAwakeManager | null = null;
+const TUNNEL_STATUS_CHANNEL = "tunnel:status";
+const REMOTE_SETTINGS_GET_CHANNEL = "desktop:remote-settings-get";
+const TUNNEL_ENABLE_CHANNEL = "desktop:tunnel-enable";
+const TUNNEL_DISABLE_CHANNEL = "desktop:tunnel-disable";
+const KEEP_AWAKE_SET_CHANNEL = "desktop:keep-awake-set";
+
 const expectedBackendExitChildren = new WeakSet<ChildProcess.ChildProcess>();
 const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
   platform: process.platform,
@@ -1509,6 +1522,41 @@ function registerIpcHandlers(): void {
       state: updateState,
     } satisfies DesktopUpdateCheckResult;
   });
+
+  // Remote access + keep-awake IPC handlers.
+  ipcMain.removeAllListeners(REMOTE_SETTINGS_GET_CHANNEL);
+  ipcMain.on(REMOTE_SETTINGS_GET_CHANNEL, (event) => {
+    event.returnValue = readRemoteSettings(app.getPath("userData"));
+  });
+
+  ipcMain.removeHandler(TUNNEL_ENABLE_CHANNEL);
+  ipcMain.handle(TUNNEL_ENABLE_CHANNEL, async () => {
+    if (!tunnelManager) return { ok: false, error: "Tunnel manager not initialized." };
+    try {
+      await tunnelManager.enable();
+      return { ok: true };
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.removeHandler(TUNNEL_DISABLE_CHANNEL);
+  ipcMain.handle(TUNNEL_DISABLE_CHANNEL, async () => {
+    tunnelManager?.disable();
+  });
+
+  ipcMain.removeHandler(KEEP_AWAKE_SET_CHANNEL);
+  ipcMain.handle(KEEP_AWAKE_SET_CHANNEL, async (_event, enabled: unknown) => {
+    if (!keepAwakeManager) return;
+    const settings = readRemoteSettings(app.getPath("userData"));
+    if (enabled === true) {
+      keepAwakeManager.enable();
+      writeRemoteSettings(app.getPath("userData"), { ...settings, keepAwakeEnabled: true });
+    } else {
+      keepAwakeManager.disable();
+      writeRemoteSettings(app.getPath("userData"), { ...settings, keepAwakeEnabled: false });
+    }
+  });
 }
 
 function getIconOption(): { icon: string } | Record<string, never> {
@@ -1581,6 +1629,11 @@ function createWindow(): BrowserWindow {
   window.webContents.on("did-finish-load", () => {
     window.setTitle(APP_DISPLAY_NAME);
     emitUpdateState();
+    // Push the current tunnel status to the newly loaded renderer so it
+    // doesn't have to wait for the next status-change event.
+    if (tunnelManager && !window.isDestroyed()) {
+      window.webContents.send(TUNNEL_STATUS_CHANNEL, tunnelManager.status);
+    }
   });
   window.once("ready-to-show", () => {
     window.show();
@@ -1622,6 +1675,34 @@ async function bootstrap(): Promise<void> {
   backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`;
   backendPairingUrl = resolvePairingHttpUrl();
   backendPairingCode = resolvePairingCode();
+
+  // Initialize remote access managers.
+  tunnelManager = new TunnelManager(app.getPath("userData"), backendPort);
+  keepAwakeManager = new KeepAwakeManager();
+
+  // When tunnel status changes, update backendPairingUrl and push to all renderer windows.
+  tunnelManager.on("status", (status: import("@t3tools/contracts").TunnelStatus) => {
+    if (status.status === "active") {
+      backendPairingUrl = status.url;
+      backendPairingCode = resolvePairingCode();
+    } else if (status.status === "idle") {
+      backendPairingUrl = resolvePairingHttpUrl();
+      backendPairingCode = resolvePairingCode();
+    }
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send(TUNNEL_STATUS_CHANNEL, status);
+      }
+    });
+  });
+
+  // Restore keep-awake and tunnel from previous session.
+  const savedSettings = readRemoteSettings(app.getPath("userData"));
+  if (savedSettings.keepAwakeEnabled) {
+    keepAwakeManager.enable();
+  }
+  void tunnelManager.resumeIfEnabled();
+
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`);
   writeDesktopLogHeader(`bootstrap resolved pairing endpoint url=${backendPairingUrl}`);
 
