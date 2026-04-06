@@ -52,6 +52,39 @@
   }
 }
 
+/* Custom font size / family from user appearance settings */
+:root {
+  font-size: var(--t3-ui-font-size, 14px);
+}
+
+body {
+  font-family: var(--t3-ui-font, inherit);
+}
+
+/* Code font applied globally when set */
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--t3-code-font, inherit);
+  font-size: var(--t3-code-font-size, 13px);
+}
+
+/* Pointer cursor mode — applied via .pointer-cursors class on <html> */
+.pointer-cursors button,
+.pointer-cursors [role="button"],
+.pointer-cursors a,
+.pointer-cursors label,
+.pointer-cursors select,
+.pointer-cursors [role="checkbox"],
+.pointer-cursors [role="switch"],
+.pointer-cursors [role="radio"],
+.pointer-cursors [role="tab"],
+.pointer-cursors [role="option"],
+.pointer-cursors [role="menuitem"] {
+  cursor: pointer !important;
+}
+
 /* Suppress all transitions during theme changes */
 .no-transitions,
 .no-transitions *,

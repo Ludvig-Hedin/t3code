@@ -37,6 +37,7 @@ import { useStore } from "../store";
 import { useUiStateStore } from "../uiStateStore";
 import { useTerminalStateStore } from "../terminalStateStore";
 import { migrateLocalSettingsToServer } from "../hooks/useSettings";
+import { useThemeCustomization } from "../hooks/useThemeCustomization";
 import { providerQueryKeys } from "../lib/providerReactQuery";
 import { projectQueryKeys } from "../lib/projectReactQuery";
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
@@ -72,6 +73,7 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <ServerStateBootstrap />
+        <ThemeCustomizationApplier />
         <EventRouter />
         <AppSidebarLayout>
           <Outlet />
@@ -79,6 +81,12 @@ function RootRouteView() {
       </AnchoredToastProvider>
     </ToastProvider>
   );
+}
+
+/** Applies live CSS custom property overrides from appearance settings. Returns nothing. */
+function ThemeCustomizationApplier() {
+  useThemeCustomization();
+  return null;
 }
 
 function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
