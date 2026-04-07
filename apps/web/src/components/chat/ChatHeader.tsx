@@ -15,6 +15,7 @@ import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScr
 import { Toggle } from "../ui/toggle";
 import { SidebarTrigger } from "../ui/sidebar";
 import { OpenInPicker } from "./OpenInPicker";
+import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 
 interface ChatHeaderProps {
   activeThreadId: ThreadId;
@@ -33,6 +34,9 @@ interface ChatHeaderProps {
   diffToggleShortcutLabel: string | null;
   gitCwd: string | null;
   diffOpen: boolean;
+  /** Current working-tree insertions/deletions from git status — shown inline on the Diff toggle */
+  diffInsertions: number;
+  diffDeletions: number;
   previewAvailable: boolean;
   previewOpen: boolean;
   hasRunningPreviewApp: boolean;
@@ -64,6 +68,8 @@ export const ChatHeader = memo(function ChatHeader({
   diffToggleShortcutLabel,
   gitCwd,
   diffOpen,
+  diffInsertions,
+  diffDeletions,
   previewAvailable,
   previewOpen,
   hasRunningPreviewApp,
@@ -80,14 +86,16 @@ export const ChatHeader = memo(function ChatHeader({
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
         <SidebarTrigger className="size-7 shrink-0 md:hidden" />
+        {/* Thread title hidden below lg so the project badge + action buttons get
+            more room on medium-sized screens. */}
         <h2
-          className="min-w-0 shrink truncate text-sm font-medium text-foreground"
+          className="hidden min-w-0 shrink truncate text-sm font-medium text-foreground lg:block"
           title={activeThreadTitle}
         >
           {activeThreadTitle}
         </h2>
         {activeProjectName && (
-          <Badge variant="outline" className="min-w-0 shrink overflow-hidden">
+          <Badge variant="outline" className="min-w-0 max-w-[14rem] shrink overflow-hidden">
             <span className="min-w-0 truncate">{activeProjectName}</span>
           </Badge>
         )}
@@ -146,8 +154,7 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!previewAvailable}
                 >
                   <MonitorPlayIcon className="size-3" />
-                  {/* Label shown only on very large containers where space is available */}
-                  <span className="hidden @5xl/header-actions:inline">Preview</span>
+                  <span>Preview</span>
                   {hasRunningPreviewApp && (
                     <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-green-500" />
                   )}
@@ -175,8 +182,7 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!terminalAvailable}
                 >
                   <TerminalSquareIcon className="size-3" />
-                  {/* Label shown only on very large containers where space is available */}
-                  <span className="hidden @5xl/header-actions:inline">Terminal</span>
+                  <span>Terminal</span>
                 </Toggle>
               }
             />
@@ -201,8 +207,14 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!isGitRepo}
                 >
                   <DiffIcon className="size-3" />
-                  {/* Label shown only on very large containers where space is available */}
-                  <span className="hidden @5xl/header-actions:inline">Diff</span>
+                  <span>Diff</span>
+                  {/* Show current working-tree +/- stats in the same green/red as
+                      the rest of the app — gives instant feedback without opening the panel */}
+                  {isGitRepo && hasNonZeroStat({ additions: diffInsertions, deletions: diffDeletions }) && (
+                    <span className="flex items-center gap-0.5 text-[10px] font-medium tabular-nums">
+                      <DiffStatLabel additions={diffInsertions} deletions={diffDeletions} />
+                    </span>
+                  )}
                 </Toggle>
               }
             />
@@ -229,8 +241,7 @@ export const ChatHeader = memo(function ChatHeader({
               }
             >
               <ExternalLinkIcon className="size-3" />
-              {/* Label shown only on very large containers where space is available */}
-              <span className="hidden @5xl/header-actions:inline">Pop out</span>
+              <span>Pop out</span>
             </TooltipTrigger>
             <TooltipPopup side="bottom">Pop out to new window</TooltipPopup>
           </Tooltip>

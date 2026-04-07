@@ -5,6 +5,7 @@ import {
   ExternalLinkIcon,
   FolderIcon,
   GitPullRequestIcon,
+  LayoutGridIcon,
   LoaderCircleIcon,
   PanelLeftIcon,
   PlusIcon,
@@ -2172,8 +2173,9 @@ export default function Sidebar() {
                 {/* Larger icon on mobile for better touch targets */}
                 <SquarePenIcon className="size-5 md:size-3.5 shrink-0" />
                 <span className="flex-1 text-left">New thread</span>
+                {/* ~80% of the button's text-xs label size for a subtle, proportional shortcut hint */}
                 {newThreadShortcutLabel && (
-                  <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+                  <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-px text-[9px] font-medium text-muted-foreground sm:inline-flex">
                     {newThreadShortcutLabel}
                   </kbd>
                 )}
@@ -2187,7 +2189,8 @@ export default function Sidebar() {
                 {/* Larger icon on mobile for better touch targets */}
                 <SearchIcon className="size-5 md:size-3.5 shrink-0" />
                 <span className="flex-1 text-left">Search</span>
-                <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+                {/* ~80% of the button's text-xs label size for a subtle, proportional shortcut hint */}
+                <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-px text-[9px] font-medium text-muted-foreground sm:inline-flex">
                   {isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"}
                 </kbd>
               </button>
@@ -2379,6 +2382,16 @@ export default function Sidebar() {
                 >
                   <SparklesIcon className="size-3.5" />
                   <span className="text-xs">Skills</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  onClick={() => void navigate({ to: "/plugins" })}
+                >
+                  <LayoutGridIcon className="size-3.5" />
+                  <span className="text-xs">Plugins</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

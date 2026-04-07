@@ -1,8 +1,8 @@
 import type { RuntimeMode, ThreadId } from "@t3tools/contracts";
-import { FolderIcon, GitForkIcon, LockIcon, LockOpenIcon } from "lucide-react";
+import { FolderIcon, GitForkIcon, ShieldCheckIcon, ShieldIcon, ShieldOffIcon } from "lucide-react";
 import { useCallback } from "react";
 
-import { newCommandId } from "../lib/utils";
+import { cn, newCommandId } from "../lib/utils";
 import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useStore } from "../store";
@@ -177,17 +177,25 @@ export default function BranchToolbar({
         )}
         <RateLimitsButton />
         <Separator orientation="vertical" className="mx-0.5 h-3.5" />
+        {/* Permissions mode button — colour-coded so the current safety level is
+            visible at a glance: rose = full-access (no approvals), neutral = ask
+            permission, amber = custom per-action rules. */}
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-auto shrink-0 gap-1 px-2 py-0.5 text-xs font-medium text-muted-foreground/70 hover:text-foreground/80"
+                className={cn(
+                  "h-auto shrink-0 gap-1 px-2 py-0.5 text-xs font-medium",
+                  runtimeMode === "full-access"
+                    ? "text-rose-400/80 hover:text-rose-400"
+                    : runtimeMode === "custom"
+                      ? "text-amber-400/80 hover:text-amber-400"
+                      : "text-muted-foreground/70 hover:text-foreground/80",
+                )}
                 type="button"
                 onClick={() =>
-                  // Toolbar button toggles between full-access and approval-required;
-                  // for "custom" mode, clicking goes back to full-access
                   onRuntimeModeChange(
                     runtimeMode === "full-access" ? "approval-required" : "full-access",
                   )
@@ -196,13 +204,15 @@ export default function BranchToolbar({
             }
           >
             {runtimeMode === "full-access" ? (
-              <LockOpenIcon className="size-3" />
+              <ShieldOffIcon className="size-3" />
+            ) : runtimeMode === "custom" ? (
+              <ShieldCheckIcon className="size-3" />
             ) : (
-              <LockIcon className="size-3" />
+              <ShieldIcon className="size-3" />
             )}
             <span>
               {runtimeMode === "full-access"
-                ? "Auto accept edits"
+                ? "Auto accept"
                 : runtimeMode === "custom"
                   ? "Custom"
                   : "Ask permission"}
@@ -210,10 +220,10 @@ export default function BranchToolbar({
           </TooltipTrigger>
           <TooltipPopup side="bottom">
             {runtimeMode === "full-access"
-              ? "Auto accept edits — click to require approvals"
+              ? "Auto accept edits — agent writes files and runs commands without asking. Click to switch to Ask permission."
               : runtimeMode === "custom"
-                ? "Custom permissions — click for full access"
-                : "Ask permission — click for full access"}
+                ? "Custom permissions — per-action approval rules active. Use the … menu to configure."
+                : "Ask permission — agent requests approval before each action. Click to switch to Auto accept."}
           </TooltipPopup>
         </Tooltip>
       </div>
