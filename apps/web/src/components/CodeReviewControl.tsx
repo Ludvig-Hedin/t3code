@@ -9,7 +9,7 @@
  * the review turn completes.
  */
 import { type CodeReviewFixMode, type ThreadId } from "@t3tools/contracts";
-import { LoaderIcon, ScanSearchIcon } from "lucide-react";
+import { ClipboardCheckIcon, LoaderIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
@@ -152,7 +152,7 @@ export function CodeReviewControl({ gitCwd, activeThreadId, isGitRepo }: CodeRev
             <PopoverTrigger
               render={
                 <Toggle
-                  className="shrink-0"
+                  className="shrink-0 px-2"
                   pressed={popoverOpen}
                   aria-label="Run code review"
                   variant="outline"
@@ -166,8 +166,9 @@ export function CodeReviewControl({ gitCwd, activeThreadId, isGitRepo }: CodeRev
           {isReviewing ? (
             <LoaderIcon className="size-3 animate-spin" />
           ) : (
-            <ScanSearchIcon className="size-3" />
+            <ClipboardCheckIcon className="size-3" />
           )}
+          <span className="text-[10px]">Review</span>
         </TooltipTrigger>
         <TooltipPopup side="bottom">
           {!isGitRepo
@@ -212,7 +213,7 @@ export function CodeReviewControl({ gitCwd, activeThreadId, isGitRepo }: CodeRev
           </div>
 
           <Button size="sm" className="w-full" onClick={handleRunReview} disabled={disabled}>
-            <ScanSearchIcon className="mr-1.5 size-3.5" />
+            <ClipboardCheckIcon className="mr-1.5 size-3.5" />
             Run Review
           </Button>
         </div>

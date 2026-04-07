@@ -105,7 +105,9 @@ export const ChatHeader = memo(function ChatHeader({
           </Badge>
         )}
       </div>
-      <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
+      {/* gap-1 keeps buttons compact; px-2 on each toggle overrides the xs
+          size's ~3px default padding so labels don't look smashed to the edges */}
+      <div className="flex shrink-0 items-center justify-end gap-1">
         {/* Secondary controls — hidden on mobile to avoid header overflow, visible md+ */}
         <div className="hidden md:contents">
           {activeProjectScripts && (
@@ -145,7 +147,7 @@ export const ChatHeader = memo(function ChatHeader({
             <TooltipTrigger
               render={
                 <Toggle
-                  className="relative shrink-0"
+                  className="relative shrink-0 px-2"
                   pressed={previewOpen}
                   onPressedChange={onTogglePreview}
                   aria-label="Toggle preview panel"
@@ -154,7 +156,7 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!previewAvailable}
                 >
                   <MonitorPlayIcon className="size-3" />
-                  <span>Preview</span>
+                  <span className="text-[10px]">Preview</span>
                   {hasRunningPreviewApp && (
                     <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-green-500" />
                   )}
@@ -173,7 +175,7 @@ export const ChatHeader = memo(function ChatHeader({
             <TooltipTrigger
               render={
                 <Toggle
-                  className="shrink-0"
+                  className="shrink-0 px-2"
                   pressed={terminalOpen}
                   onPressedChange={onToggleTerminal}
                   aria-label="Toggle terminal drawer"
@@ -182,7 +184,7 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!terminalAvailable}
                 >
                   <TerminalSquareIcon className="size-3" />
-                  <span>Terminal</span>
+                  <span className="text-[10px]">Terminal</span>
                 </Toggle>
               }
             />
@@ -198,7 +200,7 @@ export const ChatHeader = memo(function ChatHeader({
             <TooltipTrigger
               render={
                 <Toggle
-                  className="shrink-0"
+                  className="shrink-0 px-2"
                   pressed={diffOpen}
                   onPressedChange={onToggleDiff}
                   aria-label="Toggle diff panel"
@@ -207,14 +209,15 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!isGitRepo}
                 >
                   <DiffIcon className="size-3" />
-                  <span>Diff</span>
-                  {/* Show current working-tree +/- stats in the same green/red as
-                      the rest of the app — gives instant feedback without opening the panel */}
-                  {isGitRepo && hasNonZeroStat({ additions: diffInsertions, deletions: diffDeletions }) && (
-                    <span className="flex items-center gap-0.5 text-[10px] font-medium tabular-nums">
-                      <DiffStatLabel additions={diffInsertions} deletions={diffDeletions} />
-                    </span>
-                  )}
+                  {/* Replace the "Diff" text label with live +X / -Y stats in
+                      green/red so the button is informative at a glance.
+                      Falls back to icon-only when there are no working-tree changes. */}
+                  {isGitRepo &&
+                    hasNonZeroStat({ additions: diffInsertions, deletions: diffDeletions }) ? (
+                      <span className="flex items-center gap-0.5 text-[10px] font-medium tabular-nums">
+                        <DiffStatLabel additions={diffInsertions} deletions={diffDeletions} />
+                      </span>
+                    ) : null}
                 </Toggle>
               }
             />
@@ -235,13 +238,13 @@ export const ChatHeader = memo(function ChatHeader({
                   variant="outline"
                   size="xs"
                   aria-label="Pop out thread to new window"
-                  className="shrink-0"
+                  className="shrink-0 px-2"
                   onClick={onPopout}
                 />
               }
             >
               <ExternalLinkIcon className="size-3" />
-              <span>Pop out</span>
+              <span className="text-[10px]">Pop out</span>
             </TooltipTrigger>
             <TooltipPopup side="bottom">Pop out to new window</TooltipPopup>
           </Tooltip>
