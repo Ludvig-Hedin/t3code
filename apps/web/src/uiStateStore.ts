@@ -19,6 +19,8 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 interface PersistedUiState {
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  pinnedToSidebarThreadIds?: string[];
+  pinnedToProjectThreadIds?: string[];
 }
 
 export interface UiProjectState {
@@ -36,7 +38,12 @@ export interface UiPreviewState {
   previewFloatingBounds: { x: number; y: number; w: number; h: number } | null;
 }
 
-export interface UiState extends UiProjectState, UiThreadState, UiPreviewState {}
+export interface UiPinState {
+  pinnedToSidebarThreadIds: ThreadId[];
+  pinnedToProjectThreadIds: ThreadId[];
+}
+
+export interface UiState extends UiProjectState, UiThreadState, UiPreviewState, UiPinState {}
 
 export interface SyncProjectInput {
   id: ProjectId;
@@ -56,12 +63,18 @@ const initialState: UiState = {
   previewOpen: false,
   previewDetached: false,
   previewFloatingBounds: null,
+  // Pin state — persisted to localStorage
+  pinnedToSidebarThreadIds: [],
+  pinnedToProjectThreadIds: [],
 };
 
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
 const currentProjectCwdById = new Map<ProjectId, string>();
 let legacyKeysCleanedUp = false;
+// Persisted pin state — loaded once at startup and merged into store state
+let persistedPinnedToSidebarThreadIds: ThreadId[] = [];
+let persistedPinnedToProjectThreadIds: ThreadId[] = [];
 
 function readPersistedState(): UiState {
   if (typeof window === "undefined") {
@@ -80,8 +93,20 @@ function readPersistedState(): UiState {
       }
       return initialState;
     }
-    hydratePersistedProjectState(JSON.parse(raw) as PersistedUiState);
-    return initialState;
+    const parsed = JSON.parse(raw) as PersistedUiState;
+    hydratePersistedProjectState(parsed);
+    // Hydrate persisted pin arrays
+    persistedPinnedToSidebarThreadIds = (parsed.pinnedToSidebarThreadIds ?? [])
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .map((id) => ThreadId.makeUnsafe(id));
+    persistedPinnedToProjectThreadIds = (parsed.pinnedToProjectThreadIds ?? [])
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .map((id) => ThreadId.makeUnsafe(id));
+    return {
+      ...initialState,
+      pinnedToSidebarThreadIds: persistedPinnedToSidebarThreadIds,
+      pinnedToProjectThreadIds: persistedPinnedToProjectThreadIds,
+    };
   } catch {
     return initialState;
   }
@@ -122,6 +147,8 @@ function persistState(state: UiState): void {
       JSON.stringify({
         expandedProjectCwds,
         projectOrderCwds,
+        pinnedToSidebarThreadIds: state.pinnedToSidebarThreadIds.map(String),
+        pinnedToProjectThreadIds: state.pinnedToProjectThreadIds.map(String),
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -214,12 +241,16 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
             orderedProjectIds.push(matchedProjectId);
           }
 
+          // Collect newly-discovered projects (not yet in the order) and prepend
+          // them so they appear at the top rather than being appended to the end.
+          const newProjectIds: ProjectId[] = [];
           for (const project of mappedProjects) {
             if (usedProjectIds.has(project.id)) {
               continue;
             }
-            orderedProjectIds.push(project.id);
+            newProjectIds.push(project.id);
           }
+          orderedProjectIds.unshift(...newProjectIds);
 
           return orderedProjectIds;
         })()
@@ -391,6 +422,36 @@ export function reorderProjects(
   };
 }
 
+export function pinToSidebar(state: UiState, threadId: ThreadId): UiState {
+  if (state.pinnedToSidebarThreadIds.includes(threadId)) return state;
+  return { ...state, pinnedToSidebarThreadIds: [threadId, ...state.pinnedToSidebarThreadIds] };
+}
+
+export function unpinFromSidebar(state: UiState, threadId: ThreadId): UiState {
+  if (!state.pinnedToSidebarThreadIds.includes(threadId)) return state;
+  return {
+    ...state,
+    pinnedToSidebarThreadIds: state.pinnedToSidebarThreadIds.filter((id) => id !== threadId),
+  };
+}
+
+export function pinToProject(state: UiState, threadId: ThreadId): UiState {
+  if (state.pinnedToProjectThreadIds.includes(threadId)) return state;
+  return { ...state, pinnedToProjectThreadIds: [threadId, ...state.pinnedToProjectThreadIds] };
+}
+
+export function unpinFromProject(state: UiState, threadId: ThreadId): UiState {
+  if (!state.pinnedToProjectThreadIds.includes(threadId)) return state;
+  return {
+    ...state,
+    pinnedToProjectThreadIds: state.pinnedToProjectThreadIds.filter((id) => id !== threadId),
+  };
+}
+
+export function setProjectOrder(state: UiState, ids: ProjectId[]): UiState {
+  return { ...state, projectOrder: ids };
+}
+
 interface UiStateStore extends UiState {
   syncProjects: (projects: readonly SyncProjectInput[]) => void;
   syncThreads: (threads: readonly SyncThreadInput[]) => void;
@@ -400,6 +461,11 @@ interface UiStateStore extends UiState {
   toggleProject: (projectId: ProjectId) => void;
   setProjectExpanded: (projectId: ProjectId, expanded: boolean) => void;
   reorderProjects: (draggedProjectId: ProjectId, targetProjectId: ProjectId) => void;
+  setProjectOrder: (ids: ProjectId[]) => void;
+  pinToSidebar: (threadId: ThreadId) => void;
+  unpinFromSidebar: (threadId: ThreadId) => void;
+  pinToProject: (threadId: ThreadId) => void;
+  unpinFromProject: (threadId: ThreadId) => void;
   setPreviewOpen: (open: boolean) => void;
   setPreviewDetached: (detached: boolean) => void;
   setPreviewFloatingBounds: (bounds: { x: number; y: number; w: number; h: number } | null) => void;
@@ -419,6 +485,11 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (draggedProjectId, targetProjectId) =>
     set((state) => reorderProjects(state, draggedProjectId, targetProjectId)),
+  setProjectOrder: (ids) => set((state) => setProjectOrder(state, ids)),
+  pinToSidebar: (threadId) => set((state) => pinToSidebar(state, threadId)),
+  unpinFromSidebar: (threadId) => set((state) => unpinFromSidebar(state, threadId)),
+  pinToProject: (threadId) => set((state) => pinToProject(state, threadId)),
+  unpinFromProject: (threadId) => set((state) => unpinFromProject(state, threadId)),
   setPreviewOpen: (open) => set((state) => ({ ...state, previewOpen: open })),
   setPreviewDetached: (detached) => set((state) => ({ ...state, previewDetached: detached })),
   setPreviewFloatingBounds: (bounds) =>

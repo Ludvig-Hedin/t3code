@@ -8,9 +8,11 @@ import {
   LayoutGridIcon,
   LoaderCircleIcon,
   PanelLeftIcon,
+  PinIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  SlidersHorizontalIcon,
   SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -54,7 +56,9 @@ import {
   ProjectId,
   ThreadId,
   type GitStatusResult,
+  type ProviderKind,
 } from "@t3tools/contracts";
+import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts/model";
 import { useQueries } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -104,6 +108,8 @@ import { Button } from "./ui/button";
 import { BirdLogomark } from "./BirdLogo";
 import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { Popover, PopoverTrigger, PopoverPopup } from "./ui/popover";
+import { Checkbox } from "./ui/checkbox";
 import {
   SidebarContent,
   SidebarFooter,
