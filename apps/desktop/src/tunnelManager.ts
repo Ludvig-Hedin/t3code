@@ -15,7 +15,9 @@ const MAX_RESTART_ATTEMPTS = 5;
 
 function getCloudflaredAssetName(): string {
   const arch = process.arch === "arm64" ? "arm64" : "amd64";
-  return `cloudflared-darwin-${arch}`;
+  // Cloudflare ships macOS binaries as .tgz archives — no bare executables or
+  // checksum files are published for darwin. The tarball contains a single binary.
+  return `cloudflared-darwin-${arch}.tgz`;
 }
 
 // ── TunnelManager ─────────────────────────────────────────────────────────
@@ -70,35 +72,27 @@ export class TunnelManager extends EventEmitter {
 
   /**
    * Downloads the cloudflared binary for the current architecture.
-   * Emits progress via status updates. Verifies SHA-256 checksum.
+   *
+   * Cloudflare ships macOS releases as .tgz archives (a single `cloudflared`
+   * binary inside). There are no separate checksum files for darwin releases —
+   * HTTPS from GitHub is the trust anchor. We download the tarball, write it to
+   * a temp file, extract with `tar xzf`, then place the binary.
    */
   async downloadBinary(): Promise<void> {
-    const assetName = getCloudflaredAssetName();
-    const binaryUrl = `${CLOUDFLARED_BASE_URL}/${assetName}`;
-    const checksumUrl = `${CLOUDFLARED_BASE_URL}/${assetName}.sha256sum`;
+    const assetName = getCloudflaredAssetName(); // e.g. cloudflared-darwin-arm64.tgz
+    const tgzUrl = `${CLOUDFLARED_BASE_URL}/${assetName}`;
 
     this.setStatus({ status: "downloading", progress: 0 });
 
-    // Download checksum file first (small, fast).
-    const checksumRes = await fetch(checksumUrl);
-    if (!checksumRes.ok) {
-      throw new Error(`Failed to fetch checksum: HTTP ${checksumRes.status}`);
+    // Stream the .tgz with progress tracking.
+    const res = await fetch(tgzUrl);
+    if (!res.ok) {
+      throw new Error(`Failed to download cloudflared: HTTP ${res.status}`);
     }
-    const checksumText = await checksumRes.text();
-    const expectedHash = checksumText.trim().split(/\s+/)[0];
-    if (!expectedHash || expectedHash.length !== 64) {
-      throw new Error("Checksum file format unexpected — expected SHA-256 hex.");
-    }
-
-    // Download binary with progress tracking.
-    const binaryRes = await fetch(binaryUrl);
-    if (!binaryRes.ok) {
-      throw new Error(`Failed to fetch cloudflared binary: HTTP ${binaryRes.status}`);
-    }
-    const totalBytes = Number(binaryRes.headers.get("content-length") ?? "0");
+    const totalBytes = Number(res.headers.get("content-length") ?? "0");
     const chunks: Uint8Array[] = [];
     let downloadedBytes = 0;
-    const reader = binaryRes.body?.getReader();
+    const reader = res.body?.getReader();
     if (!reader) throw new Error("Response body is not readable.");
 
     while (true) {
@@ -114,28 +108,32 @@ export class TunnelManager extends EventEmitter {
       }
     }
 
-    // Assemble buffer and verify checksum.
+    // Assemble into a single buffer and write the .tgz to a temp file.
     const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
-    const buffer = new Uint8Array(totalLength);
+    const tgzBuffer = new Uint8Array(totalLength);
     let offset = 0;
     for (const chunk of chunks) {
-      buffer.set(chunk, offset);
+      tgzBuffer.set(chunk, offset);
       offset += chunk.byteLength;
     }
 
-    const actualHash = Crypto.createHash("sha256").update(buffer).digest("hex");
-    if (actualHash !== expectedHash) {
-      throw new Error(
-        `Checksum mismatch for ${assetName}. Expected ${expectedHash}, got ${actualHash}.`,
-      );
-    }
-
-    // Write binary and make it executable.
     const binDir = Path.dirname(this.binaryPath);
     if (!FS.existsSync(binDir)) {
       FS.mkdirSync(binDir, { recursive: true });
     }
-    FS.writeFileSync(this.binaryPath, buffer);
+
+    const tgzPath = `${this.binaryPath}.tgz`;
+    FS.writeFileSync(tgzPath, tgzBuffer);
+
+    try {
+      // Extract the single `cloudflared` binary from the tarball.
+      ChildProcess.execSync(`tar xzf "${tgzPath}" -C "${binDir}" cloudflared`, {
+        stdio: "ignore",
+      });
+    } finally {
+      try { FS.unlinkSync(tgzPath); } catch { /* ignore */ }
+    }
+
     FS.chmodSync(this.binaryPath, 0o755);
   }
 
