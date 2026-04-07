@@ -280,6 +280,21 @@ export const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
   }
 
   if (editorDef.command) {
+    // If the CLI command is not on PATH but a macOS app bundle exists, fall back to
+    // `open -a "AppName" <target>` so bundle-only installs (e.g. Cursor, Windsurf) work
+    // without the user needing to manually set up shell integration.
+    if (
+      !isCommandAvailable(editorDef.command, { platform }) &&
+      isMacOsAppBundleAvailable(editorDef.id, platform)
+    ) {
+      const bundlePaths = MACOS_APP_BUNDLE_PATHS[editorDef.id];
+      const bundlePath = bundlePaths?.find((p) => existsSync(p));
+      if (bundlePath) {
+        // Derive app name: "/Applications/Cursor.app" → "Cursor"
+        const appName = bundlePath.replace(/\.app$/, "").replace(/^.*\//, "");
+        return { command: "open", args: ["-a", appName, input.cwd] };
+      }
+    }
     return {
       command: editorDef.command,
       args: resolveCommandEditorArgs(editorDef, input.cwd),

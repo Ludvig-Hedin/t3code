@@ -656,11 +656,11 @@ export function GeneralSettingsPanel() {
             <Select
               value={settings.defaultProvider}
               onValueChange={(value) => {
+                // Accept "use-latest" sentinel or any server-known provider so
+                // opencode, ollama, etc. are not silently swallowed.
                 if (
                   value === "use-latest" ||
-                  value === "codex" ||
-                  value === "claudeAgent" ||
-                  value === "gemini"
+                  serverProviders.some((p) => p.provider === value)
                 ) {
                   updateSettings({ defaultProvider: value });
                 }

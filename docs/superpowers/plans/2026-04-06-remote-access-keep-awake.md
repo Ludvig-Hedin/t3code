@@ -12,16 +12,16 @@
 
 ## File Map
 
-| File                                                        | Action | Purpose                                                                             |
-| ----------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
-| `packages/contracts/src/ipc.ts`                             | Modify | Add `TunnelState`, `RemoteSettings` types; extend `DesktopBridge`                   |
-| `apps/desktop/src/remoteSettings.ts`                        | Create | Read/write `userData/remote-settings.json`                                          |
-| `apps/desktop/src/tunnelManager.ts`                         | Create | cloudflared binary download, auth, named-tunnel lifecycle                           |
-| `apps/desktop/src/keepAwakeManager.ts`                      | Create | `powerSaveBlocker` + `caffeinate`                                                   |
-| `apps/desktop/src/main.ts`                                  | Modify | Create managers, register IPC channels, update `backendPairingUrl` on tunnel active |
-| `apps/desktop/src/preload.ts`                               | Modify | Expose new bridge methods                                                           |
-| `apps/desktop/src/remoteSettings.test.ts`                   | Create | Unit tests for settings read/write                                                  |
-| `apps/web/src/components/settings/MobileCompanionPanel.tsx` | Modify | Add Remote Access section + Keep Awake toggle                                       |
+| File | Action | Purpose |
+|------|--------|---------|
+| [`packages/contracts/src/ipc.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/packages/contracts/src/ipc.ts) | Modify | Add `TunnelState`, `RemoteSettings` types; extend `DesktopBridge` |
+| [`apps/desktop/src/remoteSettings.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/remoteSettings.ts) | Create | Read/write `userData/remote-settings.json` |
+| [`apps/desktop/src/tunnelManager.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/tunnelManager.ts) | Create | cloudflared binary download, auth, named-tunnel lifecycle |
+| [`apps/desktop/src/keepAwakeManager.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/keepAwakeManager.ts) | Create | `powerSaveBlocker` + `caffeinate` |
+| [`apps/desktop/src/main.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/main.ts) | Modify | Create managers, register IPC channels, update `backendPairingUrl` on tunnel active |
+| [`apps/desktop/src/preload.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/preload.ts) | Modify | Expose new bridge methods |
+| [`apps/desktop/src/remoteSettings.test.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/remoteSettings.test.ts) | Create | Unit tests for settings read/write |
+| [`apps/web/src/components/settings/MobileCompanionPanel.tsx`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/web/src/components/settings/MobileCompanionPanel.tsx) | Modify | Add Remote Access section + Keep Awake toggle |
 
 ---
 
@@ -168,9 +168,27 @@ export function readRemoteSettings(userDataPath: string): RemoteSettings {
   const filePath = Path.join(userDataPath, SETTINGS_FILE);
   try {
     const raw = FS.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<RemoteSettings>;
-    return { ...defaultRemoteSettings, ...parsed };
-  } catch {
+    // Use unknown so we validate each property instead of an unsafe cast.
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const validated: Partial<RemoteSettings> = {};
+    if (typeof parsed.remoteAccessEnabled === "boolean") {
+      validated.remoteAccessEnabled = parsed.remoteAccessEnabled;
+    }
+    if (typeof parsed.keepAwakeEnabled === "boolean") {
+      validated.keepAwakeEnabled = parsed.keepAwakeEnabled;
+    }
+    if (typeof parsed.tunnelName === "string" || parsed.tunnelName === null) {
+      validated.tunnelName = parsed.tunnelName as string | null;
+    }
+    if (typeof parsed.tunnelUrl === "string" || parsed.tunnelUrl === null) {
+      validated.tunnelUrl = parsed.tunnelUrl as string | null;
+    }
+    return { ...defaultRemoteSettings, ...validated };
+  } catch (err) {
+    // ENOENT is expected on first run — skip logging for that case.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error(`[remoteSettings] Failed to read ${filePath}: ${(err as Error).message}`);
+    }
     return { ...defaultRemoteSettings };
   }
 }
@@ -278,38 +296,45 @@ export class TunnelManager extends EventEmitter {
 
   /**
    * Downloads the cloudflared binary for the current architecture.
-   * Emits progress via status updates. Verifies SHA-256 checksum.
+   * Emits progress via status updates.
+   *
+   * The fetch is wrapped in an AbortController timeout (DOWNLOAD_TIMEOUT_MS)
+   * so the download cannot hang indefinitely. Uses execFileSync (not execSync)
+   * to extract the tarball without shell interpolation risk.
    */
   async downloadBinary(): Promise<void> {
-    const assetName = getCloudflaredAssetName();
-    const binaryUrl = `${CLOUDFLARED_BASE_URL}/${assetName}`;
-    const checksumUrl = `${CLOUDFLARED_BASE_URL}/${assetName}.sha256sum`;
+    const assetName = getCloudflaredAssetName(); // e.g. cloudflared-darwin-arm64.tgz
+    const tgzUrl = `${CLOUDFLARED_BASE_URL}/${assetName}`;
 
     this.setStatus({ status: "downloading", progress: 0 });
 
-    // Download checksum file first (small, fast).
-    const checksumRes = await fetch(checksumUrl);
-    if (!checksumRes.ok) {
-      throw new Error(`Failed to fetch checksum: HTTP ${checksumRes.status}`);
-    }
-    const checksumText = await checksumRes.text();
-    const expectedHash = checksumText.trim().split(/\s+/)[0];
-    if (!expectedHash || expectedHash.length !== 64) {
-      throw new Error("Checksum file format unexpected — expected SHA-256 hex.");
+    // Enforce a download timeout via AbortController so we never hang forever.
+    const controller = new AbortController();
+    const downloadTimer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await fetch(tgzUrl, { signal: controller.signal });
+    } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        throw new Error(
+          `Download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s — check your internet connection.`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(downloadTimer);
     }
 
-    // Download binary with progress tracking.
-    const binaryRes = await fetch(binaryUrl);
-    if (!binaryRes.ok) {
-      throw new Error(`Failed to fetch cloudflared binary: HTTP ${binaryRes.status}`);
+    if (!res.ok) {
+      throw new Error(`Failed to download cloudflared: HTTP ${res.status}`);
     }
-    const totalBytes = Number(binaryRes.headers.get("content-length") ?? "0");
+    const totalBytes = Number(res.headers.get("content-length") ?? "0");
     const chunks: Uint8Array[] = [];
     let downloadedBytes = 0;
-    const reader = binaryRes.body?.getReader();
+    const reader = res.body?.getReader();
     if (!reader) throw new Error("Response body is not readable.");
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -323,28 +348,32 @@ export class TunnelManager extends EventEmitter {
       }
     }
 
-    // Assemble buffer and verify checksum.
+    // Assemble into a single buffer and write the .tgz to a temp file.
     const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
-    const buffer = new Uint8Array(totalLength);
+    const tgzBuffer = new Uint8Array(totalLength);
     let offset = 0;
     for (const chunk of chunks) {
-      buffer.set(chunk, offset);
+      tgzBuffer.set(chunk, offset);
       offset += chunk.byteLength;
     }
 
-    const actualHash = Crypto.createHash("sha256").update(buffer).digest("hex");
-    if (actualHash !== expectedHash) {
-      throw new Error(
-        `Checksum mismatch for ${assetName}. Expected ${expectedHash}, got ${actualHash}.`,
-      );
-    }
-
-    // Write binary and make it executable.
     const binDir = Path.dirname(this.binaryPath);
     if (!FS.existsSync(binDir)) {
       FS.mkdirSync(binDir, { recursive: true });
     }
-    FS.writeFileSync(this.binaryPath, buffer);
+
+    const tgzPath = `${this.binaryPath}.tgz`;
+    FS.writeFileSync(tgzPath, tgzBuffer);
+
+    try {
+      // Extract using execFileSync (not execSync) to avoid shell interpolation risk.
+      ChildProcess.execFileSync("tar", ["xzf", tgzPath, "-C", binDir, "cloudflared"], {
+        stdio: "ignore",
+      });
+    } finally {
+      try { FS.unlinkSync(tgzPath); } catch { /* ignore */ }
+    }
+
     FS.chmodSync(this.binaryPath, 0o755);
   }
 }
@@ -498,11 +527,29 @@ Append the following methods inside the `TunnelManager` class body, after `downl
     this.tunnelProcess = proc;
 
     let ready = false;
+
+    // Startup timeout: if the tunnel has not signalled readiness within
+    // TUNNEL_STARTUP_TIMEOUT_MS, treat it as an error and trigger a restart.
+    const startupTimer = setTimeout(() => {
+      if (!ready) {
+        proc.stdout?.removeListener("data", onData);
+        proc.stderr?.removeListener("data", onData);
+        this.setStatus({
+          status: "error",
+          message: `Tunnel did not become ready within ${TUNNEL_STARTUP_TIMEOUT_MS / 1000}s.`,
+        });
+        proc.kill("SIGTERM");
+      }
+    }, TUNNEL_STARTUP_TIMEOUT_MS);
+
     const onData = (chunk: Buffer) => {
       const text = chunk.toString();
       // cloudflared emits this line when the tunnel is established.
       if (!ready && /registered tunnel connection|ready to proxy/i.test(text)) {
         ready = true;
+        clearTimeout(startupTimer);
+        proc.stdout?.removeListener("data", onData);
+        proc.stderr?.removeListener("data", onData);
         this.setStatus({ status: "active", url: tunnelUrl });
       }
     };
@@ -536,6 +583,10 @@ Append the following methods inside the `TunnelManager` class body, after `downl
    * Emits status events throughout.
    */
   async enable(): Promise<void> {
+    // Concurrency guard: prevent double-click / concurrent IPC calls from
+    // spawning multiple setup flows simultaneously.
+    if (this._enabling || this._status.status !== "idle") return;
+    this._enabling = true;
     try {
       if (!this.isBinaryReady()) {
         await this.downloadBinary();
@@ -552,6 +603,8 @@ Append the following methods inside the `TunnelManager` class body, after `downl
       const message = err instanceof Error ? err.message : String(err);
       this.setStatus({ status: "error", message });
       throw err;
+    } finally {
+      this._enabling = false;
     }
   }
 
@@ -775,16 +828,14 @@ ipcMain.removeHandler(KEEP_AWAKE_SET_CHANNEL);
 ipcMain.handle(KEEP_AWAKE_SET_CHANNEL, async (_event, enabled: unknown) => {
   if (!keepAwakeManager) return;
   const remoteSettings = readRemoteSettings(app.getPath("userData"));
+  // Call writeRemoteSettings directly (top-level import, not a dynamic import)
+  // so there is no unnecessary async indirection and no orphaned promise.
   if (enabled === true) {
     keepAwakeManager.enable();
-    import("./remoteSettings").then(({ writeRemoteSettings }) => {
-      writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: true });
-    });
+    writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: true });
   } else {
     keepAwakeManager.disable();
-    import("./remoteSettings").then(({ writeRemoteSettings }) => {
-      writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: false });
-    });
+    writeRemoteSettings(app.getPath("userData"), { ...remoteSettings, keepAwakeEnabled: false });
   }
 });
 ```

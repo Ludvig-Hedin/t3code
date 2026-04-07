@@ -164,6 +164,56 @@ const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   easing: "ease-out",
 } as const;
 
+// --- Organize/filter types and helpers ---
+
+type SidebarOrganizeMode = "by_project" | "chronological" | "by_provider" | "by_date";
+type SidebarDateBucket = "today" | "yesterday" | "this_week" | "last_week" | "this_month" | "older";
+
+interface SidebarFilterState {
+  projectIds: Set<ProjectId> | null;
+  providerKinds: Set<ProviderKind> | null;
+  dateBuckets: Set<SidebarDateBucket> | null;
+  activityBuckets: Set<"has_activity" | "no_activity"> | null;
+}
+
+/** Bucket a thread's most-recent activity date into a named time range using calendar-day boundaries */
+function resolveThreadDateBucket(thread: {
+  latestUserMessageAt: string | null;
+  createdAt: string;
+}): SidebarDateBucket {
+  const ts = thread.latestUserMessageAt ?? thread.createdAt;
+  const date = ts ? new Date(ts) : new Date(0);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
+  const thisWeekStart = new Date(todayStart.getTime() - todayStart.getDay() * 86_400_000);
+  const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 86_400_000);
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  if (date >= todayStart) return "today";
+  if (date >= yesterdayStart) return "yesterday";
+  if (date >= thisWeekStart) return "this_week";
+  if (date >= lastWeekStart) return "last_week";
+  if (date >= thisMonthStart) return "this_month";
+  return "older";
+}
+
+const DATE_BUCKET_LABELS: Record<SidebarDateBucket, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  this_week: "This week",
+  last_week: "Last week",
+  this_month: "This month",
+  older: "Older",
+};
+const DATE_BUCKET_ORDER: SidebarDateBucket[] = [
+  "today",
+  "yesterday",
+  "this_week",
+  "last_week",
+  "this_month",
+  "older",
+];
+
 type SidebarProjectSnapshot = Project & {
   expanded: boolean;
 };
@@ -734,6 +784,513 @@ function SortableProjectItem({
   );
 }
 
+// --- FlatThreadRowList: renders a flat list of thread rows (used in non-by_project modes) ---
+
+interface FlatThreadRowListProps {
+  threadIds: ThreadId[];
+  projects: readonly { id: ProjectId; name: string }[];
+  showProjectTooltip: boolean;
+  prByThreadId: Map<ThreadId, ThreadPr>;
+  sidebarThreadsById: Record<string, { projectId: ProjectId } | undefined>;
+  orderedProjectThreadIds: ThreadId[];
+  routeThreadId: ThreadId | null;
+  selectedThreadIds: ReadonlySet<ThreadId>;
+  showThreadJumpHints: boolean;
+  threadJumpLabelById: Map<ThreadId, string>;
+  appSettingsConfirmThreadArchive: boolean;
+  renamingThreadId: ThreadId | null;
+  renamingTitle: string;
+  setRenamingTitle: (title: string) => void;
+  renamingInputRef: MutableRefObject<HTMLInputElement | null>;
+  renamingCommittedRef: MutableRefObject<boolean>;
+  confirmingArchiveThreadId: ThreadId | null;
+  setConfirmingArchiveThreadId: Dispatch<SetStateAction<ThreadId | null>>;
+  confirmArchiveButtonRefs: MutableRefObject<Map<ThreadId, HTMLButtonElement>>;
+  handleThreadClick: (
+    event: MouseEvent,
+    threadId: ThreadId,
+    orderedProjectThreadIds: readonly ThreadId[],
+  ) => void;
+  navigateToThread: (threadId: ThreadId) => void;
+  handleMultiSelectContextMenu: (position: { x: number; y: number }) => Promise<void>;
+  handleThreadContextMenu: (
+    threadId: ThreadId,
+    position: { x: number; y: number },
+  ) => Promise<void>;
+  clearSelection: () => void;
+  commitRename: (threadId: ThreadId, newTitle: string, originalTitle: string) => Promise<void>;
+  cancelRename: () => void;
+  attemptArchiveThread: (threadId: ThreadId) => Promise<void>;
+  openPrLink: (event: MouseEvent<HTMLElement>, prUrl: string) => void;
+}
+
+function FlatThreadRowList({
+  threadIds,
+  projects,
+  showProjectTooltip,
+  prByThreadId,
+  sidebarThreadsById,
+  ...rowProps
+}: FlatThreadRowListProps) {
+  const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+  return (
+    <SidebarMenuSub className="mx-1 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1.5 py-0">
+      {threadIds.map((threadId) => {
+        const thread = sidebarThreadsById[threadId];
+        const projectName = thread ? (projectNameById.get(thread.projectId) ?? null) : null;
+        const row = (
+          <SidebarThreadRow
+            key={threadId}
+            threadId={threadId}
+            orderedProjectThreadIds={rowProps.orderedProjectThreadIds}
+            routeThreadId={rowProps.routeThreadId}
+            selectedThreadIds={rowProps.selectedThreadIds}
+            showThreadJumpHints={rowProps.showThreadJumpHints}
+            jumpLabel={rowProps.threadJumpLabelById.get(threadId) ?? null}
+            appSettingsConfirmThreadArchive={rowProps.appSettingsConfirmThreadArchive}
+            renamingThreadId={rowProps.renamingThreadId}
+            renamingTitle={rowProps.renamingTitle}
+            setRenamingTitle={rowProps.setRenamingTitle}
+            renamingInputRef={rowProps.renamingInputRef}
+            renamingCommittedRef={rowProps.renamingCommittedRef}
+            confirmingArchiveThreadId={rowProps.confirmingArchiveThreadId}
+            setConfirmingArchiveThreadId={rowProps.setConfirmingArchiveThreadId}
+            confirmArchiveButtonRefs={rowProps.confirmArchiveButtonRefs}
+            handleThreadClick={rowProps.handleThreadClick}
+            navigateToThread={rowProps.navigateToThread}
+            handleMultiSelectContextMenu={rowProps.handleMultiSelectContextMenu}
+            handleThreadContextMenu={rowProps.handleThreadContextMenu}
+            clearSelection={rowProps.clearSelection}
+            commitRename={rowProps.commitRename}
+            cancelRename={rowProps.cancelRename}
+            attemptArchiveThread={rowProps.attemptArchiveThread}
+            openPrLink={rowProps.openPrLink}
+            pr={prByThreadId.get(threadId) ?? null}
+          />
+        );
+
+        if (showProjectTooltip && projectName) {
+          return (
+            <Tooltip key={threadId}>
+              <TooltipTrigger render={<span />}>{row}</TooltipTrigger>
+              <TooltipPopup side="right">{projectName}</TooltipPopup>
+            </Tooltip>
+          );
+        }
+        return row;
+      })}
+    </SidebarMenuSub>
+  );
+}
+
+// --- SidebarOrganizedView: renders grouped/flat view for non-by_project organize modes ---
+
+interface SidebarOrganizedViewProps extends Omit<FlatThreadRowListProps, "threadIds" | "orderedProjectThreadIds"> {
+  organizeMode: SidebarOrganizeMode;
+  visibleThreads: Array<{
+    id: ThreadId;
+    projectId: ProjectId;
+    latestUserMessageAt: string | null;
+    createdAt: string;
+    latestTurn: unknown | null;
+    session?: { provider?: ProviderKind | null } | null;
+  }>;
+  expandedGroups: ReadonlySet<string>;
+  onExpandGroup: (groupKey: string) => void;
+  onCollapseGroup: (groupKey: string) => void;
+}
+
+function SidebarOrganizedView({
+  organizeMode,
+  visibleThreads,
+  expandedGroups,
+  onExpandGroup,
+  onCollapseGroup,
+  ...rowProps
+}: SidebarOrganizedViewProps) {
+  const GROUP_PREVIEW_LIMIT = 10;
+
+  if (organizeMode === "chronological") {
+    // Flat list sorted by latest activity desc
+    const sorted = [...visibleThreads].sort((a, b) => {
+      const aTs = a.latestUserMessageAt ?? a.createdAt;
+      const bTs = b.latestUserMessageAt ?? b.createdAt;
+      return new Date(bTs).getTime() - new Date(aTs).getTime();
+    });
+    return (
+      <FlatThreadRowList
+        threadIds={sorted.map((t) => t.id)}
+        showProjectTooltip
+        orderedProjectThreadIds={sorted.map((t) => t.id)}
+        {...rowProps}
+      />
+    );
+  }
+
+  // Build groups for by_provider and by_date modes
+  type Group = { key: string; label: string; threads: typeof visibleThreads };
+  const groups: Group[] = [];
+
+  if (organizeMode === "by_provider") {
+    const byProvider = new Map<string, typeof visibleThreads>();
+    for (const thread of visibleThreads) {
+      const provider = thread.session?.provider ?? null;
+      const key = provider ?? "__no_provider__";
+      const existing = byProvider.get(key);
+      if (existing) {
+        existing.push(thread);
+      } else {
+        byProvider.set(key, [thread]);
+      }
+    }
+    for (const [key, threads] of byProvider) {
+      const provider = key === "__no_provider__" ? null : key;
+      const label =
+        provider && provider in PROVIDER_DISPLAY_NAMES
+          ? PROVIDER_DISPLAY_NAMES[provider as ProviderKind]
+          : "No provider";
+      groups.push({ key, label, threads });
+    }
+    groups.sort((a, b) => a.label.localeCompare(b.label));
+  } else if (organizeMode === "by_date") {
+    const byBucket = new Map<SidebarDateBucket, typeof visibleThreads>();
+    for (const thread of visibleThreads) {
+      const bucket = resolveThreadDateBucket(thread);
+      const existing = byBucket.get(bucket);
+      if (existing) {
+        existing.push(thread);
+      } else {
+        byBucket.set(bucket, [thread]);
+      }
+    }
+    for (const bucket of DATE_BUCKET_ORDER) {
+      const threads = byBucket.get(bucket);
+      if (!threads || threads.length === 0) continue;
+      groups.push({ key: bucket, label: DATE_BUCKET_LABELS[bucket], threads });
+    }
+  }
+
+  return (
+    <>
+      {groups.map(({ key, label, threads }) => {
+        const isExpanded = expandedGroups.has(key);
+        const visibleCount = isExpanded
+          ? threads.length
+          : Math.min(threads.length, GROUP_PREVIEW_LIMIT);
+        const shownThreads = threads.slice(0, visibleCount);
+        const hiddenCount = threads.length - visibleCount;
+        return (
+          <div key={key} className="mb-1">
+            <div className="px-4 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              {label}
+            </div>
+            <FlatThreadRowList
+              threadIds={shownThreads.map((t) => t.id)}
+              showProjectTooltip
+              orderedProjectThreadIds={threads.map((t) => t.id)}
+              {...rowProps}
+            />
+            {hiddenCount > 0 && !isExpanded && (
+              <button
+                type="button"
+                className="mt-0.5 w-full px-4 py-1 text-left text-[10px] text-muted-foreground/60 hover:text-muted-foreground/80"
+                onClick={() => onExpandGroup(key)}
+              >
+                View more ({hiddenCount} more)
+              </button>
+            )}
+            {isExpanded && threads.length > GROUP_PREVIEW_LIMIT && (
+              <button
+                type="button"
+                className="mt-0.5 w-full px-4 py-1 text-left text-[10px] text-muted-foreground/60 hover:text-muted-foreground/80"
+                onClick={() => onCollapseGroup(key)}
+              >
+                Show less
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// --- SidebarFilterButton: organize-mode radio + filter checkboxes in a Popover ---
+
+interface SidebarFilterButtonProps {
+  projects: readonly { id: ProjectId; name: string }[];
+  visibleThreads: Array<{ session?: { provider?: ProviderKind | null } | null }>;
+  organizeMode: SidebarOrganizeMode;
+  filterState: SidebarFilterState;
+  isFilterActive: boolean;
+  onOrganizeModeChange: (mode: SidebarOrganizeMode) => void;
+  onFilterChange: (state: SidebarFilterState) => void;
+  onReset: () => void;
+}
+
+function SidebarFilterButton({
+  projects,
+  visibleThreads,
+  organizeMode,
+  filterState,
+  isFilterActive,
+  onOrganizeModeChange,
+  onFilterChange,
+  onReset,
+}: SidebarFilterButtonProps) {
+  // Collect providers seen in visible threads
+  const seenProviders = useMemo(() => {
+    const providers = new Set<ProviderKind>();
+    for (const thread of visibleThreads) {
+      const provider = thread.session?.provider;
+      if (provider) providers.add(provider);
+    }
+    return providers;
+  }, [visibleThreads]);
+
+  const hasActiveFilters =
+    filterState.projectIds !== null ||
+    filterState.providerKinds !== null ||
+    filterState.dateBuckets !== null ||
+    filterState.activityBuckets !== null ||
+    organizeMode !== "by_project";
+
+  const ORGANIZE_OPTIONS: { value: SidebarOrganizeMode; label: string }[] = [
+    { value: "by_project", label: "By Project" },
+    { value: "chronological", label: "Chronological" },
+    { value: "by_provider", label: "By Provider" },
+    { value: "by_date", label: "By Date" },
+  ];
+
+  function toggleProjectFilter(projectId: ProjectId) {
+    const current = filterState.projectIds ? new Set(filterState.projectIds) : new Set<ProjectId>();
+    if (current.has(projectId)) {
+      current.delete(projectId);
+    } else {
+      current.add(projectId);
+    }
+    onFilterChange({ ...filterState, projectIds: current.size > 0 ? current : null });
+  }
+
+  function toggleProviderFilter(provider: ProviderKind) {
+    const current = filterState.providerKinds
+      ? new Set(filterState.providerKinds)
+      : new Set<ProviderKind>();
+    if (current.has(provider)) {
+      current.delete(provider);
+    } else {
+      current.add(provider);
+    }
+    onFilterChange({ ...filterState, providerKinds: current.size > 0 ? current : null });
+  }
+
+  function toggleDateBucketFilter(bucket: SidebarDateBucket) {
+    const current = filterState.dateBuckets
+      ? new Set(filterState.dateBuckets)
+      : new Set<SidebarDateBucket>();
+    if (current.has(bucket)) {
+      current.delete(bucket);
+    } else {
+      current.add(bucket);
+    }
+    onFilterChange({ ...filterState, dateBuckets: current.size > 0 ? current : null });
+  }
+
+  function toggleActivityFilter(value: "has_activity" | "no_activity") {
+    const current = filterState.activityBuckets
+      ? new Set(filterState.activityBuckets)
+      : new Set<"has_activity" | "no_activity">();
+    if (current.has(value)) {
+      current.delete(value);
+    } else {
+      current.add(value);
+    }
+    onFilterChange({ ...filterState, activityBuckets: current.size > 0 ? current : null });
+  }
+
+  return (
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger className="relative inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground">
+              <SlidersHorizontalIcon className="size-3.5" />
+              {/* Active filter badge — shown when any filter or non-default organize mode is active */}
+              {isFilterActive && (
+                <span className="absolute top-0 right-0 size-1.5 rounded-full bg-primary" />
+              )}
+            </PopoverTrigger>
+          }
+        />
+        <TooltipPopup side="right">Filter &amp; organize</TooltipPopup>
+      </Tooltip>
+      <PopoverPopup align="end" side="bottom" className="min-w-56 max-h-96 overflow-y-auto">
+        {/* Section A: Organize by */}
+        <div className="px-2 pb-1 pt-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+          Organize by
+        </div>
+        <div className="flex flex-col gap-0.5 pb-2">
+          {ORGANIZE_OPTIONS.map((option) => {
+            const isSelected = organizeMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className="flex items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors hover:bg-accent"
+                onClick={() => onOrganizeModeChange(option.value)}
+              >
+                {/* Radio dot indicator: filled when selected, empty ring when not */}
+                <span
+                  className={`inline-flex size-3.5 shrink-0 items-center justify-center rounded-full border ${
+                    isSelected ? "border-primary bg-primary" : "border-muted-foreground/40"
+                  }`}
+                >
+                  {isSelected && <span className="size-1.5 rounded-full bg-white" />}
+                </span>
+                <span
+                  className={isSelected ? "font-medium text-foreground" : "text-muted-foreground"}
+                >
+                  {option.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Section B: Filters */}
+        <div className="border-t pt-2">
+          {projects.length > 0 && (
+            <>
+              <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                Projects
+              </div>
+              <div className="flex flex-col gap-0.5 pb-2">
+                {projects.map((project) => {
+                  const checked = filterState.projectIds?.has(project.id) ?? false;
+                  return (
+                    <label
+                      key={project.id}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleProjectFilter(project.id)}
+                      />
+                      <span className="truncate text-muted-foreground">{project.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {seenProviders.size > 0 && (
+            <>
+              <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                Providers
+              </div>
+              <div className="flex flex-col gap-0.5 pb-2">
+                {[...seenProviders].map((provider) => {
+                  const checked = filterState.providerKinds?.has(provider) ?? false;
+                  return (
+                    <label
+                      key={provider}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleProviderFilter(provider)}
+                      />
+                      <span className="text-muted-foreground">
+                        {PROVIDER_DISPLAY_NAMES[provider] ?? provider}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            Date
+          </div>
+          <div className="flex flex-col gap-0.5 pb-2">
+            {DATE_BUCKET_ORDER.map((bucket) => {
+              const checked = filterState.dateBuckets?.has(bucket) ?? false;
+              return (
+                <label
+                  key={bucket}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() => toggleDateBucketFilter(bucket)}
+                  />
+                  <span className="text-muted-foreground">{DATE_BUCKET_LABELS[bucket]}</span>
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            Messages{" "}
+            <span className="normal-case tracking-normal text-muted-foreground/50">
+              — check to show only
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5 pb-2">
+            {(
+              [
+                {
+                  value: "has_activity" as const,
+                  label: "Has messages",
+                  hint: "At least one AI response",
+                },
+                {
+                  value: "no_activity" as const,
+                  label: "Empty threads",
+                  hint: "No AI responses yet",
+                },
+              ] as const
+            ).map(({ value, label, hint }) => {
+              const checked = filterState.activityBuckets?.has(value) ?? false;
+              return (
+                <label
+                  key={value}
+                  className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent"
+                >
+                  <Checkbox
+                    className="mt-px"
+                    checked={checked}
+                    onCheckedChange={() => toggleActivityFilter(value)}
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="text-[10px] text-muted-foreground/50">{hint}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          {/* Reset button — only shown when filters/organize-mode are non-default */}
+          {hasActiveFilters && (
+            <div className="border-t pt-2">
+              <button
+                type="button"
+                className="w-full rounded-md px-2 py-1 text-left text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                onClick={onReset}
+              >
+                Reset to defaults
+              </button>
+            </div>
+          )}
+        </div>
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
 export default function Sidebar() {
   const projects = useStore((store) => store.projects);
   // bootstrapComplete flips to true once the server read model has been synced for the first time.
@@ -751,6 +1308,13 @@ export default function Sidebar() {
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
   const toggleProject = useUiStateStore((store) => store.toggleProject);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
+  const pinnedToSidebarThreadIds = useUiStateStore((s) => s.pinnedToSidebarThreadIds);
+  const pinnedToProjectThreadIds = useUiStateStore((s) => s.pinnedToProjectThreadIds);
+  const pinToSidebar = useUiStateStore((s) => s.pinToSidebar);
+  const unpinFromSidebar = useUiStateStore((s) => s.unpinFromSidebar);
+  const pinToProject = useUiStateStore((s) => s.pinToProject);
+  const unpinFromProject = useUiStateStore((s) => s.unpinFromProject);
+  const setProjectOrder = useUiStateStore((s) => s.setProjectOrder);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
   const getDraftThreadByProjectId = useComposerDraftStore(
     (store) => store.getDraftThreadByProjectId,
@@ -784,6 +1348,17 @@ export default function Sidebar() {
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<ProjectId>
   >(() => new Set());
+  // Organize mode and filter state for non-by_project views
+  const [organizeMode, setOrganizeMode] = useState<SidebarOrganizeMode>("by_project");
+  const [filterState, setFilterState] = useState<SidebarFilterState>({
+    projectIds: null,
+    providerKinds: null,
+    dateBuckets: null,
+    activityBuckets: null,
+  });
+  const [expandedOrganizeGroups, setExpandedOrganizeGroups] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const { showThreadJumpHints, updateThreadJumpHintsVisibility } = useThreadJumpHintVisibility();
   const renamingCommittedRef = useRef(false);
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
@@ -1136,10 +1711,20 @@ export default function Sidebar() {
       if (!thread) return;
       const threadWorkspacePath =
         thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null;
+      const isPinnedToSidebar = pinnedToSidebarThreadIds.includes(threadId);
+      const isPinnedToProject = pinnedToProjectThreadIds.includes(threadId);
       const clicked = await api.contextMenu.show(
         [
           { id: "rename", label: "Rename thread" },
           { id: "mark-unread", label: "Mark unread" },
+          {
+            id: isPinnedToSidebar ? "unpin-from-sidebar" : "pin-to-sidebar",
+            label: isPinnedToSidebar ? "Unpin from sidebar" : "Pin to sidebar",
+          },
+          {
+            id: isPinnedToProject ? "unpin-from-project" : "pin-to-project",
+            label: isPinnedToProject ? "Unpin from project" : "Pin to project",
+          },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "delete", label: "Delete", destructive: true },
@@ -1156,6 +1741,22 @@ export default function Sidebar() {
 
       if (clicked === "mark-unread") {
         markThreadUnread(threadId, thread.latestTurn?.completedAt);
+        return;
+      }
+      if (clicked === "pin-to-sidebar") {
+        pinToSidebar(threadId);
+        return;
+      }
+      if (clicked === "unpin-from-sidebar") {
+        unpinFromSidebar(threadId);
+        return;
+      }
+      if (clicked === "pin-to-project") {
+        pinToProject(threadId);
+        return;
+      }
+      if (clicked === "unpin-from-project") {
+        unpinFromProject(threadId);
         return;
       }
       if (clicked === "copy-path") {
@@ -1194,8 +1795,14 @@ export default function Sidebar() {
       copyThreadIdToClipboard,
       deleteThread,
       markThreadUnread,
+      pinToProject,
+      pinToSidebar,
+      pinnedToProjectThreadIds,
+      pinnedToSidebarThreadIds,
       projectCwdById,
       sidebarThreadsById,
+      unpinFromProject,
+      unpinFromSidebar,
     ],
   );
 
@@ -1395,32 +2002,37 @@ export default function Sidebar() {
     return closestCorners(args);
   }, []);
 
+  // Track current renderedProjects in a ref so handleProjectDragEnd can snapshot
+  // the displayed order without a stale closure when switching to manual sort.
+  const renderedProjectsRef = useRef<typeof renderedProjects>([]);
+
   const handleProjectDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (appSettings.sidebarProjectSortOrder !== "manual") {
-        dragInProgressRef.current = false;
-        return;
-      }
       dragInProgressRef.current = false;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
       const activeProject = sidebarProjects.find((project) => project.id === active.id);
       const overProject = sidebarProjects.find((project) => project.id === over.id);
       if (!activeProject || !overProject) return;
+
+      if (appSettings.sidebarProjectSortOrder !== "manual") {
+        // Auto-switch to manual: snapshot the current display order then reorder
+        const snapshotIds = renderedProjectsRef.current.map((rp) => rp.project.id);
+        setProjectOrder(snapshotIds);
+        updateSettings({ sidebarProjectSortOrder: "manual" });
+      }
       reorderProjects(activeProject.id, overProject.id);
     },
-    [appSettings.sidebarProjectSortOrder, reorderProjects, sidebarProjects],
+    [appSettings.sidebarProjectSortOrder, reorderProjects, setProjectOrder, sidebarProjects, updateSettings],
   );
 
   const handleProjectDragStart = useCallback(
     (_event: DragStartEvent) => {
-      if (appSettings.sidebarProjectSortOrder !== "manual") {
-        return;
-      }
+      // Always arm drag regardless of sort mode — we auto-switch to manual on drop
       dragInProgressRef.current = true;
       suppressProjectClickAfterDragRef.current = true;
     },
-    [appSettings.sidebarProjectSortOrder],
+    [],
   );
 
   const handleProjectDragCancel = useCallback((_event: DragCancelEvent) => {
@@ -1468,6 +2080,35 @@ export default function Sidebar() {
     () => sidebarThreads.filter((thread) => thread.archivedAt === null),
     [sidebarThreads],
   );
+
+  // Whether any filter is active (affects badge on filter button)
+  const isFilterActive =
+    filterState.projectIds !== null ||
+    filterState.providerKinds !== null ||
+    filterState.dateBuckets !== null ||
+    filterState.activityBuckets !== null ||
+    organizeMode !== "by_project";
+
+  // Compute set of filtered thread IDs for the by_project view (null = no filter)
+  const filteredThreadIdSet = useMemo<Set<ThreadId> | null>(() => {
+    const { projectIds, providerKinds, dateBuckets, activityBuckets } = filterState;
+    if (!projectIds && !providerKinds && !dateBuckets && !activityBuckets) return null;
+    const filtered = visibleThreads.filter((t) => {
+      if (projectIds && !projectIds.has(t.projectId)) return false;
+      if (providerKinds) {
+        const provider = t.session?.provider ?? null;
+        if (!provider || !providerKinds.has(provider)) return false;
+      }
+      if (dateBuckets && !dateBuckets.has(resolveThreadDateBucket(t))) return false;
+      if (activityBuckets) {
+        const hasActivity = t.latestTurn !== null;
+        if (!activityBuckets.has(hasActivity ? "has_activity" : "no_activity")) return false;
+      }
+      return true;
+    });
+    return new Set(filtered.map((t) => t.id));
+  }, [filterState, visibleThreads]);
+
   const sortedProjects = useMemo(
     () =>
       sortProjectsForSidebar(sidebarProjects, visibleThreads, appSettings.sidebarProjectSortOrder),
@@ -1488,17 +2129,26 @@ export default function Sidebar() {
           (threadIdsByProjectId[project.id] ?? [])
             .map((threadId) => sidebarThreadsById[threadId])
             .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
-            .filter((thread) => thread.archivedAt === null),
+            .filter((thread) => thread.archivedAt === null)
+            // Apply active filters so only matching threads appear in each project group
+            .filter((thread) => !filteredThreadIdSet || filteredThreadIdSet.has(thread.id)),
           appSettings.sidebarThreadSortOrder,
         );
+        // Reorder so pinned-to-project threads float to the top of each project
+        const projectPinnedSet = new Set(pinnedToProjectThreadIds);
+        const rawProjectThreads = projectThreads;
+        const sortedProjectThreads = [
+          ...rawProjectThreads.filter((t) => projectPinnedSet.has(t.id)),
+          ...rawProjectThreads.filter((t) => !projectPinnedSet.has(t.id)),
+        ];
         const projectStatus = resolveProjectStatusIndicator(
-          projectThreads.map((thread) => resolveProjectThreadStatus(thread)),
+          sortedProjectThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
         const activeThreadId = routeThreadId ?? undefined;
         const isThreadListExpanded = expandedThreadListsByProject.has(project.id);
         const pinnedCollapsedThread =
           !project.expanded && activeThreadId
-            ? (projectThreads.find((thread) => thread.id === activeThreadId) ?? null)
+            ? (sortedProjectThreads.find((thread) => thread.id === activeThreadId) ?? null)
             : null;
         const shouldShowThreadPanel = project.expanded || pinnedCollapsedThread !== null;
         const {
@@ -1506,7 +2156,7 @@ export default function Sidebar() {
           hiddenThreads,
           visibleThreads: visibleProjectThreads,
         } = getVisibleThreadsForProject({
-          threads: projectThreads,
+          threads: sortedProjectThreads,
           activeThreadId,
           isThreadListExpanded,
           previewLimit: THREAD_PREVIEW_LIMIT,
@@ -1514,7 +2164,7 @@ export default function Sidebar() {
         const hiddenThreadStatus = resolveProjectStatusIndicator(
           hiddenThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
-        const orderedProjectThreadIds = projectThreads.map((thread) => thread.id);
+        const orderedProjectThreadIds = sortedProjectThreads.map((thread) => thread.id);
         const renderedThreadIds = pinnedCollapsedThread
           ? [pinnedCollapsedThread.id]
           : visibleProjectThreads.map((thread) => thread.id);
@@ -1535,6 +2185,8 @@ export default function Sidebar() {
     [
       appSettings.sidebarThreadSortOrder,
       expandedThreadListsByProject,
+      filteredThreadIdSet,
+      pinnedToProjectThreadIds,
       routeThreadId,
       sortedProjects,
       sidebarThreadsById,
@@ -1542,6 +2194,8 @@ export default function Sidebar() {
       threadLastVisitedAtById,
     ],
   );
+  // Keep ref current so drag handler can snapshot project order without stale closure
+  renderedProjectsRef.current = renderedProjects;
   const visibleSidebarThreadIds = useMemo(
     () => getVisibleSidebarThreadIds(renderedProjects),
     [renderedProjects],
@@ -1709,13 +2363,11 @@ export default function Sidebar() {
       <>
         <div className="group/project-header relative">
           <SidebarMenuButton
-            ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
+            ref={dragHandleProps?.setActivatorNodeRef}
             size="sm"
-            className={`gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground ${
-              isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-            }`}
-            {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
-            {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
+            className="gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground cursor-grab active:cursor-grabbing"
+            {...(dragHandleProps ? dragHandleProps.attributes : {})}
+            {...(dragHandleProps ? dragHandleProps.listeners : {})}
             onPointerDownCapture={handleProjectTitlePointerDownCapture}
             onClick={(event) => handleProjectTitleClick(event, project.id)}
             onKeyDown={(event) => handleProjectTitleKeyDown(event, project.id)}
@@ -2229,9 +2881,28 @@ export default function Sidebar() {
             <SidebarGroup className="px-2 py-2">
               <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
                 <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                  Projects
+                  {organizeMode === "by_project" ? "Projects" : "Threads"}
                 </span>
                 <div className="flex items-center gap-1">
+                  {/* Filter/organize button — placed to the left of the sort button */}
+                  <SidebarFilterButton
+                    projects={projects}
+                    visibleThreads={visibleThreads}
+                    organizeMode={organizeMode}
+                    filterState={filterState}
+                    isFilterActive={isFilterActive}
+                    onOrganizeModeChange={setOrganizeMode}
+                    onFilterChange={setFilterState}
+                    onReset={() => {
+                      setOrganizeMode("by_project");
+                      setFilterState({
+                        projectIds: null,
+                        providerKinds: null,
+                        dateBuckets: null,
+                        activityBuckets: null,
+                      });
+                    }}
+                  />
                   <ProjectSortMenu
                     projectSortOrder={appSettings.sidebarProjectSortOrder}
                     threadSortOrder={appSettings.sidebarThreadSortOrder}
@@ -2321,39 +2992,129 @@ export default function Sidebar() {
                 </div>
               )}
 
-              {isManualProjectSorting ? (
-                <DndContext
-                  sensors={projectDnDSensors}
-                  collisionDetection={projectCollisionDetection}
-                  modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
-                  onDragStart={handleProjectDragStart}
-                  onDragEnd={handleProjectDragEnd}
-                  onDragCancel={handleProjectDragCancel}
-                >
-                  <SidebarMenu>
-                    <SortableContext
-                      items={renderedProjects.map((renderedProject) => renderedProject.project.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      {renderedProjects.map((renderedProject) => (
-                        <SortableProjectItem
-                          key={renderedProject.project.id}
-                          projectId={renderedProject.project.id}
-                        >
-                          {(dragHandleProps) => renderProjectItem(renderedProject, dragHandleProps)}
-                        </SortableProjectItem>
-                      ))}
-                    </SortableContext>
-                  </SidebarMenu>
-                </DndContext>
+              {organizeMode !== "by_project" ? (
+                /* Non-by_project views: flat/grouped thread list */
+                <SidebarOrganizedView
+                  organizeMode={organizeMode}
+                  visibleThreads={
+                    filteredThreadIdSet
+                      ? visibleThreads.filter((t) => filteredThreadIdSet.has(t.id))
+                      : visibleThreads
+                  }
+                  filterState={filterState}
+                  expandedGroups={expandedOrganizeGroups}
+                  onExpandGroup={(key) =>
+                    setExpandedOrganizeGroups((prev) => {
+                      const next = new Set(prev);
+                      next.add(key);
+                      return next;
+                    })
+                  }
+                  onCollapseGroup={(key) =>
+                    setExpandedOrganizeGroups((prev) => {
+                      const next = new Set(prev);
+                      next.delete(key);
+                      return next;
+                    })
+                  }
+                  projects={projects}
+                  prByThreadId={prByThreadId}
+                  sidebarThreadsById={sidebarThreadsById}
+                  orderedProjectThreadIds={orderedSidebarThreadIds}
+                  routeThreadId={routeThreadId}
+                  selectedThreadIds={selectedThreadIds}
+                  showThreadJumpHints={showThreadJumpHints}
+                  threadJumpLabelById={threadJumpLabelById}
+                  appSettingsConfirmThreadArchive={appSettings.confirmThreadArchive}
+                  renamingThreadId={renamingThreadId}
+                  renamingTitle={renamingTitle}
+                  setRenamingTitle={setRenamingTitle}
+                  renamingInputRef={renamingInputRef}
+                  renamingCommittedRef={renamingCommittedRef}
+                  confirmingArchiveThreadId={confirmingArchiveThreadId}
+                  setConfirmingArchiveThreadId={setConfirmingArchiveThreadId}
+                  confirmArchiveButtonRefs={confirmArchiveButtonRefs}
+                  handleThreadClick={handleThreadClick}
+                  navigateToThread={navigateToThread}
+                  handleMultiSelectContextMenu={handleMultiSelectContextMenu}
+                  handleThreadContextMenu={handleThreadContextMenu}
+                  clearSelection={clearSelection}
+                  commitRename={commitRename}
+                  cancelRename={cancelRename}
+                  attemptArchiveThread={attemptArchiveThread}
+                  openPrLink={openPrLink}
+                />
               ) : (
-                <SidebarMenu ref={attachProjectListAutoAnimateRef}>
-                  {renderedProjects.map((renderedProject) => (
-                    <SidebarMenuItem key={renderedProject.project.id} className="rounded-md">
-                      {renderProjectItem(renderedProject, null)}
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
+                /* by_project view: always use DndContext so drag-to-reorder works in any sort mode */
+                <>
+                  {/* Pinned-to-sidebar section — shown above the project list */}
+                  {pinnedToSidebarThreadIds.length > 0 && (
+                    <div className="mb-2">
+                      <div className="mb-0.5 flex items-center gap-1 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                        <PinIcon className="size-2.5" />
+                        Pinned
+                      </div>
+                      <FlatThreadRowList
+                        threadIds={pinnedToSidebarThreadIds.filter((id) =>
+                          visibleThreads.some((t) => t.id === id),
+                        )}
+                        projects={projects}
+                        showProjectTooltip
+                        prByThreadId={prByThreadId}
+                        sidebarThreadsById={sidebarThreadsById}
+                        orderedProjectThreadIds={orderedSidebarThreadIds}
+                        routeThreadId={routeThreadId}
+                        selectedThreadIds={selectedThreadIds}
+                        showThreadJumpHints={showThreadJumpHints}
+                        threadJumpLabelById={threadJumpLabelById}
+                        appSettingsConfirmThreadArchive={appSettings.confirmThreadArchive}
+                        renamingThreadId={renamingThreadId}
+                        renamingTitle={renamingTitle}
+                        setRenamingTitle={setRenamingTitle}
+                        renamingInputRef={renamingInputRef}
+                        renamingCommittedRef={renamingCommittedRef}
+                        confirmingArchiveThreadId={confirmingArchiveThreadId}
+                        setConfirmingArchiveThreadId={setConfirmingArchiveThreadId}
+                        confirmArchiveButtonRefs={confirmArchiveButtonRefs}
+                        handleThreadClick={handleThreadClick}
+                        navigateToThread={navigateToThread}
+                        handleMultiSelectContextMenu={handleMultiSelectContextMenu}
+                        handleThreadContextMenu={handleThreadContextMenu}
+                        clearSelection={clearSelection}
+                        commitRename={commitRename}
+                        cancelRename={cancelRename}
+                        attemptArchiveThread={attemptArchiveThread}
+                        openPrLink={openPrLink}
+                      />
+                    </div>
+                  )}
+                  <DndContext
+                    sensors={projectDnDSensors}
+                    collisionDetection={projectCollisionDetection}
+                    modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+                    onDragStart={handleProjectDragStart}
+                    onDragEnd={handleProjectDragEnd}
+                    onDragCancel={handleProjectDragCancel}
+                  >
+                    <SidebarMenu>
+                      <SortableContext
+                        items={renderedProjects.map((renderedProject) => renderedProject.project.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {renderedProjects.map((renderedProject) => (
+                          <SortableProjectItem
+                            key={renderedProject.project.id}
+                            projectId={renderedProject.project.id}
+                          >
+                            {(dragHandleProps) =>
+                              renderProjectItem(renderedProject, dragHandleProps)
+                            }
+                          </SortableProjectItem>
+                        ))}
+                      </SortableContext>
+                    </SidebarMenu>
+                  </DndContext>
+                </>
               )}
 
               {/* Only surface the "no projects" empty state once bootstrap is complete —
@@ -2373,41 +3134,61 @@ export default function Sidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  className={`gap-2 px-2 py-1.5 hover:bg-accent hover:text-foreground ${
+                    pathname.startsWith("/automations")
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground/70"
+                  }`}
                   onClick={() => void navigate({ to: "/automations" })}
                 >
                   <ZapIcon className="size-3.5" />
-                  <span className="text-xs">Automations</span>
+                  <span className="flex-1 text-xs">Automations</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  className={`gap-2 px-2 py-1.5 hover:bg-accent hover:text-foreground ${
+                    pathname.startsWith("/skills")
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground/70"
+                  }`}
                   onClick={() => void navigate({ to: "/skills" })}
                 >
                   <SparklesIcon className="size-3.5" />
-                  <span className="text-xs">Skills</span>
+                  <span className="flex-1 text-xs">Skills</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  className={`gap-2 px-2 py-1.5 hover:bg-accent hover:text-foreground ${
+                    pathname.startsWith("/plugins")
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground/70"
+                  }`}
                   onClick={() => void navigate({ to: "/plugins" })}
                 >
                   <LayoutGridIcon className="size-3.5" />
-                  <span className="text-xs">Plugins</span>
+                  <span className="flex-1 text-xs">Plugins</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  className={`gap-2 px-2 py-1.5 hover:bg-accent hover:text-foreground ${
+                    pathname.startsWith("/settings")
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground/70"
+                  }`}
                   onClick={() => void navigate({ to: "/settings" })}
                 >
                   <SettingsIcon className="size-3.5" />
-                  <span className="text-xs">Settings</span>
+                  <span className="flex-1 text-xs">Settings</span>
+                  {/* Settings shortcut hint: ⌘, / Ctrl+, */}
+                  <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
+                    {isMacPlatform(navigator.platform) ? "⌘," : "Ctrl+,"}
+                  </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
