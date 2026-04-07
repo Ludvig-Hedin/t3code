@@ -35,65 +35,108 @@ const EMPTY_CAPS: ModelCapabilities = {
   promptInjectedEffortLevels: [],
 };
 
-/** Static fallback list used when opencode server is not reachable. */
+/**
+ * Static fallback list used when the opencode server is not reachable.
+ * Slugs use the exact format returned by `opencode models`:
+ * "{providerID}/{modelID}" — first segment is the API providerID.
+ */
 export const OPENCODE_CURATED_MODELS: ReadonlyArray<ServerProviderModel> = [
+  // moonshotai via openrouter (default fallback)
   {
-    slug: "moonshot/kimi-k2-5",
-    name: "Kimi K2.5 (Moonshot)",
+    slug: "openrouter/moonshotai/kimi-k2.5",
+    name: "Kimi K2.5 (Moonshot via OpenRouter)",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
+  // Anthropic via openrouter
   {
-    slug: "anthropic/claude-sonnet-4-5",
+    slug: "openrouter/anthropic/claude-sonnet-4.5",
     name: "Claude Sonnet 4.5 (Anthropic)",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
   {
-    slug: "anthropic/claude-opus-4",
+    slug: "openrouter/anthropic/claude-opus-4",
     name: "Claude Opus 4 (Anthropic)",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
   {
-    slug: "anthropic/claude-haiku-4",
-    name: "Claude Haiku 4 (Anthropic)",
+    slug: "openrouter/anthropic/claude-haiku-4.5",
+    name: "Claude Haiku 4.5 (Anthropic)",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
-  { slug: "openai/gpt-4o", name: "GPT-4o (OpenAI)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "openai/o3", name: "o3 (OpenAI)", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "openai/o4-mini", name: "o4-mini (OpenAI)", isCustom: false, capabilities: EMPTY_CAPS },
+  // OpenAI via openrouter
   {
-    slug: "google/gemini-2.5-pro",
+    slug: "openrouter/openai/gpt-4o",
+    name: "GPT-4o (OpenAI)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "openrouter/openai/o3",
+    name: "o3 (OpenAI)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  {
+    slug: "openrouter/openai/o4-mini",
+    name: "o4-mini (OpenAI)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  // Google via openrouter
+  {
+    slug: "openrouter/google/gemini-2.5-pro",
     name: "Gemini 2.5 Pro (Google)",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
   {
-    slug: "google/gemini-2.5-flash",
+    slug: "openrouter/google/gemini-2.5-flash",
     name: "Gemini 2.5 Flash (Google)",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
+  // DeepSeek via openrouter
   {
-    slug: "mistral/mistral-large",
-    name: "Mistral Large",
+    slug: "openrouter/deepseek/deepseek-v3.2",
+    name: "DeepSeek V3.2",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
   {
-    slug: "meta-llama/llama-3.3-70b",
-    name: "Llama 3.3 70B (Meta)",
+    slug: "openrouter/deepseek/deepseek-r1-distill-llama-70b",
+    name: "DeepSeek R1 Distill 70B",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },
-  { slug: "deepseek/deepseek-r1", name: "DeepSeek R1", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "qwen/qwen-2.5-72b", name: "Qwen 2.5 72B", isCustom: false, capabilities: EMPTY_CAPS },
-  { slug: "xai/grok-3", name: "Grok 3 (xAI)", isCustom: false, capabilities: EMPTY_CAPS },
+  // Meta Llama via openrouter
   {
-    slug: "cohere/command-r-plus",
-    name: "Command R+ (Cohere)",
+    slug: "openrouter/meta-llama/llama-4-maverick",
+    name: "Llama 4 Maverick (Meta)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  // xAI via openrouter
+  {
+    slug: "openrouter/x-ai/grok-3",
+    name: "Grok 3 (xAI)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  // Mistral via openrouter
+  {
+    slug: "openrouter/mistralai/mistral-large-2411",
+    name: "Mistral Large (Mistral AI)",
+    isCustom: false,
+    capabilities: EMPTY_CAPS,
+  },
+  // Native opencode free models
+  {
+    slug: "opencode/big-pickle",
+    name: "Big Pickle (OpenCode)",
     isCustom: false,
     capabilities: EMPTY_CAPS,
   },

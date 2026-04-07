@@ -22,14 +22,20 @@ function decodeProviderKind(
   providerName: string,
   operation: string,
 ): Effect.Effect<ProviderKind, ProviderSessionDirectoryPersistenceError> {
-  if (
-    providerName === "codex" ||
-    providerName === "claudeAgent" ||
-    providerName === "gemini" ||
-    providerName === "opencode" ||
-    providerName === "ollama"
-  ) {
-    return Effect.succeed(providerName);
+  // Keep this list in sync with ProviderKind in contracts/orchestration.ts.
+  // "cursor" is an in-progress provider not yet in the ProviderKind union —
+  // cast is intentional to allow persisted cursor sessions to resolve without error.
+  const KNOWN_PROVIDERS = new Set([
+    "codex",
+    "claudeAgent",
+    "gemini",
+    "opencode",
+    "ollama",
+    "manifest",
+    "cursor",
+  ]);
+  if (KNOWN_PROVIDERS.has(providerName)) {
+    return Effect.succeed(providerName as ProviderKind);
   }
   return Effect.fail(
     new ProviderSessionDirectoryPersistenceError({

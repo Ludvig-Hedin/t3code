@@ -295,6 +295,20 @@ export function renderProviderTraitsPicker(input: {
   prompt: string;
   onPromptChange: (prompt: string) => void;
 }): ReactNode {
+  // Guard: if the model has no configurable traits, return null so callers can avoid
+  // rendering the surrounding separator. A ReactNode JSX element is always truthy even when
+  // the component renders nothing internally, so this check must happen here — not inside
+  // TraitsPicker — so that `{providerTraitsPicker ? <><Separator/>{picker}</> : null}` works.
+  const caps = getProviderModelCapabilities(input.models, input.model, input.provider);
+  const hasConfigurableTraits =
+    caps.reasoningEffortLevels.length > 0 ||
+    caps.supportsThinkingToggle ||
+    caps.contextWindowOptions.length > 1 ||
+    caps.supportsFastMode;
+  if (!hasConfigurableTraits) {
+    return null;
+  }
+
   return composerProviderRegistry[input.provider].renderTraitsPicker({
     threadId: input.threadId,
     model: input.model,

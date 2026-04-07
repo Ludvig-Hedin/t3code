@@ -72,7 +72,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
   codex: "gpt-5.4",
   claudeAgent: "claude-sonnet-4-6",
   gemini: "gemini-2.5-pro",
-  opencode: "moonshot/kimi-k2-5",
+  opencode: "openrouter/moonshotai/kimi-k2.5",
   ollama: "llama3.2",
   // manifest always uses "auto" — the router picks the actual model internally
   manifest: "auto",
@@ -85,7 +85,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   codex: "gpt-5.4-mini",
   claudeAgent: "claude-haiku-4-5",
   gemini: "gemini-2.5-flash",
-  opencode: "moonshot/kimi-k2-5",
+  opencode: "openrouter/moonshotai/kimi-k2.5",
   ollama: "llama3.2",
   manifest: "auto",
 };

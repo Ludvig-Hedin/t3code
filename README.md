@@ -1,16 +1,38 @@
 # Bird Code
 
-Bird Code is a minimal web GUI for coding agents (currently Codex and Claude, more coming soon).
+Bird Code is a minimal web GUI for coding agents (currently Codex, Claude, Ollama, OpenCode, and Gemini — more coming soon).
 It also includes an iOS-first companion app that mirrors the desktop UI and lets you chat with the desktop session from your phone.
+
+## Features
+
+- **Multi-provider**: Codex, Claude Code, Ollama (local), OpenCode, and Gemini — all through a unified session model.
+- **Diff review & approvals**: Review proposed file changes inline before accepting.
+- **Integrated terminal**: Multi-tab, split-pane PTY terminal embedded in the UI.
+- **Branch & git controls**: Branch selector, commit, push, PR creation, and worktree management from the sidebar.
+- **Plan sidebar**: See the agent's step-by-step plan as it works.
+- **Preview panel**: Live web preview and mobile webview relay.
+- **Keybindings**: Fully customizable keyboard shortcuts via `~/.t3/keybindings.json`. See `KEYBINDINGS.md`.
+- **MCP support**: Connect Model Context Protocol servers to extend provider capabilities.
+- **Skills & memory**: Persistent skill definitions and memory that survive across sessions.
+- **Automations**: Define automation rules that trigger on agent events.
+- **Plugins**: Extend Bird Code with plugins.
+- **Onboarding**: 5-step onboarding sheet to get started quickly.
+- **Remote access**: Expose the server over your LAN or via Cloudflare Named Tunnel for access from any device.
+- **iOS companion app**: Native SwiftUI app that pairs with the desktop session for chat, diffs, and approvals on the go.
+- **Desktop app**: Electron shell with auto-update, keep-awake, and system tray support.
+- **Observability**: Local NDJSON trace file + optional OTLP export to Grafana LGTM or any OpenTelemetry backend.
+- **Theming & appearance**: Customizable via settings (CSS variable injection).
 
 ## Installation
 
 > [!WARNING]
-> Bird Code currently supports Codex and Claude.
+> Bird Code supports Codex, Claude Code, Ollama, and OpenCode.
 > Install and authenticate at least one provider before use:
 >
-> - Codex: install [Codex CLI](https://github.com/openai/codex) and run `codex login`
-> - Claude: install Claude Code and run `claude auth login`
+> - **Codex**: install [Codex CLI](https://github.com/openai/codex) and run `codex login`
+> - **Claude**: install Claude Code and run `claude auth login`
+> - **Ollama**: install [Ollama](https://ollama.ai) and run it locally (Bird Code can pull models from the UI)
+> - **OpenCode**: install [OpenCode](https://opencode.ai) — Bird Code will start its app-server automatically
 
 ## Local development
 
@@ -72,6 +94,13 @@ cd apps/mobile
 xcodegen generate
 ```
 
+## Remote access
+
+See [`REMOTE.md`](./REMOTE.md) for the full setup guide. The short version:
+
+- **LAN**: run with `--host 0.0.0.0 --auth-token <token>` and open `http://<lan-ip>:<port>` on another device.
+- **Cloudflare Tunnel**: enable from the desktop app's `Mobile` settings tab. The app manages `cloudflared` for you.
+
 ## Some notes
 
 We are very very early in this project. Expect bugs.
@@ -81,6 +110,10 @@ We are not accepting contributions yet.
 Observability guide: [docs/observability.md](./docs/observability.md)
 
 Desktop releases (versioning, local build, publish): [docs/desktop-release-simple.md](./docs/desktop-release-simple.md)
+
+iOS companion setup: [docs/ios-companion.md](./docs/ios-companion.md)
+
+Keybindings: [KEYBINDINGS.md](./KEYBINDINGS.md)
 
 ## If you REALLY want to contribute still.... read this first
 

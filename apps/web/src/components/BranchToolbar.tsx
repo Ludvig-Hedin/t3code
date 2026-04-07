@@ -185,9 +185,9 @@ export default function BranchToolbar({
             render={
               <Button
                 variant="ghost"
-                size="sm"
+                size="xs"
                 className={cn(
-                  "h-auto shrink-0 gap-1 px-2 py-0.5 text-xs font-medium",
+                  "h-auto shrink-0 gap-1 px-2 py-0.5 font-medium",
                   runtimeMode === "full-access"
                     ? "text-rose-400/80 hover:text-rose-400"
                     : runtimeMode === "custom"

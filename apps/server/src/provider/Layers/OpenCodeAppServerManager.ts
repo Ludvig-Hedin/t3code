@@ -13,8 +13,12 @@ import { type ChildProcess as NodeChildProcess, spawn } from "node:child_process
 
 const STARTING_PORT = 4096;
 const MAX_PORT_ATTEMPTS = 20;
-const HEALTH_POLL_INTERVAL_MS = 200;
-const HEALTH_POLL_MAX_MS = 10_000;
+const HEALTH_POLL_INTERVAL_MS = 500;
+// opencode initialises its DB and plugins on the first request, which can
+// take 8-10 seconds on a cold start. Allow up to 45s total.
+const HEALTH_POLL_MAX_MS = 45_000;
+// Each individual fetch probe is allowed 12s (the first request can be slow).
+const HEALTH_FETCH_TIMEOUT_MS = 12_000;
 
 export interface OpenCodeHttpClient {
   readonly baseUrl: string;
@@ -49,7 +53,9 @@ async function waitForHealth(baseUrl: string): Promise<void> {
   const deadline = Date.now() + HEALTH_POLL_MAX_MS;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(500) });
+      const res = await fetch(`${baseUrl}/health`, {
+        signal: AbortSignal.timeout(HEALTH_FETCH_TIMEOUT_MS),
+      });
       if (res.ok) return;
     } catch {
       // not ready yet
@@ -100,9 +106,15 @@ export async function startOpenCodeServer(binaryPath: string): Promise<OpenCodeS
   const baseUrl = `http://127.0.0.1:${port}`;
 
   const child: NodeChildProcess = spawn(binaryPath, ["serve", "--port", String(port)], {
-    stdio: "ignore",
+    // Capture stderr so we can surface startup errors to the caller.
+    stdio: ["ignore", "ignore", "pipe"],
     detached: false,
   });
+
+  const stderrChunks: Buffer[] = [];
+  if (child.stderr) {
+    child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+  }
 
   child.on("error", (err) => {
     console.error("[OpenCodeAppServerManager] child process error:", err);
@@ -119,7 +131,11 @@ export async function startOpenCodeServer(binaryPath: string): Promise<OpenCodeS
     };
 
     child.on("exit", (code) => {
-      settle(() => reject(new Error(`opencode serve exited early with code ${code ?? "unknown"}`)));
+      const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+      const detail = stderr ? `\nProcess output:\n${stderr}` : "";
+      settle(() =>
+        reject(new Error(`opencode serve exited early with code ${code ?? "unknown"}${detail}`)),
+      );
     });
 
     waitForHealth(baseUrl)

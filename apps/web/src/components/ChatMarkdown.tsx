@@ -263,6 +263,40 @@ function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
           />
         );
       },
+      // Auto-detect file paths in inline backtick code (e.g. `apps/web/src/file.ts`)
+      // and make them clickable so the user can open them in their preferred editor.
+      // Block code fences always have a className like "language-ts"; inline code does not.
+      code({ node: _node, className, children, ...props }) {
+        if (!className) {
+          const text = nodeToPlainText(children);
+          const targetPath = resolveMarkdownFileLinkTarget(text, cwd);
+          if (targetPath) {
+            return (
+              <code
+                {...props}
+                className="cursor-pointer underline decoration-dotted underline-offset-2"
+                title={targetPath}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const api = readNativeApi();
+                  if (api) {
+                    void openInPreferredEditor(api, targetPath);
+                  } else {
+                    console.warn("Native API not found. Unable to open file in editor.");
+                  }
+                }}
+              >
+                {children}
+              </code>
+            );
+          }
+        }
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      },
       pre({ node: _node, children, ...props }) {
         const codeBlock = extractCodeBlock(children);
         if (!codeBlock) {

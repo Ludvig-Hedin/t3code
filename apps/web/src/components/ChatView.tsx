@@ -5035,7 +5035,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                 </Button>
                               </>
                             ) : null}
-
                           </>
                         )}
                       </div>

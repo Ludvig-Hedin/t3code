@@ -483,8 +483,11 @@ export const WindsurfIcon: Icon = (props) => (
   </svg>
 );
 
-// XcodeIcon: Apple Xcode — served as a static asset to avoid inlining the large SVG string.
-// The src matches the file at apps/web/public/xcode.svg.
-export const XcodeIcon: Icon = ({ className }) => (
-  <img src="/xcode.svg" className={className} alt="Xcode" />
+// XcodeIcon: Apple Xcode — wraps the public /xcode.svg as an SVG <image> element so that
+// the parent's [&>svg:not([class*='size-'])]:size-* auto-sizing rules apply to it,
+// matching the same pattern used by AntigravityIcon.
+export const XcodeIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 128 128">
+    <image href="/xcode.svg" width="128" height="128" />
+  </svg>
 );

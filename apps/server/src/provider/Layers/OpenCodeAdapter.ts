@@ -6,6 +6,16 @@
  * subscribes to session events via SSE. One opencode server is shared
  * across all sessions (managed by OpenCodeAppServerManager).
  *
+ * Verified API (opencode v1.3.x):
+ *   POST   /session                              — create session
+ *   POST   /session/{id}/message                — send prompt
+ *   POST   /session/{id}/abort                  — interrupt turn
+ *   DELETE /session/{id}                        — stop session
+ *   GET    /event?sessionID={id}                — SSE stream
+ *
+ * SSE format: each line is `data: {json}` where json = { type, properties }.
+ * There is no separate `event:` header line.
+ *
  * @module OpenCodeAdapterLive
  */
 import { APP_NAME } from "@t3tools/shared/branding";
@@ -64,14 +74,19 @@ function makeThreadEvent<T extends ProviderRuntimeEvent["type"]>(
 }
 
 /**
- * Parse an OpenCode model slug like "anthropic/claude-sonnet-4-5" into
- * { providerID, modelID }. If no slash is present, defaults providerID
- * to "anthropic".
+ * Parse an OpenCode model slug (e.g. "openrouter/anthropic/claude-haiku-4.5")
+ * into { providerID, modelID } for the opencode REST API.
+ *
+ * The API expects the first path segment as providerID and the rest as modelID.
+ * Examples:
+ *   "openrouter/anthropic/claude-haiku-4.5" → { providerID: "openrouter", modelID: "anthropic/claude-haiku-4.5" }
+ *   "opencode/big-pickle"                   → { providerID: "opencode",   modelID: "big-pickle" }
  */
 function parseModelSlug(slug: string): { providerID: string; modelID: string } {
   const slashIdx = slug.indexOf("/");
   if (slashIdx === -1) {
-    return { providerID: "anthropic", modelID: slug };
+    // No slash — treat entire slug as modelID under "openrouter" (best-effort fallback)
+    return { providerID: "openrouter", modelID: slug };
   }
   return {
     providerID: slug.slice(0, slashIdx),
@@ -85,9 +100,9 @@ function parseModelSlug(slug: string): { providerID: string; modelID: string } {
 
 interface OpenCodeSessionState {
   readonly session: ProviderSession;
-  /** The opencode server-side session ID (returned from POST /sessions). */
+  /** The opencode server-side session ID (returned from POST /session). */
   readonly opencodeSessionId: string;
-  /** Model slug used for this session (e.g. "anthropic/claude-sonnet-4-5"). */
+  /** Model slug used for this session (e.g. "openrouter/anthropic/claude-haiku-4.5"). */
   readonly modelSlug: string;
   /** AbortController for the active SSE connection, if any. */
   sseAbort: AbortController | null;
@@ -100,8 +115,20 @@ interface OpenCodeSessionState {
 // ---------------------------------------------------------------------------
 
 /**
+ * opencode SSE envelope: every `data:` line is a JSON object with this shape.
+ * There is no separate `event:` prefix — the type lives inside the JSON.
+ */
+interface OpenCodeSseEnvelope {
+  type: string;
+  properties: Record<string, unknown>;
+}
+
+/**
  * Subscribe to opencode SSE events for a session and map them into
  * canonical ProviderRuntimeEvents published to the shared PubSub.
+ *
+ * SSE path: GET /event?sessionID={id}
+ * Each `data:` line contains a complete JSON envelope { type, properties }.
  *
  * Reconnects up to SSE_MAX_RECONNECTS times with exponential backoff.
  */
@@ -115,7 +142,8 @@ function startSseListener(
   const abort = new AbortController();
 
   const connect = (attempt: number) => {
-    const url = `${client.baseUrl}/events/subscribe?sessionId=${sessionState.opencodeSessionId}`;
+    // Filter to this session's events to avoid cross-session noise
+    const url = `${client.baseUrl}/event?sessionID=${sessionState.opencodeSessionId}`;
     fetch(url, {
       headers: { Accept: "text/event-stream" },
       signal: abort.signal,
@@ -137,31 +165,20 @@ function startSseListener(
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
 
-          // Process complete SSE lines
+          // Each SSE message is a single `data: {json}` line followed by a blank line.
+          // We split on newlines and process each `data:` line immediately.
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
 
-          let eventType = "";
-          let dataLines: string[] = [];
-
           for (const line of lines) {
-            if (line.startsWith("event:")) {
-              eventType = line.slice(6).trim();
-            } else if (line.startsWith("data:")) {
-              dataLines.push(line.slice(5).trim());
-            } else if (line === "") {
-              // End of SSE message — dispatch
-              if (eventType && dataLines.length > 0) {
-                const dataStr = dataLines.join("\n");
-                try {
-                  const data = JSON.parse(dataStr) as Record<string, unknown>;
-                  mapSseEvent(eventType, data, threadId, turnId, emitEvent);
-                } catch {
-                  // Malformed JSON — skip silently
-                }
-              }
-              eventType = "";
-              dataLines = [];
+            if (!line.startsWith("data:")) continue;
+            const jsonStr = line.slice(5).trim();
+            if (!jsonStr) continue;
+            try {
+              const envelope = JSON.parse(jsonStr) as OpenCodeSseEnvelope;
+              mapSseEvent(envelope, threadId, turnId, emitEvent);
+            } catch {
+              // Malformed JSON — skip silently
             }
           }
         }
@@ -204,47 +221,57 @@ function startSseListener(
 }
 
 /**
- * Map a single SSE event from opencode into a canonical ProviderRuntimeEvent.
+ * Map a single SSE envelope from opencode into a canonical ProviderRuntimeEvent.
+ *
+ * Verified event types (opencode v1.3.x):
+ *   session.status     { status: { type: "busy" | "idle" } }  — running/completed
+ *   session.idle       {}                                       — turn completed
+ *   session.error      { error: { data: { message: string } } } — turn error
+ *   message.part.delta { field: "text", delta: string }         — streaming text
  */
 function mapSseEvent(
-  eventType: string,
-  data: Record<string, unknown>,
+  envelope: OpenCodeSseEnvelope,
   threadId: ThreadId,
   turnId: TurnId,
   emitEvent: (event: ProviderRuntimeEvent) => void,
 ): void {
-  switch (eventType) {
-    case "session.updated": {
-      const status = data.status as string | undefined;
-      if (status === "running") {
-        emitEvent(makeThreadEvent("turn.started", threadId, { model: undefined }, turnId));
-      } else if (status === "idle") {
+  const props = envelope.properties;
+  switch (envelope.type) {
+    case "session.status": {
+      const status = (props.status as { type?: string } | undefined)?.type;
+      // "busy" = model is thinking; "idle" = turn completed
+      if (status === "idle") {
         emitEvent(makeThreadEvent("turn.completed", threadId, { state: "completed" }, turnId));
       }
+      // We already emit turn.started eagerly in sendTurn; skip busy to avoid duplicate.
       break;
     }
-    case "message.part.text": {
-      const text = data.text as string | undefined;
-      if (typeof text === "string" && text.length > 0) {
+    case "session.idle": {
+      // Redundant with session.status idle, but emit turn.completed as a safety net.
+      // The duplicate is harmless because the orchestration layer deduplicates by turnId.
+      emitEvent(makeThreadEvent("turn.completed", threadId, { state: "completed" }, turnId));
+      break;
+    }
+    case "message.part.delta": {
+      // Streaming text delta from the assistant.
+      // props: { field: "text", delta: string, messageID, partID, sessionID }
+      if (props.field === "text" && typeof props.delta === "string" && props.delta.length > 0) {
         emitEvent(
           makeThreadEvent(
             "content.delta",
             threadId,
-            { streamKind: "assistant_text", delta: text },
+            { streamKind: "assistant_text", delta: props.delta },
             turnId,
           ),
         );
       }
       break;
     }
-    case "message.completed": {
-      emitEvent(makeThreadEvent("turn.completed", threadId, { state: "completed" }, turnId));
-      break;
-    }
     case "session.error": {
+      // error shape: { name: string, data: { message: string } }
+      const errData = props.error as { data?: { message?: string } } | undefined;
       const message =
-        typeof data.message === "string" ? data.message : "Unknown opencode session error";
-      // session.error is a terminal error — emit turn.error, not runtime.warning
+        errData?.data?.message ?? (typeof props.message === "string" ? props.message : "Unknown opencode session error");
       emitEvent(
         makeThreadEvent(
           "turn.error" as ProviderRuntimeEvent["type"],
@@ -262,8 +289,8 @@ function mapSseEvent(
           threadId,
           {
             requestType: "command_execution_approval",
-            detail: typeof data.description === "string" ? data.description : undefined,
-            args: data,
+            detail: typeof props.description === "string" ? props.description : undefined,
+            args: props,
           },
           turnId,
         ),
@@ -271,7 +298,7 @@ function mapSseEvent(
       break;
     }
     default:
-      // Unknown event type — silently skip
+      // Unknown event type — silently skip (future-proof)
       break;
   }
 }
@@ -336,28 +363,25 @@ export const OpenCodeAdapterLive = Layer.effect(
           ),
         );
 
-        // Resolve default model: try GET /config, fall back to input or hardcoded default
+        // Resolve default model:
         // Priority: 1) explicit caller selection, 2) GET /config default, 3) hardcoded fallback
         const configResult = yield* Effect.tryPromise({
           try: () => handle.client.get<{ model?: string }>("/config"),
           catch: () => null as { model?: string } | null,
         }).pipe(Effect.orElseSucceed(() => null));
         const serverDefault = configResult?.model ?? null;
-        const modelSlug = input.modelSelection?.model ?? serverDefault ?? "moonshot/kimi-k2-5";
+        // Use the exact slug format returned by opencode (e.g. "openrouter/anthropic/claude-haiku-4.5")
+        const modelSlug =
+          input.modelSelection?.model ?? serverDefault ?? "openrouter/moonshotai/kimi-k2.5";
 
-        const { providerID, modelID } = parseModelSlug(modelSlug);
-
-        // Create session on opencode server
+        // Create session on opencode server — POST /session (no body required)
         const sessionRes = yield* Effect.tryPromise({
-          try: () =>
-            handle.client.post<{ id: string }>("/sessions", {
-              model: { providerID, modelID },
-            }),
+          try: () => handle.client.post<{ id: string }>("/session", {}),
           catch: (err) =>
             new ProviderAdapterRequestError({
               provider: PROVIDER,
               method: "startSession",
-              detail: `POST /sessions failed: ${err instanceof Error ? err.message : String(err)}`,
+              detail: `POST /session failed: ${err instanceof Error ? err.message : String(err)}`,
             }),
         });
         const opencodeSessionId = sessionRes.id;
@@ -445,7 +469,7 @@ export const OpenCodeAdapterLive = Layer.effect(
           makeThreadEvent("turn.started", input.threadId, { model: modelSlug }, turnId),
         );
 
-        // Start SSE listener before sending the prompt so we don't miss events
+        // Start SSE listener before sending the prompt so we don't miss early events
         const sseAbort = startSseListener(
           handle.client,
           sessionState,
@@ -459,18 +483,19 @@ export const OpenCodeAdapterLive = Layer.effect(
           sseAbort,
         }));
 
-        // Send prompt to opencode
+        // Send message to opencode — POST /session/{id}/message
+        // Body: { parts: [{ type: "text", text: string }], model: { providerID, modelID } }
         yield* Effect.tryPromise({
           try: () =>
-            handle.client.post(`/sessions/${sessionState.opencodeSessionId}/prompt`, {
-              prompt: input.input ?? "",
+            handle.client.post(`/session/${sessionState.opencodeSessionId}/message`, {
+              parts: [{ type: "text", text: input.input ?? "" }],
               model: { providerID, modelID },
             }),
           catch: (err) =>
             new ProviderAdapterRequestError({
               provider: PROVIDER,
               method: "sendTurn",
-              detail: `POST /sessions/${sessionState.opencodeSessionId}/prompt failed: ${err instanceof Error ? err.message : String(err)}`,
+              detail: `POST /session/${sessionState.opencodeSessionId}/message failed: ${err instanceof Error ? err.message : String(err)}`,
             }),
         }).pipe(Effect.tapError(() => Effect.sync(() => sseAbort.abort())));
 
@@ -488,10 +513,10 @@ export const OpenCodeAdapterLive = Layer.effect(
         // Abort SSE first
         sessionState.sseAbort?.abort();
 
-        // POST abort to opencode server
+        // POST /session/{id}/abort to cancel the running turn
         const handle = yield* serverManager.getOrStart.pipe(Effect.orDie);
         yield* Effect.tryPromise({
-          try: () => handle.client.post(`/sessions/${sessionState.opencodeSessionId}/abort`),
+          try: () => handle.client.post(`/session/${sessionState.opencodeSessionId}/abort`),
           catch: () => null,
         }).pipe(Effect.orElseSucceed(() => null));
 
@@ -538,7 +563,7 @@ export const OpenCodeAdapterLive = Layer.effect(
         yield* Effect.tryPromise({
           try: () =>
             handle.client.post(
-              `/sessions/${sessionState.opencodeSessionId}/permissions/${requestId}`,
+              `/session/${sessionState.opencodeSessionId}/permissions/${requestId}`,
               { approved },
             ),
           catch: (err) =>
@@ -570,10 +595,10 @@ export const OpenCodeAdapterLive = Layer.effect(
         // Abort SSE
         sessionState.sseAbort?.abort();
 
-        // DELETE session on opencode server
+        // DELETE /session/{id}
         const handle = yield* serverManager.getOrStart.pipe(Effect.orDie);
         yield* Effect.tryPromise({
-          try: () => handle.client.delete(`/sessions/${sessionState.opencodeSessionId}`),
+          try: () => handle.client.delete(`/session/${sessionState.opencodeSessionId}`),
           catch: () => null,
         }).pipe(Effect.orElseSucceed(() => null));
 
@@ -614,10 +639,10 @@ export const OpenCodeAdapterLive = Layer.effect(
         }
 
         const handle = yield* serverManager.getOrStart.pipe(Effect.orDie);
-        // POST /sessions/{id}/revert N times
+        // POST /session/{id}/revert N times
         for (let i = 0; i < numTurns; i++) {
           const revertResult = yield* Effect.tryPromise({
-            try: () => handle.client.post(`/sessions/${sessionState.opencodeSessionId}/revert`),
+            try: () => handle.client.post(`/session/${sessionState.opencodeSessionId}/revert`),
             catch: () => "revert-failed" as const,
           }).pipe(Effect.orElseSucceed(() => "revert-failed" as const));
           if (revertResult === "revert-failed") break;

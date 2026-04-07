@@ -1615,6 +1615,46 @@ function createWindow(): BrowserWindow {
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow thread popout windows: local URLs whose path starts with /popout/.
+    // These are opened by the renderer via window.open() from popoutWindowStore.ts.
+    // We return action:"allow" so Electron creates a proper BrowserWindow (with
+    // the preload script) instead of routing the URL to the system browser.
+    let parsedUrl: URL | null = null;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      // ignore malformed URLs
+    }
+
+    const isLocalPopout =
+      parsedUrl !== null &&
+      (parsedUrl.hostname === "localhost" || parsedUrl.hostname === "127.0.0.1") &&
+      parsedUrl.pathname.startsWith("/popout/");
+
+    if (isLocalPopout) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          width: 960,
+          height: 720,
+          minWidth: 400,
+          minHeight: 300,
+          autoHideMenuBar: true,
+          ...getIconOption(),
+          title: APP_DISPLAY_NAME,
+          // Use default OS title bar so the popout is draggable and the user
+          // gets native window controls without needing a custom drag region.
+          titleBarStyle: "default",
+          webPreferences: {
+            preload: Path.join(__dirname, "preload.js"),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        },
+      };
+    }
+
     const externalUrl = getSafeExternalUrl(url);
     if (externalUrl) {
       void shell.openExternal(externalUrl);

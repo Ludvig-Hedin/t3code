@@ -19,6 +19,8 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     previewOpen: false,
     previewDetached: false,
     previewFloatingBounds: null,
+    pinnedToSidebarThreadIds: [],
+    pinnedToProjectThreadIds: [],
     ...overrides,
   };
 }
