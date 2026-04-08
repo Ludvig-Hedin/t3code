@@ -52,12 +52,11 @@ export const resolveServerUrl = (options?: {
   pathname?: string | undefined;
   searchParams?: Record<string, string> | undefined;
 }): string => {
-  const rawUrl = firstNonEmptyString(
-    options?.url,
-    window.desktopBridge?.getWsUrl(),
-    import.meta.env.VITE_WS_URL,
-    window.location.origin,
-  );
+  const windowUrl =
+    typeof window !== "undefined"
+      ? (window.desktopBridge?.getWsUrl() ?? window.location.origin)
+      : undefined;
+  const rawUrl = firstNonEmptyString(options?.url, windowUrl, import.meta.env.VITE_WS_URL);
 
   const parsedUrl = new URL(rawUrl);
   if (options?.protocol) {
@@ -68,13 +67,14 @@ export const resolveServerUrl = (options?: {
   } else {
     parsedUrl.pathname = "/";
   }
-  const merged: Record<string, string> = { ...(options?.searchParams ?? {}) };
+  const merged: Record<string, string> = options?.searchParams ? { ...options.searchParams } : {};
 
   // When running inside the Bird Code iOS WKWebView, the Swift shell injects
   // window.__BC_WS_TOKEN__ with the desktop auth token before page load.
   // Append it as the ?token query param so the server's WS auth middleware accepts
   // the connection — identical to how the Electron desktop bridge embeds it in the URL.
   const mobileToken =
+    typeof window !== "undefined" &&
     typeof (window as unknown as Record<string, unknown>).__BC_WS_TOKEN__ === "string"
       ? ((window as unknown as Record<string, unknown>).__BC_WS_TOKEN__ as string)
       : null;
@@ -88,3 +88,13 @@ export const resolveServerUrl = (options?: {
 
   return parsedUrl.toString();
 };
+
+export const resolveApiUrl = (options: {
+  pathname: string;
+  searchParams?: Record<string, string>;
+}): string =>
+  resolveServerUrl({
+    protocol: "http",
+    pathname: options.pathname,
+    searchParams: options.searchParams,
+  });

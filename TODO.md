@@ -10,6 +10,7 @@
 - [x] Keep Awake: `powerSaveBlocker` + `caffeinate` via `KeepAwakeManager` in desktop app
 - [x] Onboarding: 5-step onboarding sheet (`OnboardingSheet`) mounted at app root
 - [x] Import conversations: provider import scan + execute HTTP routes + setup guide button
+- [x] Import conversations HTTP calls now resolve the server URL explicitly, so onboarding and settings do not accidentally hit the Vite HTML fallback
 - [x] Setup guide moved to General settings tab
 - [x] iOS companion app (`apps/mobile`) with QR-first pairing, thread list, chat, diff review, approvals, device management
 - [x] Preview panel: tabbed side panel with live web preview and mobile webview relay

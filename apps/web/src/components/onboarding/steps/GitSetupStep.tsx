@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CheckIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
-import { cn } from "~/lib/utils";
+import { cn, resolveApiUrl } from "~/lib/utils";
 import type { SetupGitStatusResult } from "@t3tools/contracts";
 
 type Platform = "macos" | "linux" | "windows";
@@ -81,7 +81,7 @@ export function GitSetupStep() {
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/setup/git-status");
+      const res = await fetch(resolveApiUrl({ pathname: "/api/setup/git-status" }));
       if (res.ok) {
         setStatus((await res.json()) as SetupGitStatusResult);
       }
