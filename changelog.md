@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-04-08] [Fix] Desktop Finder path trim, API URL scheme, preview hardening
+
+- **Desktop:** `OPEN_IN_FINDER` passes trimmed paths to `shell.showItemInFolder`.
+- **Web:** `resolveApiUrl` maps `resolveServerUrl` scheme (ws/wss/http/https) to `http`/`https` instead of forcing `http`.
+- **Server:** Standalone preview static file serving compares `fs.realpath` for app root and candidate paths to block symlink escape; DOCX extraction uses async `execFile` with timeout; `createStandaloneRenderer` reads files only per kind with an explicit `docx` branch.
+
 ## [2026-04-08] [Fix] Project sidebar context menu actions
 
 - Added `Rename project` to the project right-click menu in the sidebar and wired it to `project.meta.update` so only the Bird Code display name changes.

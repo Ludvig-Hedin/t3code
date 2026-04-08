@@ -1481,12 +1481,16 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeHandler(OPEN_IN_FINDER_CHANNEL);
   ipcMain.handle(OPEN_IN_FINDER_CHANNEL, async (_event, rawPath: unknown) => {
-    if (typeof rawPath !== "string" || rawPath.trim().length === 0) {
+    if (typeof rawPath !== "string") {
+      return false;
+    }
+    const trimmedPath = String(rawPath).trim();
+    if (trimmedPath.length === 0) {
       return false;
     }
 
     try {
-      shell.showItemInFolder(rawPath);
+      shell.showItemInFolder(trimmedPath);
       return true;
     } catch {
       return false;

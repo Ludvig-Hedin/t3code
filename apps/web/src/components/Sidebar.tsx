@@ -1,7 +1,7 @@
 import {
-  ArchiveIcon,
   ArrowUpDownIcon,
   ChevronRightIcon,
+  EllipsisIcon,
   ExternalLinkIcon,
   FolderIcon,
   GitPullRequestIcon,
@@ -149,6 +149,7 @@ import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { useServerKeybindings } from "../rpc/serverState";
 import { useSidebarThreadSummaryById } from "../storeSelectors";
 import type { Project } from "../types";
+import { openInPreferredEditor } from "~/editorPreferences";
 const THREAD_PREVIEW_LIMIT = 6;
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -335,6 +336,18 @@ function prStatusIndicator(pr: ThreadPr): PrStatusIndicator | null {
     };
   }
   return null;
+}
+
+function renderOverflowButton(label: string) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <EllipsisIcon className="size-3.5" />
+    </button>
+  );
 }
 
 interface SidebarThreadRowProps {
@@ -550,86 +563,27 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
             </span>
           )}
           <div className="flex min-w-12 justify-end">
-            {isConfirmingArchive ? (
-              <button
-                ref={(element) => {
-                  if (element) {
-                    props.confirmArchiveButtonRefs.current.set(thread.id, element);
-                  } else {
-                    props.confirmArchiveButtonRefs.current.delete(thread.id);
+            {!isThreadRunning ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <SidebarMenuAction
+                      render={renderOverflowButton(`Thread actions for ${thread.title}`)}
+                      showOnHover
+                      className="top-1 right-1 size-5 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void props.handleThreadContextMenu(thread.id, {
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }}
+                    />
                   }
-                }}
-                type="button"
-                data-thread-selection-safe
-                data-testid={`thread-archive-confirm-${thread.id}`}
-                aria-label={`Confirm archive ${thread.title}`}
-                className="absolute top-1/2 right-1 inline-flex h-5 -translate-y-1/2 cursor-pointer items-center rounded-full bg-destructive/12 px-2 text-[10px] font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-destructive/40"
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  props.setConfirmingArchiveThreadId((current) =>
-                    current === thread.id ? null : current,
-                  );
-                  void props.attemptArchiveThread(thread.id);
-                }}
-              >
-                Confirm
-              </button>
-            ) : !isThreadRunning ? (
-              props.appSettingsConfirmThreadArchive ? (
-                <div className="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                  <button
-                    type="button"
-                    data-thread-selection-safe
-                    data-testid={`thread-archive-${thread.id}`}
-                    aria-label={`Archive ${thread.title}`}
-                    className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      props.setConfirmingArchiveThreadId(thread.id);
-                      requestAnimationFrame(() => {
-                        props.confirmArchiveButtonRefs.current.get(thread.id)?.focus();
-                      });
-                    }}
-                  >
-                    <ArchiveIcon className="size-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <div className="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                        <button
-                          type="button"
-                          data-thread-selection-safe
-                          data-testid={`thread-archive-${thread.id}`}
-                          aria-label={`Archive ${thread.title}`}
-                          className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                          onPointerDown={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            void props.attemptArchiveThread(thread.id);
-                          }}
-                        >
-                          <ArchiveIcon className="size-3.5" />
-                        </button>
-                      </div>
-                    }
-                  />
-                  <TooltipPopup side="top">Archive</TooltipPopup>
-                </Tooltip>
-              )
+                />
+                <TooltipPopup side="top">Thread actions</TooltipPopup>
+              </Tooltip>
             ) : null}
             <span className={threadMetaClassName}>
               {props.showThreadJumpHints && props.jumpLabel ? (
@@ -915,7 +869,7 @@ function SidebarOrganizedView({
 
   if (organizeMode === "chronological") {
     // Flat list sorted by latest activity desc
-    const sorted = [...visibleThreads].sort((a, b) => {
+    const sorted = visibleThreads.toSorted((a, b) => {
       const aTs = a.latestUserMessageAt ?? a.createdAt;
       const bTs = b.latestUserMessageAt ?? b.createdAt;
       return new Date(bTs).getTime() - new Date(aTs).getTime();
@@ -953,7 +907,6 @@ function SidebarOrganizedView({
           : "No provider";
       groups.push({ key, label, threads });
     }
-    groups.sort((a, b) => a.label.localeCompare(b.label));
   } else if (organizeMode === "by_date") {
     const byBucket = new Map<SidebarDateBucket, typeof visibleThreads>();
     for (const thread of visibleThreads) {
@@ -971,10 +924,11 @@ function SidebarOrganizedView({
       groups.push({ key: bucket, label: DATE_BUCKET_LABELS[bucket], threads });
     }
   }
+  const sortedGroups = groups.toSorted((a, b) => a.label.localeCompare(b.label));
 
   return (
     <>
-      {groups.map(({ key, label, threads }) => {
+      {sortedGroups.map(({ key, label, threads }) => {
         const isExpanded = expandedGroups.has(key);
         const visibleCount = isExpanded
           ? threads.length
@@ -1762,6 +1716,68 @@ export default function Sidebar() {
       });
     },
   });
+  const openProjectInEditor = useCallback(async (projectPath: string) => {
+    const api = readNativeApi();
+    if (!api) {
+      return;
+    }
+
+    try {
+      await openInPreferredEditor(api, projectPath);
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to open project in editor",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    }
+  }, []);
+  const removeProject = useCallback(
+    async (project: Project) => {
+      const api = readNativeApi();
+      if (!api) return;
+
+      const projectThreadIds = threadIdsByProjectId[project.id] ?? [];
+      if (projectThreadIds.length > 0) {
+        toastManager.add({
+          type: "warning",
+          title: "Project is not empty",
+          description: "Delete all threads in this project before removing it.",
+        });
+        return;
+      }
+
+      const confirmed = await api.dialogs.confirm(`Remove project "${project.name}"?`);
+      if (!confirmed) return;
+
+      try {
+        const projectDraftThread = getDraftThreadByProjectId(project.id);
+        if (projectDraftThread) {
+          clearComposerDraftForThread(projectDraftThread.threadId);
+        }
+        clearProjectDraftThreadId(project.id);
+        await api.orchestration.dispatchCommand({
+          type: "project.delete",
+          commandId: newCommandId(),
+          projectId: project.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error removing project.";
+        console.error("Failed to remove project", { projectId: project.id, error });
+        toastManager.add({
+          type: "error",
+          title: `Failed to remove "${project.name}"`,
+          description: message,
+        });
+      }
+    },
+    [
+      clearComposerDraftForThread,
+      clearProjectDraftThreadId,
+      getDraftThreadByProjectId,
+      threadIdsByProjectId,
+    ],
+  );
   const handleThreadContextMenu = useCallback(
     async (threadId: ThreadId, position: { x: number; y: number }) => {
       const api = readNativeApi();
@@ -1784,6 +1800,7 @@ export default function Sidebar() {
             id: isPinnedToProject ? "unpin-from-project" : "pin-to-project",
             label: isPinnedToProject ? "Unpin from project" : "Pin to project",
           },
+          { id: "archive", label: "Archive thread" },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "delete", label: "Delete", destructive: true },
@@ -1834,6 +1851,10 @@ export default function Sidebar() {
         copyThreadIdToClipboard(threadId, { threadId });
         return;
       }
+      if (clicked === "archive") {
+        await attemptArchiveThread(threadId);
+        return;
+      }
       if (clicked !== "delete") return;
       if (appSettings.confirmThreadDelete) {
         const confirmed = await api.dialogs.confirm(
@@ -1860,6 +1881,7 @@ export default function Sidebar() {
       pinnedToSidebarThreadIds,
       projectCwdById,
       sidebarThreadsById,
+      attemptArchiveThread,
       unpinFromProject,
       unpinFromSidebar,
     ],
@@ -1994,6 +2016,7 @@ export default function Sidebar() {
       const clicked = await api.contextMenu.show(
         [
           { id: "rename", label: "Rename project" },
+          { id: "open-in-editor", label: "Open in editor" },
           ...(hasDesktopBridge ? [{ id: "open-in-finder", label: "Open in Finder" }] : []),
           { id: "copy-path", label: "Copy Project Path" },
           { id: "delete", label: "Remove project", destructive: true },
@@ -2004,6 +2027,10 @@ export default function Sidebar() {
         setRenamingProjectId(projectId);
         setRenamingProjectTitle(project.name);
         renamingProjectCommittedRef.current = false;
+        return;
+      }
+      if (clicked === "open-in-editor") {
+        void openProjectInEditor(project.cwd);
         return;
       }
       if (clicked === "open-in-finder") {
@@ -2023,49 +2050,9 @@ export default function Sidebar() {
         return;
       }
       if (clicked !== "delete") return;
-
-      const projectThreadIds = threadIdsByProjectId[projectId] ?? [];
-      if (projectThreadIds.length > 0) {
-        toastManager.add({
-          type: "warning",
-          title: "Project is not empty",
-          description: "Delete all threads in this project before removing it.",
-        });
-        return;
-      }
-
-      const confirmed = await api.dialogs.confirm(`Remove project "${project.name}"?`);
-      if (!confirmed) return;
-
-      try {
-        const projectDraftThread = getDraftThreadByProjectId(projectId);
-        if (projectDraftThread) {
-          clearComposerDraftForThread(projectDraftThread.threadId);
-        }
-        clearProjectDraftThreadId(projectId);
-        await api.orchestration.dispatchCommand({
-          type: "project.delete",
-          commandId: newCommandId(),
-          projectId,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error removing project.";
-        console.error("Failed to remove project", { projectId, error });
-        toastManager.add({
-          type: "error",
-          title: `Failed to remove "${project.name}"`,
-          description: message,
-        });
-      }
+      await removeProject(project);
     },
-    [
-      clearComposerDraftForThread,
-      clearProjectDraftThreadId,
-      copyPathToClipboard,
-      getDraftThreadByProjectId,
-      projects,
-      threadIdsByProjectId,
-    ],
+    [copyPathToClipboard, openProjectInEditor, projects, removeProject],
   );
 
   const projectDnDSensors = useSensors(
@@ -2534,67 +2521,96 @@ export default function Sidebar() {
                 onClick={(event) => event.stopPropagation()}
               />
             ) : (
-              <span className="flex-1 truncate text-xs font-medium text-foreground/90">
-                {project.name}
-              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="flex-1 truncate text-xs font-medium text-foreground/90">
+                      {project.name}
+                    </span>
+                  }
+                />
+                <TooltipPopup side="right">{project.cwd}</TooltipPopup>
+              </Tooltip>
             )}
           </SidebarMenuButton>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <SidebarMenuAction
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`Create new thread in ${project.name}`}
-                      data-testid="new-thread-button"
-                    />
-                  }
-                  showOnHover
-                  className="top-1 right-1.5 size-5 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const seedContext = resolveSidebarNewThreadSeedContext({
-                      projectId: project.id,
-                      defaultEnvMode: resolveSidebarNewThreadEnvMode({
-                        defaultEnvMode: appSettings.defaultThreadEnvMode,
-                      }),
-                      activeThread:
-                        activeThread && activeThread.projectId === project.id
-                          ? {
-                              projectId: activeThread.projectId,
-                              branch: activeThread.branch,
-                              worktreePath: activeThread.worktreePath,
-                            }
-                          : null,
-                      activeDraftThread:
-                        activeDraftThread && activeDraftThread.projectId === project.id
-                          ? {
-                              projectId: activeDraftThread.projectId,
-                              branch: activeDraftThread.branch,
-                              worktreePath: activeDraftThread.worktreePath,
-                              envMode: activeDraftThread.envMode,
-                            }
-                          : null,
-                    });
-                    void handleNewThread(project.id, {
-                      ...(seedContext.branch !== undefined ? { branch: seedContext.branch } : {}),
-                      ...(seedContext.worktreePath !== undefined
-                        ? { worktreePath: seedContext.worktreePath }
-                        : {}),
-                      envMode: seedContext.envMode,
-                    });
-                  }}
-                >
-                  <SquarePenIcon className="size-3.5" />
-                </SidebarMenuAction>
-              }
-            />
-            <TooltipPopup side="top">
-              {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
-            </TooltipPopup>
-          </Tooltip>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SidebarMenuAction
+                    render={renderOverflowButton(`Project actions for ${project.name}`)}
+                    showOnHover
+                    className="top-1 right-6 size-5 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void handleProjectContextMenu(project.id, {
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
+                  />
+                }
+              />
+              <TooltipPopup side="top">Project actions</TooltipPopup>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SidebarMenuAction
+                    render={
+                      <button
+                        type="button"
+                        aria-label={`Create new thread in ${project.name}`}
+                        data-testid="new-thread-button"
+                      />
+                    }
+                    showOnHover
+                    className="top-1 right-1.5 size-5 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const seedContext = resolveSidebarNewThreadSeedContext({
+                        projectId: project.id,
+                        defaultEnvMode: resolveSidebarNewThreadEnvMode({
+                          defaultEnvMode: appSettings.defaultThreadEnvMode,
+                        }),
+                        activeThread:
+                          activeThread && activeThread.projectId === project.id
+                            ? {
+                                projectId: activeThread.projectId,
+                                branch: activeThread.branch,
+                                worktreePath: activeThread.worktreePath,
+                              }
+                            : null,
+                        activeDraftThread:
+                          activeDraftThread && activeDraftThread.projectId === project.id
+                            ? {
+                                projectId: activeDraftThread.projectId,
+                                branch: activeDraftThread.branch,
+                                worktreePath: activeDraftThread.worktreePath,
+                                envMode: activeDraftThread.envMode,
+                              }
+                            : null,
+                      });
+                      void handleNewThread(project.id, {
+                        ...(seedContext.branch !== undefined ? { branch: seedContext.branch } : {}),
+                        ...(seedContext.worktreePath !== undefined
+                          ? { worktreePath: seedContext.worktreePath }
+                          : {}),
+                        envMode: seedContext.envMode,
+                      });
+                    }}
+                  >
+                    <SquarePenIcon className="size-3.5" />
+                  </SidebarMenuAction>
+                }
+              />
+              <TooltipPopup side="top">
+                {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
+              </TooltipPopup>
+            </Tooltip>
+          </div>
         </div>
 
         <SidebarMenuSub
