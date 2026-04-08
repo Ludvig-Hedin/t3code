@@ -21,7 +21,14 @@ import {
   SparklesIcon,
   ZapIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -185,30 +192,30 @@ const TEMPLATES: AutomationTemplate[] = [
  * Shared pill-shaped ghost button used as a Menu trigger for all chip selectors.
  * Matches the ProviderModelPicker / TraitsPicker visual style.
  */
-function ChipButton({
-  icon,
-  label,
-  className,
-}: {
-  icon?: ReactNode;
-  label: string;
-  className?: string;
-}) {
+const ChipButton = forwardRef<
+  HTMLButtonElement,
+  Omit<ComponentProps<typeof Button>, "children"> & {
+    icon?: ReactNode;
+    label: string;
+  }
+>(function ChipButton({ icon, label, className, ...props }, ref) {
   return (
     <Button
+      ref={ref}
       size="sm"
       variant="ghost"
       className={cn(
         "h-7 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground/70 hover:bg-accent hover:text-foreground/90 [&_svg]:mx-0",
         className,
       )}
+      {...props}
     >
       {icon}
       <span className="truncate">{label}</span>
       <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
     </Button>
   );
-}
+});
 
 // ── AutomationDialog ──────────────────────────────────────────────────
 
@@ -372,7 +379,7 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
         <div className="flex flex-wrap items-center gap-1">
           {/* Project */}
           {projectNames.length > 0 && (
-            <Menu>
+            <Menu modal={false}>
               <MenuTrigger
                 render={
                   <ChipButton
@@ -394,7 +401,7 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
           )}
 
           {/* Frequency */}
-          <Menu>
+          <Menu modal={false}>
             <MenuTrigger
               render={
                 <ChipButton
@@ -421,7 +428,7 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
           {showTimePicker && (
             <div className="flex items-center gap-0.5">
               {/* Hour */}
-              <Menu>
+              <Menu modal={false}>
                 <MenuTrigger
                   render={
                     <Button
@@ -448,7 +455,7 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
               <span className="text-xs text-muted-foreground/50">:</span>
 
               {/* Minute */}
-              <Menu>
+              <Menu modal={false}>
                 <MenuTrigger
                   render={
                     <Button
@@ -475,7 +482,7 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
           )}
 
           {/* Model */}
-          <Menu>
+          <Menu modal={false}>
             <MenuTrigger
               render={
                 <ChipButton
@@ -504,7 +511,7 @@ export function AutomationDialog({ existing, onSave }: AutomationDialogProps) {
           </Menu>
 
           {/* Reasoning */}
-          <Menu>
+          <Menu modal={false}>
             <MenuTrigger
               render={
                 <ChipButton
