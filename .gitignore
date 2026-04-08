@@ -25,3 +25,4 @@ __screenshots__/
 reference/
 .worktrees/
 .env*.local
+.turbo
