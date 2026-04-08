@@ -1,5 +1,13 @@
 # Changelog
 
+## [2026-04-08] [Fix] Release pipeline unblock + build verification
+
+- Fixed the `apps/web` typecheck blockers that were preventing a clean repo-wide release build.
+- Restored the required `showProjectTooltip` prop on the organized sidebar wrapper and removed a stray wrapper prop that the component did not accept.
+- Narrowed the default-provider settings handler so the select value matches the existing settings type.
+- Fixed the `uiStateStore` import so `ThreadId.makeUnsafe()` is available at runtime.
+- Verified `bun run fmt:check`, `bun run lint`, `bun run typecheck`, and `bun run build` all pass after the fixes.
+
 ## [2026-04-07] [Feature] Drag-to-reorder auto-switch, Pin to sidebar/project, Filter & Organize sidebar
 
 ### Feature 1 — Drag-to-reorder auto-switch

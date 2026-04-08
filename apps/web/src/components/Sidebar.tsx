@@ -923,7 +923,6 @@ function SidebarOrganizedView({
     return (
       <FlatThreadRowList
         threadIds={sorted.map((t) => t.id)}
-        showProjectTooltip
         orderedProjectThreadIds={sorted.map((t) => t.id)}
         {...rowProps}
       />
@@ -989,7 +988,6 @@ function SidebarOrganizedView({
             </div>
             <FlatThreadRowList
               threadIds={shownThreads.map((t) => t.id)}
-              showProjectTooltip
               orderedProjectThreadIds={threads.map((t) => t.id)}
               {...rowProps}
             />
@@ -3007,7 +3005,6 @@ export default function Sidebar() {
                       ? visibleThreads.filter((t) => filteredThreadIdSet.has(t.id))
                       : visibleThreads
                   }
-                  filterState={filterState}
                   expandedGroups={expandedOrganizeGroups}
                   onExpandGroup={(key) =>
                     setExpandedOrganizeGroups((prev) => {
@@ -3023,10 +3020,10 @@ export default function Sidebar() {
                       return next;
                     })
                   }
+                  showProjectTooltip
                   projects={projects}
                   prByThreadId={prByThreadId}
                   sidebarThreadsById={sidebarThreadsById}
-                  orderedProjectThreadIds={orderedSidebarThreadIds}
                   routeThreadId={routeThreadId}
                   selectedThreadIds={selectedThreadIds}
                   showThreadJumpHints={showThreadJumpHints}
