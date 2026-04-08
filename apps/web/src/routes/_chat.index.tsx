@@ -18,7 +18,9 @@ import { newCommandId } from "../lib/utils";
 import { ProjectId } from "@t3tools/contracts";
 
 function ChatIndexRouteView() {
-  const projects = useStore((store) => store.projects);
+  const projects = useStore((store) =>
+    store.projects.filter((project) => project.deletedAt === null),
+  );
   const { defaultProjectId, handleNewThread } = useHandleNewThread();
   const appSettings = useSettings();
 

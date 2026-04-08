@@ -85,6 +85,7 @@ export interface Project {
   defaultModelSelection: ModelSelection | null;
   createdAt?: string | undefined;
   updatedAt?: string | undefined;
+  deletedAt?: string | null | undefined;
   scripts: ProjectScript[];
 }
 

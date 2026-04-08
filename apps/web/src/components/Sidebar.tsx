@@ -1247,7 +1247,9 @@ function SidebarFilterButton({
 }
 
 export default function Sidebar() {
-  const projects = useStore((store) => store.projects);
+  const projects = useStore((store) =>
+    store.projects.filter((project) => project.deletedAt === null),
+  );
   // bootstrapComplete flips to true once the server read model has been synced for the first time.
   // We use this to distinguish "still loading" from "genuinely no projects".
   const bootstrapComplete = useStore((store) => store.bootstrapComplete);
@@ -1736,16 +1738,6 @@ export default function Sidebar() {
     async (project: Project) => {
       const api = readNativeApi();
       if (!api) return;
-
-      const projectThreadIds = threadIdsByProjectId[project.id] ?? [];
-      if (projectThreadIds.length > 0) {
-        toastManager.add({
-          type: "warning",
-          title: "Project is not empty",
-          description: "Delete all threads in this project before removing it.",
-        });
-        return;
-      }
 
       const confirmed = await api.dialogs.confirm(`Remove project "${project.name}"?`);
       if (!confirmed) return;

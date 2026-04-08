@@ -60,7 +60,8 @@ export function requireProjectAbsent(input: {
   readonly command: OrchestrationCommand;
   readonly projectId: ProjectId;
 }): Effect.Effect<void, OrchestrationCommandInvariantError> {
-  if (!findProjectById(input.readModel, input.projectId)) {
+  const project = findProjectById(input.readModel, input.projectId);
+  if (!project || project.deletedAt !== null) {
     return Effect.void;
   }
   return Effect.fail(

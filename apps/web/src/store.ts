@@ -189,6 +189,7 @@ function mapProject(project: OrchestrationReadModel["projects"][number]): Projec
       : null,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
+    deletedAt: project.deletedAt,
     scripts: mapProjectScripts(project.scripts),
   };
 }
@@ -603,9 +604,7 @@ function updateThreadState(
 // ── Pure state transition functions ────────────────────────────────────
 
 export function syncServerReadModel(state: AppState, readModel: OrchestrationReadModel): AppState {
-  const projects = readModel.projects
-    .filter((project) => project.deletedAt === null)
-    .map(mapProject);
+  const projects = readModel.projects.map(mapProject);
   const threads = readModel.threads.filter((thread) => thread.deletedAt === null).map(mapThread);
   const sidebarThreadsById = buildSidebarThreadsById(threads);
   const threadIdsByProjectId = buildThreadIdsByProjectId(threads);
@@ -666,8 +665,12 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "project.deleted": {
-      const projects = state.projects.filter((project) => project.id !== event.payload.projectId);
-      return projects.length === state.projects.length ? state : { ...state, projects };
+      const projects = updateProject(state.projects, event.payload.projectId, (project) => ({
+        ...project,
+        deletedAt: event.payload.deletedAt,
+        updatedAt: event.payload.deletedAt,
+      }));
+      return projects === state.projects ? state : { ...state, projects };
     }
 
     case "thread.created": {

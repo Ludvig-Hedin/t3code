@@ -2,6 +2,7 @@
 
 ## Recently completed
 
+- [x] Project sidebar removal now soft-hides projects instead of blocking when threads exist; reopening the same workspace restores its original threads
 - [x] Empty chat state shows a centered `Create project` button that launches the project picker and starts the first thread
 - [x] Ollama provider: pull/quit models from UI, local HTTP+SSE adapter, model picker
 - [x] OpenCode provider: `opencode app-server` subprocess + HTTP+SSE adapter

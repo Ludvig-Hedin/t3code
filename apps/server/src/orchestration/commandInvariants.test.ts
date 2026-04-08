@@ -14,6 +14,7 @@ import {
   findThreadById,
   listThreadsByProjectId,
   requireNonNegativeInteger,
+  requireProjectAbsent,
   requireThread,
   requireThreadAbsent,
 } from "./commandInvariants.ts";
@@ -216,5 +217,38 @@ describe("commandInvariants", () => {
         }),
       ),
     ).rejects.toThrow("greater than or equal to 0");
+  });
+
+  it("allows recreating a deleted project with the same id", async () => {
+    const project = readModel.projects[0]!;
+
+    await Effect.runPromise(
+      requireProjectAbsent({
+        readModel: {
+          ...readModel,
+          projects: [
+            {
+              ...project,
+              defaultModelSelection: project.defaultModelSelection ?? null,
+              scripts: [],
+              deletedAt: "2026-02-27T00:00:01.000Z",
+            },
+          ],
+        },
+        command: {
+          type: "project.create",
+          commandId: CommandId.makeUnsafe("cmd-project-create"),
+          projectId: ProjectId.makeUnsafe("project-a"),
+          title: "Project A",
+          workspaceRoot: "/tmp/project-a",
+          defaultModelSelection: {
+            provider: "codex",
+            model: "gpt-5-codex",
+          },
+          createdAt: now,
+        },
+        projectId: ProjectId.makeUnsafe("project-a"),
+      }),
+    );
   });
 });

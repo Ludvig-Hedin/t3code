@@ -6,7 +6,12 @@ import { isNonEmpty as isNonEmptyString } from "effect/String";
 
 type CreateProjectInput = {
   cwd: string;
-  projects: { cwd: string; id: ProjectId }[];
+  projects: {
+    cwd: string;
+    deletedAt?: string | null | undefined;
+    id: ProjectId;
+    name: string;
+  }[];
   defaultThreadEnvMode: DraftThreadEnvMode;
   handleNewThread: (
     projectId: ProjectId,
@@ -37,6 +42,19 @@ export async function createProjectFromPath(input: CreateProjectInput): Promise<
 
   const existing = input.projects.find((project) => project.cwd === cwd);
   if (existing) {
+    if (existing.deletedAt) {
+      const createdAt = new Date().toISOString();
+      await input.dispatchProjectCreate({
+        projectId: existing.id,
+        title: existing.name,
+        workspaceRoot: cwd,
+        defaultModelSelection: {
+          provider: "codex",
+          model: DEFAULT_MODEL_BY_PROVIDER.codex,
+        },
+        createdAt,
+      });
+    }
     return { kind: "existing", projectId: existing.id };
   }
 

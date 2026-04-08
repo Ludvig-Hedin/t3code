@@ -328,17 +328,10 @@ describe("incremental orchestration updates", () => {
     expect(next.bootstrapComplete).toBe(false);
   });
 
-  it("preserves state identity for no-op project and thread deletes", () => {
+  it("preserves state identity for no-op thread deletes", () => {
     const thread = makeThread();
     const state = makeState(thread);
 
-    const nextAfterProjectDelete = applyOrchestrationEvent(
-      state,
-      makeEvent("project.deleted", {
-        projectId: ProjectId.makeUnsafe("project-missing"),
-        deletedAt: "2026-02-27T00:00:01.000Z",
-      }),
-    );
     const nextAfterThreadDelete = applyOrchestrationEvent(
       state,
       makeEvent("thread.deleted", {
@@ -347,8 +340,28 @@ describe("incremental orchestration updates", () => {
       }),
     );
 
-    expect(nextAfterProjectDelete).toBe(state);
     expect(nextAfterThreadDelete).toBe(state);
+  });
+
+  it("marks projects deleted without removing their thread history", () => {
+    const thread = makeThread();
+    const state = makeState(thread);
+
+    const next = applyOrchestrationEvent(
+      state,
+      makeEvent("project.deleted", {
+        projectId: ProjectId.makeUnsafe("project-1"),
+        deletedAt: "2026-02-27T00:00:01.000Z",
+      }),
+    );
+
+    expect(next.projects).toHaveLength(1);
+    expect(next.projects[0]?.id).toBe(ProjectId.makeUnsafe("project-1"));
+    expect(next.projects[0]?.deletedAt).toBe("2026-02-27T00:00:01.000Z");
+    expect(next.threads).toHaveLength(1);
+    expect(next.threadIdsByProjectId[ProjectId.makeUnsafe("project-1")]).toEqual([
+      ThreadId.makeUnsafe("thread-1"),
+    ]);
   });
 
   it("reuses an existing project row when project.created arrives with a new id for the same cwd", () => {
