@@ -3420,7 +3420,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
           try {
             const text = await f.file.text();
             const lang = langTagFromFilename(f.name);
-            return `**${f.name}**\n\`\`\`${lang}\n${text}\n\`\`\``;
+            // Use a longer fence when content contains ``` so Markdown stays well-formed.
+            const fence = text.includes("```") ? "````" : "```";
+            return `**${f.name}**\n${fence}${lang}\n${text}\n${fence}`;
           } catch {
             return `**${f.name}** _(could not read file)_`;
           }

@@ -34,6 +34,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
         <p
           className="mt-1 max-w-full truncate font-mono text-xs text-muted-foreground"
           aria-label={approval.detail}
+          title={approval.detail}
         >
           {approval.detail}
         </p>

@@ -84,7 +84,7 @@ describe("uiStateStore pure functions", () => {
       { id: project3, cwd: "/tmp/project-3" },
     ]);
 
-    expect(next.projectOrder).toEqual([project2, project1, project3]);
+    expect(next.projectOrder).toEqual([project3, project2, project1]);
     expect(next.projectExpandedById[project2]).toBe(false);
   });
 

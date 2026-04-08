@@ -33,8 +33,8 @@ Add a **commit mode** selector to the commit dialog and settings, letting users 
 ### 2. Contracts (`packages/contracts/src/git.ts`)
 
 - Add optional `commitMode: GitCommitMode` field to `GitRunStackedActionInput`
-- Add `CommitPlan` type: `Array<{ filePaths: string[]; subject: string; body: string }>`
-  - Used internally by server; not surfaced to client as a separate contract type (implementation detail)
+- Add `CommitPlan` type: `Array<{ files: string[]; subject: string; body: string }>`
+  - Used internally by server; not surfaced to client as a separate contract type (implementation detail). The field name **`files`** matches the JSON shape returned by `buildMultiCommitPrompt` and must be the single property name used end-to-end (parsing, validation, `git add`).
 
 ### 3. Server — Prompts (`apps/server/src/git/Prompts.ts`)
 
@@ -64,13 +64,14 @@ Both `ClaudeTextGeneration` and `CodexTextGeneration` (and `RoutingTextGeneratio
 
 - In `generateCommitSuggestion` (the internal helper): pass `commitMode` from input settings + request input
 - Refactor `runCommitStep` to accept either:
-  - A single `{ commitMessage, filePaths }` → current behaviour
+  - A single `{ commitMessage, files }` → current behaviour
   - A `CommitPlan` array → iterate: for each group, stage only those files (`git add <files>`), then commit with that group's message
 - Progress events for multi-commit: emit `phase: "commit"` with a description like `"Committing 1 of 3…"` so the toast reflects the iteration
-- `runStackedAction` resolves effective `commitMode`:
-  1. Use `input.commitMode` if explicitly provided
-  2. Otherwise read `serverSettings.gitCommitMode`
-  3. If that is `"last_used"`, treat as `"agent_decides"` on the server (the "last used" logic is purely client-side state; server never sees `"last_used"` — client resolves it before sending)
+- `runStackedAction` resolves effective `commitMode` (using `input.commitMode` and `serverSettings.gitCommitMode`):
+  1. **Normal path:** The web client resolves `"last_used"` using `bird_code.lastUsedCommitMode` (see below) and sends a concrete mode (`agent_decides`, `one_commit`, or `multiple_if_needed`). The server should **not** rely on receiving `"last_used"` from current clients.
+  2. Use `input.commitMode` when it is one of the concrete modes above.
+  3. Otherwise fall back to `serverSettings.gitCommitMode`.
+  4. **Compatibility / API:** If `input.commitMode` is still `"last_used"` (older client, scripted API, or bug), map it to **`agent_decides`** so behavior stays deterministic. Do not interpret `"last_used"` as “read last-used from server settings”; that state is client-owned.
 
 ### 7. Server settings (`apps/server/src/serverSettings.ts`)
 
@@ -149,13 +150,22 @@ GitManager.runStackedAction
 
 If the user types a commit message in the dialog textarea AND the selected mode is `agent_decides` or `multiple_if_needed`:
 
-- The commit mode selector is **disabled** (greyed out) while the textarea is non-empty, locked to `"one_commit"` behaviour
+- The **commit mode selector** shows **`one_commit`** as the visible, **disabled** selection while the textarea is non-empty (user cannot pick multi-commit strategies until the manual message is cleared).
+- The **client sends** `commitMode: "one_commit"` in the `GitRunStackedAction` payload whenever the textarea is non-empty, regardless of the persisted default or prior selector value.
+- **Restore prior choice:** Keep `previousCommitMode` (or equivalent) when the textarea becomes non-empty; when the textarea is cleared, restore the commit mode selector and payload to that stored value so users do not lose their preferred default.
 - A helper text appears: _"A manual message overrides commit strategy — clear it to let the agent decide."_
 - This prevents ambiguity about which message to use for which commit group.
 
 ### Partial file selection + multi-commit
 
 When the user excludes some files from the dialog (partial selection), only the selected files are staged before the AI prompt is built. The AI therefore only sees selected files in the diff summary — grouping naturally applies only within that selection.
+
+### Error handling scenarios
+
+1. **Invalid AI responses:** Reject plans with empty groups, files not in the staged set, non-JSON, or wrong shape. Validate before any `git commit`; surface a clear error and do not mutate the repo. Same validation applies when **Partial file selection + multi-commit** narrows the staged set — groups must reference only files that are actually staged for this run.
+2. **Multi-commit atomicity:** Default strategy should be **stop-on-first-failure** (do not continue after a failed commit) and leave the working tree where Git left it; document whether partial commits remain (user may need to inspect `git status`). Alternative strategies (full rollback) are out of scope unless product explicitly adds them.
+3. **Server-side validation:** Enforce **no empty groups** and **membership in staged files** (and in partial-selection flows, membership in the user’s selected subset) before executing commits.
+4. **User feedback:** Show actionable errors (validation vs Git error), offer **retry** where safe, and in **Manual message + multi-commit mode** remind the user that clearing the manual message restores multi-commit behaviour if validation failed due to message/strategy mismatch.
 
 ---
 

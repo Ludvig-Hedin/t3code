@@ -1,11 +1,18 @@
 # Changelog
 
+## [2026-04-08] [Docs/Fix] Specs, GEMINI edit example, composer fences, diff card, parsing
+
+- **User-facing (web):** `FileDiffCard` uses theme-aware diff line colors, disclosure `aria-expanded` / `aria-controls`, preserves `@@` hunk lines without stripping, and `ComposerPendingApprovalPanel` restores `title` on truncated detail. Chat composer file attachments use dynamic Markdown fence length when file text contains backticks. `parseCssColor` rejects non-finite hex alpha.
+- **Docs:** `GEMINI.md` edit-transparency example is a single-line pattern; superpower plans/specs updated (prompt-improvement snippet, commit-mode `files` + `last_used` + error handling + manual message, voice transcription privacy/proxy/constraints).
+- **Server:** `setupRoutes` import route documents Effect v4 `Result` (`success`/`failure`) and `Effect.catch` (v3 `catchAll` rename) — no behavioral change.
+
 ## [2026-04-08] [Fix] Release pipeline unblock + build verification
 
 - Fixed the `apps/web` typecheck blockers that were preventing a clean repo-wide release build.
 - Restored the required `showProjectTooltip` prop on the organized sidebar wrapper and removed a stray wrapper prop that the component did not accept.
 - Narrowed the default-provider settings handler so the select value matches the existing settings type.
 - Fixed the `uiStateStore` import so `ThreadId.makeUnsafe()` is available at runtime.
+- Updated the project-order snapshot test to match the current "prepend new projects" behavior.
 - Verified `bun run fmt:check`, `bun run lint`, `bun run typecheck`, and `bun run build` all pass after the fixes.
 
 ## [2026-04-07] [Feature] Drag-to-reorder auto-switch, Pin to sidebar/project, Filter & Organize sidebar

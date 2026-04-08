@@ -46,7 +46,8 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
       supportsThinkingToggle: false,
       contextWindowOptions: [
         { value: "200k", label: "200k", isDefault: true },
-        { value: "1m", label: "1M" },
+        // 1M context is billed via extra usage on all plans — always display this clearly
+        { value: "1m", label: "1M (extra usage)" },
       ],
       promptInjectedEffortLevels: ["ultrathink"],
     } satisfies ModelCapabilities,
@@ -66,7 +67,8 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
       supportsThinkingToggle: false,
       contextWindowOptions: [
         { value: "200k", label: "200k", isDefault: true },
-        { value: "1m", label: "1M" },
+        // 1M context is billed via extra usage on all plans — always display this clearly
+        { value: "1m", label: "1M (extra usage)" },
       ],
       promptInjectedEffortLevels: ["ultrathink"],
     } satisfies ModelCapabilities,
@@ -276,15 +278,9 @@ function extractClaudeAuthMethodFromOutput(result: CommandResult): string | unde
 
 // ── Dynamic model capability adjustment ─────────────────────────────
 
-/** Subscription types where the 1M context window is included in the plan. */
-const PREMIUM_SUBSCRIPTION_TYPES = new Set([
-  "max",
-  "maxplan",
-  "max5",
-  "max20",
-  "enterprise",
-  "team",
-]);
+// NOTE: PREMIUM_SUBSCRIPTION_TYPES removed — 200k is now the default for all plans.
+// 1M context is billed as extra usage regardless of subscription tier, so we always
+// show it as a manual opt-in rather than silently making it the default for Max/Team/Enterprise users.
 
 function toTitleCaseWords(value: string): string {
   return value
@@ -347,38 +343,20 @@ function claudeAuthMetadata(input: {
 }
 
 /**
- * Adjust the built-in model list based on the user's detected subscription.
+ * Returns the built-in model list, keeping 200k context as the default for all users.
  *
- * - Premium tiers (Max, Enterprise, Team): 1M context becomes the default.
- * - Other tiers (Pro, free, unknown): 200k context stays the default;
- *   1M remains available as a manual option so users can still enable it.
+ * Previously this function would flip 1M to be the default for Max/Team/Enterprise subscribers.
+ * That was changed because 1M context is billed via extra usage on all plans, so it should
+ * always be an explicit opt-in rather than a silent default. The subscriptionType parameter
+ * is kept in the signature for backward compatibility but is no longer used.
  */
 export function adjustModelsForSubscription(
   baseModels: ReadonlyArray<ServerProviderModel>,
-  subscriptionType: string | undefined,
+  _subscriptionType: string | undefined,
 ): ReadonlyArray<ServerProviderModel> {
-  const normalized = subscriptionType?.toLowerCase().replace(/[\s_-]+/g, "");
-  if (!normalized || !PREMIUM_SUBSCRIPTION_TYPES.has(normalized)) {
-    return baseModels;
-  }
-
-  // Flip 1M to be the default for premium users
-  return baseModels.map((model) => {
-    const caps = model.capabilities;
-    if (!caps || caps.contextWindowOptions.length === 0) return model;
-
-    return {
-      ...model,
-      capabilities: {
-        ...caps,
-        contextWindowOptions: caps.contextWindowOptions.map((opt) =>
-          opt.value === "1m"
-            ? { value: opt.value, label: opt.label, isDefault: true as const }
-            : { value: opt.value, label: opt.label },
-        ),
-      },
-    };
-  });
+  // 200k is the correct default for every subscription tier.
+  // 1M (extra usage) remains available as a manual opt-in in the context window picker.
+  return baseModels;
 }
 
 // ── SDK capability probe ────────────────────────────────────────────

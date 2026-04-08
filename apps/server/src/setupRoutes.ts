@@ -203,7 +203,8 @@ export const importExecuteRouteLayer = Layer.unwrap(
       Effect.gen(function* () {
         // Parse request body — return 400 explicitly instead of silently
         // returning an empty selection list, so callers see why their request failed.
-        // Effect v4 uses Effect.result / Result._tag "Success" | "Failure".
+        // Effect.result wraps the outcome in Result<A,E> (not Exit): Success uses
+        // `.success`, Failure uses `.failure` (see effect/Result).
         const bodyResult = yield* HttpServerRequest.schemaBodyJson(ImportRequest).pipe(
           Effect.result,
         );
@@ -244,6 +245,7 @@ export const importExecuteRouteLayer = Layer.unwrap(
           };
 
           // Only increment the counter when the dispatch actually succeeded.
+          // Effect.catch is the Effect v4 name for typed error recovery (replaces v3 catchAll).
           const projectResult = yield* engine.dispatch(projectCommand).pipe(
             Effect.catch((err) => {
               errors.push(`Dispatch project "${selection.projectName}": ${String(err)}`);
@@ -303,6 +305,7 @@ export const importExecuteRouteLayer = Layer.unwrap(
             };
 
             // Only increment the counter when the dispatch actually succeeded.
+            // (Effect.catch — typed error recovery; see project dispatch above.)
             const threadResult = yield* engine.dispatch(threadCommand).pipe(
               Effect.catch((err) => {
                 errors.push(`Dispatch thread "${rawTitle}": ${String(err)}`);

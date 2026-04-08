@@ -1098,8 +1098,13 @@ import { Skeleton } from "./ui/skeleton";
 Near the other composer state declarations (around line 860, near `isComposerPrimaryActionsCompact`), add:
 
 ```typescript
-const activeThreadMessages =
-  (activeThread as { messages?: import("../types").ChatMessage[] } | null)?.messages ?? [];
+const activeThreadMessages: import("../types").ChatMessage[] =
+  activeThread != null &&
+  typeof activeThread === "object" &&
+  "messages" in activeThread &&
+  Array.isArray((activeThread as { messages?: unknown }).messages)
+    ? ((activeThread as { messages: import("../types").ChatMessage[] }).messages)
+    : [];
 
 const improver = usePromptImprover({
   prompt,
@@ -1150,7 +1155,7 @@ Find the `{/* Bottom toolbar */}` section (around line 4857). Inside the non-app
 {
   !isComposerApprovalState && !activePendingProgress && (
     <ComposerImproveButton improver={improver} hasText={prompt.trim().length > 0} />
-  );
+  )
 }
 ```
 

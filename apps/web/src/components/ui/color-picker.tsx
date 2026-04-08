@@ -205,6 +205,7 @@ export function parseCssColor(css: string): RGBA | null {
 
     const rgb = hexToRgb(hexForRgb);
     if (!rgb) return null;
+    if (!Number.isFinite(a) || a < 0 || a > 1) return null;
     return { ...rgb, a };
   }
 

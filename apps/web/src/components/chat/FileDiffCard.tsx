@@ -25,7 +25,7 @@
  * is always useful even before the raw diff loads.
  */
 
-import { memo, useState } from "react";
+import { memo, useId, useState } from "react";
 import { ChevronRightIcon, Loader2Icon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { type DiffFile } from "../../hooks/useFileDiff";
@@ -76,6 +76,7 @@ export const FileDiffCard = memo(function FileDiffCard({
   onViewFullDiff,
 }: FileDiffCardProps) {
   const [isOpen, setIsOpen] = useState(defaultExpanded);
+  const diffPanelId = useId();
 
   const fileName = fileChange.path.split("/").at(-1) ?? fileChange.path;
   const dirPath = fileChange.path.includes("/")
@@ -90,6 +91,15 @@ export const FileDiffCard = memo(function FileDiffCard({
   const allLines = parsedFile?.chunks.flatMap((chunk) => chunk.changes) ?? [];
   const hasContent = allLines.length > 0;
 
+  const addedLineClass =
+    resolvedTheme === "dark"
+      ? "bg-emerald-950/60 text-emerald-300/90"
+      : "bg-emerald-100/80 text-emerald-900";
+  const removedLineClass =
+    resolvedTheme === "dark"
+      ? "bg-rose-950/60 text-rose-300/90"
+      : "bg-rose-100/80 text-rose-900";
+
   return (
     <div className="overflow-hidden rounded-lg border border-border/60 bg-card/40 font-mono text-[11px]">
       {/* ── Header ── */}
@@ -97,6 +107,8 @@ export const FileDiffCard = memo(function FileDiffCard({
         type="button"
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-background/60 transition-colors"
         onClick={() => setIsOpen((v) => !v)}
+        aria-expanded={isOpen}
+        aria-controls={diffPanelId}
       >
         <ChevronRightIcon
           className={cn(
@@ -133,7 +145,12 @@ export const FileDiffCard = memo(function FileDiffCard({
 
       {/* ── Diff body ── */}
       {isOpen && (
-        <div className="border-t border-border/40">
+        <div
+          id={diffPanelId}
+          role="region"
+          aria-label={`Diff for ${fileChange.path}`}
+          className="border-t border-border/40"
+        >
           {/* Content: diff lines */}
           {hasContent ? (
             <div className="max-h-[320px] overflow-y-auto">
@@ -146,14 +163,21 @@ export const FileDiffCard = memo(function FileDiffCard({
                       ? "removed"
                       : lineType(raw);
 
+                const lineText =
+                  type === "hunk" || raw.startsWith("@@")
+                    ? raw
+                    : raw.length > 0
+                      ? raw.slice(1)
+                      : "";
+
                 return (
                   <div
                     // eslint-disable-next-line react/no-array-index-key
                     key={index}
                     className={cn(
                       "flex gap-0 whitespace-pre leading-5 select-text",
-                      type === "added" && "bg-emerald-950/60 text-emerald-300/90",
-                      type === "removed" && "bg-rose-950/60 text-rose-300/90",
+                      type === "added" && addedLineClass,
+                      type === "removed" && removedLineClass,
                       type === "hunk" && "bg-muted/30 text-muted-foreground/60 italic",
                       type === "context" && "text-muted-foreground/70",
                     )}
@@ -169,9 +193,7 @@ export const FileDiffCard = memo(function FileDiffCard({
                       {type === "added" ? "+" : type === "removed" ? "-" : " "}
                     </span>
                     {/* Line content — strip the leading +/-/space sigil from parse-diff output */}
-                    <span className="px-2 min-w-0 overflow-hidden">
-                      {raw.length > 0 ? raw.slice(1) : ""}
-                    </span>
+                    <span className="px-2 min-w-0 overflow-hidden">{lineText}</span>
                   </div>
                 );
               })}

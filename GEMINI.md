@@ -18,8 +18,7 @@ Gemini CLI does not support PostToolUse hooks, so you must output file paths and
 After **every** file edit or creation, output this inline in your response:
 
 ```
-✏️  path/to/file.ts
-  — What changed and why (one line)
+✏️ path/to/file.ts — What changed and why (keep it brief; wrap in your editor if the line is long)
 ```
 
 Do not batch these at the end of your response. Output them as you go, immediately after
