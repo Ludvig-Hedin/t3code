@@ -56,6 +56,7 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const SET_THEME_CHANNEL = "desktop:set-theme";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
+const OPEN_IN_FINDER_CHANNEL = "desktop:open-in-finder";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
@@ -1472,6 +1473,20 @@ function registerIpcHandlers(): void {
 
     try {
       await shell.openExternal(externalUrl);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.removeHandler(OPEN_IN_FINDER_CHANNEL);
+  ipcMain.handle(OPEN_IN_FINDER_CHANNEL, async (_event, rawPath: unknown) => {
+    if (typeof rawPath !== "string" || rawPath.trim().length === 0) {
+      return false;
+    }
+
+    try {
+      shell.showItemInFolder(rawPath);
       return true;
     } catch {
       return false;

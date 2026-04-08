@@ -122,6 +122,7 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
     setTheme: async () => undefined,
     showContextMenu: async () => null,
     openExternal: async () => true,
+    openInFinder: async () => true,
     onMenuAction: () => () => undefined,
     getUpdateState: async () => {
       throw new Error("getUpdateState not implemented in test");
@@ -355,6 +356,17 @@ describe("wsNativeApi", () => {
 
     await expect(api.contextMenu.show(items, { x: 4, y: 5 })).resolves.toBe("rename");
     expect(showContextMenuFallbackMock).toHaveBeenCalledWith(items, { x: 4, y: 5 });
+  });
+
+  it("forwards Finder reveal requests directly to the desktop bridge", async () => {
+    const openInFinder = vi.fn().mockResolvedValue(true);
+    getWindowForTest().desktopBridge = makeDesktopBridge({ openInFinder });
+
+    const { createWsNativeApi } = await import("./wsNativeApi");
+    const api = createWsNativeApi();
+
+    await expect(api.shell.openInFinder("/tmp/workspace")).resolves.toBeUndefined();
+    expect(openInFinder).toHaveBeenCalledWith("/tmp/workspace");
   });
 
   it("forwards workspace file reads directly to the RPC client", async () => {

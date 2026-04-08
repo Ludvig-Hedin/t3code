@@ -59,6 +59,16 @@ export function createWsNativeApi(): NativeApi {
 
         window.open(url, "_blank", "noopener,noreferrer");
       },
+      openInFinder: async (path) => {
+        if (!window.desktopBridge) {
+          throw new Error("Open in Finder is unavailable.");
+        }
+
+        const opened = await window.desktopBridge.openInFinder(path);
+        if (!opened) {
+          throw new Error("Unable to reveal path in Finder.");
+        }
+      },
     },
     git: {
       pull: rpcClient.git.pull,

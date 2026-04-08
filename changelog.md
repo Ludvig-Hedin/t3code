@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-04-08] [Fix] Project sidebar context menu actions
+
+- Added `Rename project` to the project right-click menu in the sidebar and wired it to `project.meta.update` so only the Bird Code display name changes.
+- Added `Open in Finder` to the same project menu and bridged it through Electron `shell.showItemInFolder` for desktop users.
+- Hid the Finder action outside native desktop contexts so the menu stays accurate when the desktop bridge is unavailable.
+
 ## [2026-04-08] [Release] v0.0.15 — first public release + marketing site deployed
 
 - **GitHub Release v0.0.15** published at https://github.com/Ludvig-Hedin/t3code/releases/tag/v0.0.15 with macOS arm64 DMG, macOS x64 DMG, Windows x64 EXE, and Linux x86_64 AppImage. Auto-updater manifests (latest-mac.yml, latest.yml, latest-linux.yml) included.
