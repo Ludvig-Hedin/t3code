@@ -54,7 +54,7 @@ import {
   MenuTrigger,
 } from "~/components/ui/menu";
 import { cn } from "~/lib/utils";
-import { DEFAULT_RUNTIME_MODE, type ProviderKind } from "@t3tools/contracts";
+import { DEFAULT_RUNTIME_MODE, type ProviderKind, type ServerProvider } from "@t3tools/contracts";
 import { buildAutomationRunTitle, resolveAutomationProject } from "~/automationsRunner";
 import {
   type AutomItem,
@@ -83,6 +83,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   lastRan: "Last ran",
   createdAt: "Created",
 };
+const EMPTY_PROVIDER_STATUSES: readonly ServerProvider[] = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -575,7 +576,7 @@ export function AutomationsManager() {
   const runAutomation = useAutomationsStore((s) => s.runAutomation);
   const restoreAutomationRuntimeState = useAutomationsStore((s) => s.restoreAutomationRuntimeState);
   const projects = useStore((s) => s.projects);
-  const providerStatuses = useServerConfig()?.providers ?? [];
+  const providerStatuses = useServerConfig()?.providers ?? EMPTY_PROVIDER_STATUSES;
   const settings = useSettings();
   const navigate = useNavigate();
 

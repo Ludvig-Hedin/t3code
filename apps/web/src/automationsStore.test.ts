@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  computeNextRun,
-  useAutomationsStore,
-  type AutomationRuntimeState,
-} from "./automationsStore";
+import { computeNextRun, useAutomationsStore } from "./automationsStore";
 
 function resetStore() {
   useAutomationsStore.setState({ automations: [] });
@@ -46,13 +42,20 @@ describe("automationsStore run lifecycle", () => {
       nextRun: computeNextRun("daily", "09:00", [], new Date("2026-04-08T10:00:00.000Z")),
     });
 
-    const restoredState: Partial<AutomationRuntimeState> = {};
+    const restoredState: { status?: "active" | "paused" | "running"; nextRun?: string | null } = {};
     if (previousState) {
       restoredState.status = previousState.status;
       restoredState.nextRun = previousState.nextRun;
     }
 
-    useAutomationsStore.getState().restoreAutomationRuntimeState(automation.id, restoredState);
+    (
+      useAutomationsStore.getState() as {
+        restoreAutomationRuntimeState: (
+          id: string,
+          state: { status?: "active" | "paused" | "running"; nextRun?: string | null },
+        ) => void;
+      }
+    ).restoreAutomationRuntimeState(automation.id, restoredState);
 
     expect(useAutomationsStore.getState().automations[0]).toMatchObject({
       status: "paused",
