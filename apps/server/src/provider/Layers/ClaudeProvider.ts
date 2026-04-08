@@ -46,8 +46,11 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
       supportsThinkingToggle: false,
       contextWindowOptions: [
         { value: "200k", label: "200k", isDefault: true },
-        // 1M context is billed via extra usage on all plans — always display this clearly
-        { value: "1m", label: "1M (extra usage)" },
+        {
+          value: "1m",
+          label: "1M (extra usage)",
+          description: "Opus 4.6 with 1M context · ~2× usage vs Sonnet · Billed as extra usage · $5/$25 per Mtok",
+        },
       ],
       promptInjectedEffortLevels: ["ultrathink"],
     } satisfies ModelCapabilities,
@@ -67,8 +70,11 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
       supportsThinkingToggle: false,
       contextWindowOptions: [
         { value: "200k", label: "200k", isDefault: true },
-        // 1M context is billed via extra usage on all plans — always display this clearly
-        { value: "1m", label: "1M (extra usage)" },
+        {
+          value: "1m",
+          label: "1M (extra usage)",
+          description: "Sonnet 4.6 with 1M context · Billed as extra usage · $3/$15 per Mtok",
+        },
       ],
       promptInjectedEffortLevels: ["ultrathink"],
     } satisfies ModelCapabilities,

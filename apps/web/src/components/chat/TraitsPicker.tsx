@@ -314,8 +314,15 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
             >
               {contextWindowOptions.map((option) => (
                 <MenuRadioItem key={option.value} value={option.value}>
-                  {option.label}
-                  {option.value === defaultContextWindow ? " (default)" : ""}
+                  <div className="space-y-1">
+                    <div>
+                      {option.label}
+                      {option.value === defaultContextWindow ? " (default)" : ""}
+                    </div>
+                    {option.description ? (
+                      <div className="text-[11px] text-muted-foreground/70">{option.description}</div>
+                    ) : null}
+                  </div>
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>

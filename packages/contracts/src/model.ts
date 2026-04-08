@@ -56,6 +56,8 @@ export const ContextWindowOption = Schema.Struct({
   value: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
   isDefault: Schema.optional(Schema.Boolean),
+  // Optional detailed description for context window options (e.g. pricing info, billing notes)
+  description: Schema.optional(TrimmedNonEmptyString),
 });
 export type ContextWindowOption = typeof ContextWindowOption.Type;
 
