@@ -63,6 +63,11 @@ export const REASONING_LEVEL_OPTIONS: ReasoningLevel[] = ["none", "low", "medium
 
 export type AutomationStatus = "active" | "paused" | "running";
 
+export interface AutomationRuntimeState {
+  status: AutomationStatus;
+  nextRun: string | null;
+}
+
 export interface AutomItem {
   id: string;
   name: string;
@@ -198,10 +203,12 @@ interface AutomationsState {
   deleteAutomation: (id: string) => void;
 
   /**
-   * Mark an automation as "running" and stamp lastRan.
-   * In the future this will dispatch the actual agent run.
+   * Mark an automation as "running" and stamp lastRan while the UI starts the chat.
    */
-  runAutomation: (id: string) => void;
+  runAutomation: (id: string) => AutomationRuntimeState | null;
+
+  /** Restore a run-in-progress automation back to a previous runtime state. */
+  restoreAutomationRuntimeState: (id: string, state: Partial<AutomationRuntimeState>) => void;
 
   /** Toggle active / paused status */
   toggleAutomationStatus: (id: string) => void;
@@ -266,15 +273,34 @@ export const useAutomationsStore = create<AutomationsState>()(
       },
 
       runAutomation(id) {
+        let previousRuntimeState: AutomationRuntimeState | null = null;
         // Stamps lastRan and recalculates nextRun. Actual agent dispatch is future work.
         set((state) => ({
           automations: state.automations.map((a) => {
             if (a.id !== id) return a;
+            previousRuntimeState = {
+              status: a.status,
+              nextRun: a.nextRun,
+            };
             return {
               ...a,
-              status: "active" as const,
+              status: "running" as const,
               lastRan: new Date().toISOString(),
               nextRun: computeNextRun(a.frequency, a.frequencyTime, a.frequencyDays),
+            };
+          }),
+        }));
+        return previousRuntimeState;
+      },
+
+      restoreAutomationRuntimeState(id, state) {
+        set((current) => ({
+          automations: current.automations.map((automation) => {
+            if (automation.id !== id) return automation;
+            return {
+              ...automation,
+              ...(state.status !== undefined ? { status: state.status } : {}),
+              ...(state.nextRun !== undefined ? { nextRun: state.nextRun } : {}),
             };
           }),
         }));

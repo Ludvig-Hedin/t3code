@@ -108,24 +108,60 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   }
 
   if (isRunning) {
+    // Build the send shortcut label for the queue tooltip
+    const queueShortcutLabel =
+      enterKeyBehavior === "newline"
+        ? isMac
+          ? "Queue message (⌘↵)"
+          : "Queue message (Ctrl+Enter)"
+        : "Queue message (↵)";
+
     return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
-              onClick={onInterrupt}
-              aria-label="Stop generation"
-            />
-          }
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-            <rect x="2" y="2" width="8" height="8" rx="1.5" />
-          </svg>
-        </TooltipTrigger>
-        <TooltipPopup side="top">Stop generation</TooltipPopup>
-      </Tooltip>
+      <div className="flex items-center gap-1.5">
+        {/* Queue/send button — visible when composer has content, queues the message */}
+        {hasSendableContent && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="submit"
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-foreground/90 text-background transition-all duration-150 hover:bg-foreground hover:scale-105 sm:h-7 sm:w-7"
+                  aria-label={queueShortcutLabel}
+                />
+              }
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path
+                  d="M6 10V2M6 2L2.5 5.5M6 2L9.5 5.5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </TooltipTrigger>
+            <TooltipPopup side="top">{queueShortcutLabel}</TooltipPopup>
+          </Tooltip>
+        )}
+        {/* Stop button */}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
+                onClick={onInterrupt}
+                aria-label="Stop generation"
+              />
+            }
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <rect x="2" y="2" width="8" height="8" rx="1.5" />
+            </svg>
+          </TooltipTrigger>
+          <TooltipPopup side="top">Stop generation</TooltipPopup>
+        </Tooltip>
+      </div>
     );
   }
 

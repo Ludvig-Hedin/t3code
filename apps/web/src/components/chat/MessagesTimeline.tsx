@@ -919,8 +919,100 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-normal text-foreground">
-      {props.text}
-    </pre>
+    <div className="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-normal text-foreground">
+      <UserMessageMarkdown text={props.text} />
+    </div>
   );
+});
+
+/**
+ * Light markdown renderer for user messages. Supports:
+ * - **bold** text
+ * - Unordered lists (lines starting with "- " or "* ")
+ * - Ordered lists (lines starting with "1. ", "2. ", etc.)
+ *
+ * The AI receives the raw markdown, but the user sees formatted output.
+ */
+function renderInlineBoldSegments(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  // Match **text** patterns (non-greedy, no newlines inside)
+  const boldPattern = /\*\*([^*\n]+)\*\*/g;
+  let match: RegExpExecArray | null;
+  while ((match = boldPattern.exec(text)) !== null) {
+    if (match.index > cursor) {
+      nodes.push(text.slice(cursor, match.index));
+    }
+    nodes.push(
+      <strong key={`b-${match.index}`} className="font-semibold">
+        {match[1]}
+      </strong>,
+    );
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor));
+  }
+  return nodes.length > 0 ? nodes : [text];
+}
+
+const UserMessageMarkdown = memo(function UserMessageMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+
+  // Group consecutive list lines into list blocks for proper rendering
+  const elements: ReactNode[] = [];
+  let listBuffer: { type: "ul" | "ol"; items: string[] } | null = null;
+
+  const flushList = () => {
+    if (!listBuffer) return;
+    const Tag = listBuffer.type;
+    elements.push(
+      <Tag
+        key={`list-${elements.length}`}
+        className={cn(
+          "my-0.5 space-y-0.5",
+          listBuffer.type === "ul" ? "list-disc pl-5" : "list-decimal pl-5",
+        )}
+      >
+        {listBuffer.items.map((item) => (
+          <li key={item}>{renderInlineBoldSegments(item)}</li>
+        ))}
+      </Tag>,
+    );
+    listBuffer = null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+
+    // Unordered list: "- " or "* "
+    const ulMatch = line.match(/^(\s*)([-*])\s(.*)$/);
+    if (ulMatch) {
+      if (listBuffer && listBuffer.type !== "ul") flushList();
+      if (!listBuffer) listBuffer = { type: "ul", items: [] };
+      listBuffer.items.push(ulMatch[3] ?? "");
+      continue;
+    }
+
+    // Ordered list: "1. ", "2. ", etc.
+    const olMatch = line.match(/^(\s*)(\d+)\.\s(.*)$/);
+    if (olMatch) {
+      if (listBuffer && listBuffer.type !== "ol") flushList();
+      if (!listBuffer) listBuffer = { type: "ol", items: [] };
+      listBuffer.items.push(olMatch[3] ?? "");
+      continue;
+    }
+
+    // Regular line — flush any pending list
+    flushList();
+
+    if (i > 0 && elements.length > 0) {
+      elements.push("\n");
+    }
+    elements.push(<span key={`line-${i}`}>{renderInlineBoldSegments(line)}</span>);
+  }
+
+  flushList();
+
+  return <>{elements}</>;
 });

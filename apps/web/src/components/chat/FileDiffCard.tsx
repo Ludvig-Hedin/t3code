@@ -96,9 +96,7 @@ export const FileDiffCard = memo(function FileDiffCard({
       ? "bg-emerald-950/60 text-emerald-300/90"
       : "bg-emerald-100/80 text-emerald-900";
   const removedLineClass =
-    resolvedTheme === "dark"
-      ? "bg-rose-950/60 text-rose-300/90"
-      : "bg-rose-100/80 text-rose-900";
+    resolvedTheme === "dark" ? "bg-rose-950/60 text-rose-300/90" : "bg-rose-100/80 text-rose-900";
 
   return (
     <div className="overflow-hidden rounded-lg border border-border/60 bg-card/40 font-mono text-[11px]">

@@ -49,7 +49,8 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
         {
           value: "1m",
           label: "1M (extra usage)",
-          description: "Opus 4.6 with 1M context · ~2× usage vs Sonnet · Billed as extra usage · $5/$25 per Mtok",
+          description:
+            "Opus 4.6 with 1M context · ~2× usage vs Sonnet · Billed as extra usage · $5/$25 per Mtok",
         },
       ],
       promptInjectedEffortLevels: ["ultrathink"],

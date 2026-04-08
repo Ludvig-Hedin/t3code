@@ -2039,7 +2039,7 @@ export function SkillsManager() {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto px-4 pb-10 sm:px-10 sm:pb-10">
+    <div className="flex h-full flex-col overflow-y-auto p-6">
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-gradient-to-b from-background from-[calc(100%-24px)] to-transparent">
         <div className="flex flex-col gap-2 pb-8 pt-6">
@@ -2051,7 +2051,7 @@ export function SkillsManager() {
         </div>
       </div>
 
-      <div className="flex max-w-[960px] flex-col gap-8">
+      <div className="mx-auto flex w-full max-w-[960px] flex-col gap-8">
         {/* Installed skills section */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">

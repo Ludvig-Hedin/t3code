@@ -1103,7 +1103,7 @@ const activeThreadMessages: import("../types").ChatMessage[] =
   typeof activeThread === "object" &&
   "messages" in activeThread &&
   Array.isArray((activeThread as { messages?: unknown }).messages)
-    ? ((activeThread as { messages: import("../types").ChatMessage[] }).messages)
+    ? (activeThread as { messages: import("../types").ChatMessage[] }).messages
     : [];
 
 const improver = usePromptImprover({
@@ -1155,7 +1155,7 @@ Find the `{/* Bottom toolbar */}` section (around line 4857). Inside the non-app
 {
   !isComposerApprovalState && !activePendingProgress && (
     <ComposerImproveButton improver={improver} hasText={prompt.trim().length > 0} />
-  )
+  );
 }
 ```
 

@@ -43,3 +43,4 @@
 
 - [ ] `bun typecheck` has pre-existing Effect typing issues in `apps/server` that need resolution
 - [ ] Mobile pairing QR should refuse to generate from `localhost` origin (already guarded on desktop, verify web path)
+- [ ] Automations are still browser-session-bound for scheduling; they will not run while the laptop is asleep or the lid is closed unless scheduling moves to a background service.

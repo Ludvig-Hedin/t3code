@@ -2312,6 +2312,29 @@ export default function Sidebar() {
       navigateToThread(targetThreadId);
     };
 
+    // Separate handler for navigate.* page shortcuts so they don't compete with
+    // the thread-jump early-return above. Fires at window level alongside the main handler.
+    const onNavigateKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      const command = resolveShortcutCommand(event, keybindings, {
+        platform,
+        context: getShortcutContext(),
+      });
+      if (command === "navigate.automations") {
+        event.preventDefault();
+        event.stopPropagation();
+        void navigate({ to: "/automations" });
+      } else if (command === "navigate.skills") {
+        event.preventDefault();
+        event.stopPropagation();
+        void navigate({ to: "/skills" });
+      } else if (command === "navigate.plugins") {
+        event.preventDefault();
+        event.stopPropagation();
+        void navigate({ to: "/plugins" });
+      }
+    };
+
     const onWindowKeyUp = (event: globalThis.KeyboardEvent) => {
       updateThreadJumpHintsVisibility(
         shouldShowThreadJumpHints(event, keybindings, {
@@ -2326,16 +2349,19 @@ export default function Sidebar() {
     };
 
     window.addEventListener("keydown", onWindowKeyDown);
+    window.addEventListener("keydown", onNavigateKeyDown);
     window.addEventListener("keyup", onWindowKeyUp);
     window.addEventListener("blur", onWindowBlur);
 
     return () => {
       window.removeEventListener("keydown", onWindowKeyDown);
+      window.removeEventListener("keydown", onNavigateKeyDown);
       window.removeEventListener("keyup", onWindowKeyUp);
       window.removeEventListener("blur", onWindowBlur);
     };
   }, [
     keybindings,
+    navigate,
     navigateToThread,
     orderedSidebarThreadIds,
     platform,
@@ -2653,6 +2679,23 @@ export default function Sidebar() {
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.newLocal", sidebarShortcutLabelOptions) ??
     shortcutLabelForCommand(keybindings, "chat.new", sidebarShortcutLabelOptions);
+  // Shortcut labels for footer nav items — sourced from user-configurable keybindings.
+  // The commands navigate.automations/skills/plugins are defined in contracts/keybindings.ts.
+  const automationsShortcutLabel = shortcutLabelForCommand(
+    keybindings,
+    "navigate.automations",
+    sidebarShortcutLabelOptions,
+  );
+  const skillsShortcutLabel = shortcutLabelForCommand(
+    keybindings,
+    "navigate.skills",
+    sidebarShortcutLabelOptions,
+  );
+  const pluginsShortcutLabel = shortcutLabelForCommand(
+    keybindings,
+    "navigate.plugins",
+    sidebarShortcutLabelOptions,
+  );
 
   const handleDesktopUpdateButtonClick = useCallback(() => {
     const bridge = window.desktopBridge;
@@ -2823,38 +2866,38 @@ export default function Sidebar() {
               {/* Creates a draft thread in the default project and navigates to it,
                   where the real composer + prompt cards are shown for empty threads.
                   On mobile the sidebar closes immediately so the user sees the new thread. */}
+              {/* Styled to exactly match the footer SidebarMenuButton size="sm" buttons:
+                  h-7, rounded-lg, px-2 py-1.5, text-xs, size-3.5 icon. */}
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-2 md:py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
                 onClick={() => {
                   void handleNewThread(defaultProjectId!);
                   // Close the mobile sheet so the new thread is immediately visible
                   if (isMobile) setOpenMobile(false);
                 }}
               >
-                {/* Larger icon on mobile for better touch targets */}
-                <SquarePenIcon className="size-5 md:size-3.5 shrink-0" />
+                <SquarePenIcon className="size-3.5 shrink-0" />
                 <span className="flex-1 text-left">New thread</span>
-                {/* ~80% of the button's text-xs label size for a subtle, proportional shortcut hint */}
+                {/* Plain-text shortcut hint — matches the settings button style (no border/bg). */}
                 {newThreadShortcutLabel && (
-                  <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-px text-[9px] font-medium text-muted-foreground sm:inline-flex">
+                  <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
                     {newThreadShortcutLabel}
-                  </kbd>
+                  </span>
                 )}
               </button>
               {/* Search button — opens the search modal (also triggered by Cmd+K) */}
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-2 md:py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
                 onClick={() => setSearchOpen(true)}
               >
-                {/* Larger icon on mobile for better touch targets */}
-                <SearchIcon className="size-5 md:size-3.5 shrink-0" />
+                <SearchIcon className="size-3.5 shrink-0" />
                 <span className="flex-1 text-left">Search</span>
-                {/* ~80% of the button's text-xs label size for a subtle, proportional shortcut hint */}
-                <kbd className="pointer-events-none hidden rounded border bg-muted px-1 py-px text-[9px] font-medium text-muted-foreground sm:inline-flex">
+                {/* Plain-text shortcut hint — matches the settings button style (no border/bg). */}
+                <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
                   {isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"}
-                </kbd>
+                </span>
               </button>
             </div>
           )}
@@ -3148,6 +3191,12 @@ export default function Sidebar() {
                 >
                   <ZapIcon className="size-3.5" />
                   <span className="flex-1 text-xs">Automations</span>
+                  {/* User-configurable shortcut via navigate.automations keybinding. */}
+                  {automationsShortcutLabel && (
+                    <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
+                      {automationsShortcutLabel}
+                    </span>
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -3162,6 +3211,12 @@ export default function Sidebar() {
                 >
                   <SparklesIcon className="size-3.5" />
                   <span className="flex-1 text-xs">Skills</span>
+                  {/* User-configurable shortcut via navigate.skills keybinding. */}
+                  {skillsShortcutLabel && (
+                    <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
+                      {skillsShortcutLabel}
+                    </span>
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -3176,6 +3231,12 @@ export default function Sidebar() {
                 >
                   <LayoutGridIcon className="size-3.5" />
                   <span className="flex-1 text-xs">Plugins</span>
+                  {/* User-configurable shortcut via navigate.plugins keybinding. */}
+                  {pluginsShortcutLabel && (
+                    <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
+                      {pluginsShortcutLabel}
+                    </span>
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

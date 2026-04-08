@@ -24,6 +24,7 @@ import {
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
   COMMAND_PRIORITY_HIGH,
+  COMMAND_PRIORITY_NORMAL,
   KEY_BACKSPACE_COMMAND,
   $getRoot,
   DecoratorNode,
@@ -718,19 +719,130 @@ function ComposerCommandKeyPlugin(props: {
 }
 
 /**
- * ComposerMarkdownShortcutsPlugin — Adds Cmd/Ctrl+B to wrap selected text in
- * markdown bold (**text**). Works within the PlainText editor by manipulating
- * text nodes directly.
+ * Resolves the list prefix for auto-continuation. Returns the prefix to insert
+ * on the next line, or null if the current line isn't a list item.
+ * Also handles clearing the prefix when the user presses Enter on an empty list line.
+ */
+function resolveListContinuation(currentLineText: string): {
+  prefix: string;
+  clearLine: boolean;
+} | null {
+  // Unordered list: "- " or "* "
+  const unorderedMatch = currentLineText.match(/^(\s*)([-*])\s/);
+  if (unorderedMatch) {
+    const indent = unorderedMatch[1] ?? "";
+    const marker = unorderedMatch[2] ?? "-";
+    // If the line is ONLY the list marker (empty item), clear it instead
+    const textAfterPrefix = currentLineText.slice((unorderedMatch[0] ?? "").length);
+    if (textAfterPrefix.trim().length === 0) {
+      return { prefix: "", clearLine: true };
+    }
+    return { prefix: `${indent}${marker} `, clearLine: false };
+  }
+
+  // Ordered list: "1. ", "2. ", etc.
+  const orderedMatch = currentLineText.match(/^(\s*)(\d+)\.\s/);
+  if (orderedMatch) {
+    const indent = orderedMatch[1] ?? "";
+    const num = parseInt(orderedMatch[2] ?? "1", 10);
+    const textAfterPrefix = currentLineText.slice((orderedMatch[0] ?? "").length);
+    if (textAfterPrefix.trim().length === 0) {
+      return { prefix: "", clearLine: true };
+    }
+    return { prefix: `${indent}${num + 1}. `, clearLine: false };
+  }
+
+  return null;
+}
+
+/**
+ * ComposerMarkdownShortcutsPlugin — Handles markdown shortcuts in the composer:
+ * - Cmd/Ctrl+B wraps selected text in **bold** markdown
+ * - Enter after a list item auto-continues the list prefix ("- ", "1. ", etc.)
+ * - Enter on an empty list item clears the prefix
  */
 function ComposerMarkdownShortcutsPlugin() {
   const [editor] = useLexicalComposerContext();
 
+  // Register list auto-continuation on Enter at NORMAL priority (below the
+  // command key plugin at HIGH priority, so it only fires when Enter is NOT
+  // used to send the message)
+  useEffect(() => {
+    const unregister = editor.registerCommand(
+      KEY_ENTER_COMMAND,
+      (event) => {
+        // Only handle plain Enter (no modifiers) — Cmd/Ctrl+Enter is for sending
+        if (!event || event.metaKey || event.ctrlKey) return false;
+
+        const currentLineText = editor.getEditorState().read(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null;
+
+          // Walk backwards from cursor to find the current line content
+          const anchor = selection.anchor;
+          const anchorNode = anchor.getNode();
+          if (!$isTextNode(anchorNode)) return null;
+
+          const textBefore = anchorNode.getTextContent().slice(0, anchor.offset);
+          // Find the last newline to get the current line
+          const lastNewline = textBefore.lastIndexOf("\n");
+          return lastNewline === -1 ? textBefore : textBefore.slice(lastNewline + 1);
+        });
+
+        if (currentLineText === null) return false;
+
+        const continuation = resolveListContinuation(currentLineText);
+        if (!continuation) return false;
+
+        event.preventDefault();
+
+        if (continuation.clearLine) {
+          // Remove the empty list prefix — replace current line text with empty
+          editor.update(() => {
+            const selection = $getSelection();
+            if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
+            const anchor = selection.anchor;
+            const anchorNode = anchor.getNode();
+            if (!$isTextNode(anchorNode)) return;
+
+            const textContent = anchorNode.getTextContent();
+            const offset = anchor.offset;
+            const textBefore = textContent.slice(0, offset);
+            const lastNewline = textBefore.lastIndexOf("\n");
+            const lineStart = lastNewline + 1;
+
+            // Delete from lineStart to cursor (the empty prefix)
+            const before = textContent.slice(0, lineStart);
+            const after = textContent.slice(offset);
+            anchorNode.setTextContent(before + after);
+
+            // Move cursor to where the prefix was
+            const newSelection = $createRangeSelection();
+            newSelection.anchor.set(anchorNode.getKey(), lineStart, "text");
+            newSelection.focus.set(anchorNode.getKey(), lineStart, "text");
+            $setSelection(newSelection);
+          });
+        } else {
+          // Insert newline + list prefix
+          editor.update(() => {
+            const selection = $getSelection();
+            if (!$isRangeSelection(selection)) return;
+            selection.insertRawText(`\n${continuation.prefix}`);
+          });
+        }
+        return true;
+      },
+      COMMAND_PRIORITY_NORMAL,
+    );
+    return unregister;
+  }, [editor]);
+
+  // Cmd/Ctrl+B for bold markdown wrapping
   useEffect(() => {
     const rootElement = editor.getRootElement();
     if (!rootElement) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Cmd+B (Mac) or Ctrl+B (Win/Linux) for bold
       if (event.key === "b" && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
         event.preventDefault();
         event.stopPropagation();

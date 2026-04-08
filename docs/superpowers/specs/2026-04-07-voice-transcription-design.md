@@ -83,10 +83,10 @@ Add a voice-to-text transcription button to the chat composer, placed between th
 
 ### Modified files
 
-| File                                                  | Change                                               |
-| ----------------------------------------------------- | ---------------------------------------------------- |
-| `packages/contracts/src/settings.ts`                  | Add `voiceTranscription` to `ClientSettingsSchema`   |
-| `apps/web/src/components/ChatView.tsx`                | Mount `<TranscribeButton>` in right-side actions div |
+| File                                                  | Change                                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `packages/contracts/src/settings.ts`                  | Add `voiceTranscription` to `ClientSettingsSchema`                                    |
+| `apps/web/src/components/ChatView.tsx`                | Mount `<TranscribeButton>` in right-side actions div                                  |
 | `apps/web/src/components/settings/SettingsPanels.tsx` | Add "Voice" settings row; recommend proxied mode; warn if storing secrets client-side |
 
 ---

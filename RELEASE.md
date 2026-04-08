@@ -39,17 +39,20 @@ When you push a tag matching `v*.*.*`, GitHub Actions runs the release workflow:
 ## What You Need to Do Before Tagging
 
 ✅ **All work is committed and pushed to main**
+
 ```bash
 git status  # Should be clean
 git log --oneline | head  # Latest commit visible on GitHub
 ```
 
 ✅ **All tests pass locally** (optional but recommended)
+
 ```bash
 bun run test
 ```
 
 ✅ **Version makes sense**
+
 - Patch: bug fixes → `0.0.16`
 - Minor: new features → `0.1.0`
 - Major: breaking changes → `1.0.0`
@@ -75,15 +78,18 @@ bun run test
 ## Troubleshooting
 
 ### Release is stuck in "Preflight"
+
 - Check the CI logs: https://github.com/Ludvig-Hedin/t3code/actions
 - Common issues: failing tests, lint errors, type errors
 - Fix locally, commit, and re-tag with the same version (force-push the tag if needed)
 
 ### Binaries missing from release
+
 - Check the "Build" jobs in CI — one platform may have failed
 - Re-run the failed job or re-trigger the workflow
 
 ### Download page doesn't update
+
 - It caches for ~5 minutes; refresh after waiting
 - Check browser DevTools → Network → see if GitHub API call succeeds
 

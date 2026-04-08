@@ -197,11 +197,11 @@ export function PluginsManager() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col p-6">
       {/* ------------------------------------------------------------------ */}
       {/* Hero                                                                */}
       {/* ------------------------------------------------------------------ */}
-      <div className="px-6 pt-8 pb-5">
+      <div className="pb-5">
         <h1 className="text-2xl font-semibold text-foreground tracking-tight">
           Make Bird Code work your way
         </h1>
@@ -213,7 +213,7 @@ export function PluginsManager() {
       {/* ------------------------------------------------------------------ */}
       {/* Sticky toolbar: search + provider filter pills                      */}
       {/* ------------------------------------------------------------------ */}
-      <div className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur-sm px-6 py-3 space-y-3">
+      <div className="sticky top-0 z-10 space-y-3 border-b border-border bg-background/90 py-3 backdrop-blur-sm">
         <InputGroup>
           <InputGroupAddon align="inline-start">
             <SearchIcon className="size-4 text-muted-foreground" />
@@ -253,7 +253,7 @@ export function PluginsManager() {
       {/* Catalog                                                             */}
       {/* ------------------------------------------------------------------ */}
       <ScrollArea className="flex-1">
-        <div className="px-6 py-6 space-y-10">
+        <div className="space-y-10 py-6">
           {sections.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 gap-2">
               <p className="text-sm text-muted-foreground">No integrations match your search.</p>

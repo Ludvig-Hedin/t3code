@@ -28,6 +28,7 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
 
 import { AutomationDialog } from "~/components/AutomationDialog";
 import {
@@ -53,12 +54,22 @@ import {
   MenuTrigger,
 } from "~/components/ui/menu";
 import { cn } from "~/lib/utils";
+import { DEFAULT_RUNTIME_MODE, type ProviderKind } from "@t3tools/contracts";
+import { buildAutomationRunTitle, resolveAutomationProject } from "~/automationsRunner";
 import {
   type AutomItem,
   type CreateAutomationInput,
   FREQUENCY_LABELS,
   useAutomationsStore,
 } from "~/automationsStore";
+import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
+import { readNativeApi } from "~/nativeApi";
+import { resolveAppModelSelection } from "~/modelSelection";
+import { toastManager } from "~/components/ui/toast";
+import { waitForStartedServerThread } from "./ChatView.logic";
+import { useServerConfig } from "~/rpc/serverState";
+import { useSettings } from "~/hooks/useSettings";
+import { useStore } from "~/store";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -182,15 +193,16 @@ function AutomationRow({
   selected,
   anySelected,
   onToggle,
+  onRunNow,
 }: {
   item: AutomItem;
   selected: boolean;
   anySelected: boolean;
   onToggle: () => void;
+  onRunNow: (automation: AutomItem) => void;
 }) {
   const rename = useAutomationsStore((s) => s.renameAutomation);
   const deleteAuto = useAutomationsStore((s) => s.deleteAutomation);
-  const runAuto = useAutomationsStore((s) => s.runAutomation);
   const toggle = useAutomationsStore((s) => s.toggleAutomationStatus);
   const update = useAutomationsStore((s) => s.updateAutomation);
 
@@ -336,7 +348,7 @@ function AutomationRow({
               variant="outline"
               className="h-7 gap-1.5 rounded-full px-3 text-xs"
               disabled={item.status === "running"}
-              onClick={() => runAuto(item.id)}
+              onClick={() => onRunNow(item)}
             >
               <PlayIcon className="size-3" />
               Run now
@@ -561,6 +573,11 @@ export function AutomationsManager() {
   const createAutomation = useAutomationsStore((s) => s.createAutomation);
   const deleteAutomation = useAutomationsStore((s) => s.deleteAutomation);
   const runAutomation = useAutomationsStore((s) => s.runAutomation);
+  const restoreAutomationRuntimeState = useAutomationsStore((s) => s.restoreAutomationRuntimeState);
+  const projects = useStore((s) => s.projects);
+  const providerStatuses = useServerConfig()?.providers ?? [];
+  const settings = useSettings();
+  const navigate = useNavigate();
 
   // ── Local UI state ─────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
@@ -600,6 +617,124 @@ export function AutomationsManager() {
     }
     return map;
   }, [visibleItems, projectFilter]);
+
+  const runAutomationChat = useCallback(
+    async (automation: AutomItem, options?: { navigateAfterRun?: boolean }) => {
+      const project = resolveAutomationProject(projects, automation.project);
+      if (!project) {
+        toastManager.add({
+          type: "error",
+          title: "Project not found",
+          description: `Could not resolve the project for “${automation.name}”.`,
+        });
+        return null;
+      }
+
+      const api = readNativeApi();
+      if (!api) {
+        toastManager.add({
+          type: "error",
+          title: "Automation run unavailable",
+          description: "Open Bird Code in the desktop app to start an automation chat.",
+        });
+        return null;
+      }
+
+      const previousRuntimeState = runAutomation(automation.id);
+      if (!previousRuntimeState) {
+        return null;
+      }
+
+      const threadId = newThreadId();
+      const createdAt = new Date().toISOString();
+      const resolvedProvider = automation.provider as ProviderKind;
+      const resolvedModel = resolveAppModelSelection(
+        resolvedProvider,
+        settings,
+        providerStatuses,
+        automation.model,
+      );
+      const modelSelection = {
+        provider: resolvedProvider,
+        model: resolvedModel,
+      };
+      const title = buildAutomationRunTitle(automation);
+
+      try {
+        await api.orchestration.dispatchCommand({
+          type: "thread.turn.start",
+          commandId: newCommandId(),
+          threadId,
+          message: {
+            messageId: newMessageId(),
+            role: "user",
+            text: automation.prompt,
+            attachments: [],
+          },
+          modelSelection,
+          titleSeed: title,
+          runtimeMode: DEFAULT_RUNTIME_MODE,
+          interactionMode: "default",
+          bootstrap: {
+            createThread: {
+              projectId: project.id,
+              title,
+              modelSelection,
+              runtimeMode: DEFAULT_RUNTIME_MODE,
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdAt,
+            },
+          },
+          createdAt,
+        });
+
+        const started = await waitForStartedServerThread(threadId, 2_000);
+        if (!started) {
+          throw new Error("The automation chat did not start in time.");
+        }
+
+        if (previousRuntimeState.status === "paused") {
+          restoreAutomationRuntimeState(automation.id, {
+            status: previousRuntimeState.status,
+            nextRun: previousRuntimeState.nextRun,
+          });
+        } else {
+          restoreAutomationRuntimeState(automation.id, {
+            status: previousRuntimeState.status,
+          });
+        }
+
+        if (options?.navigateAfterRun !== false) {
+          await navigate({
+            to: "/$threadId",
+            params: { threadId },
+          });
+        }
+
+        return threadId;
+      } catch (error) {
+        if (api) {
+          await api.orchestration
+            .dispatchCommand({
+              type: "thread.delete",
+              commandId: newCommandId(),
+              threadId,
+            })
+            .catch(() => undefined);
+        }
+        restoreAutomationRuntimeState(automation.id, previousRuntimeState);
+        toastManager.add({
+          type: "error",
+          title: "Could not run automation",
+          description: error instanceof Error ? error.message : "An unknown error occurred.",
+        });
+        return null;
+      }
+    },
+    [navigate, projects, providerStatuses, restoreAutomationRuntimeState, runAutomation, settings],
+  );
 
   // ── Selection helpers ──────────────────────────────────────────────
 
@@ -646,9 +781,23 @@ export function AutomationsManager() {
 
   // ── Bulk actions ───────────────────────────────────────────────────
 
-  const handleBulkRun = () => {
+  const handleBulkRun = async () => {
+    let lastThreadId: string | null = null;
     for (const id of selectedIds) {
-      runAutomation(id);
+      const automation = automations.find((item) => item.id === id);
+      if (!automation) {
+        continue;
+      }
+      const startedThreadId = await runAutomationChat(automation, { navigateAfterRun: false });
+      if (startedThreadId) {
+        lastThreadId = startedThreadId;
+      }
+    }
+    if (lastThreadId) {
+      await navigate({
+        to: "/$threadId",
+        params: { threadId: lastThreadId },
+      });
     }
     setSelectedIds(new Set());
   };
@@ -664,9 +813,9 @@ export function AutomationsManager() {
   // ── Render ─────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden p-6">
       {/* ── Toolbar ── */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border py-3">
         <div className="flex flex-col gap-0.5">
           <p className="text-sm font-medium text-foreground">Automations</p>
           <p className="text-xs text-muted-foreground">
@@ -711,7 +860,7 @@ export function AutomationsManager() {
         <>
           {/* ── Project filter tabs ── */}
           {allProjects.length > 1 && (
-            <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border/50 px-4 py-2 scrollbar-none">
+            <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border/50 py-2 scrollbar-none">
               <FilterPill
                 active={projectFilter === null}
                 onClick={() => {
@@ -849,6 +998,9 @@ export function AutomationsManager() {
                               selected={selectedIds.has(item.id)}
                               anySelected={anySelected}
                               onToggle={() => toggleItem(item.id)}
+                              onRunNow={(automation) => {
+                                void runAutomationChat(automation);
+                              }}
                             />
                           ))}
                         </Fragment>
@@ -862,6 +1014,9 @@ export function AutomationsManager() {
                         selected={selectedIds.has(item.id)}
                         anySelected={anySelected}
                         onToggle={() => toggleItem(item.id)}
+                        onRunNow={(automation) => {
+                          void runAutomationChat(automation);
+                        }}
                       />
                     ))}
               </tbody>

@@ -3307,8 +3307,27 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
+    if (!activeThread) return;
+
+    // When AI is running, we can still queue messages — bypass the normal send guards
+    if (phase === "running") {
+      const { trimmedPrompt: trimmed, hasSendableContent: hasContent } = deriveComposerSendState({
+        prompt: promptRef.current,
+        imageCount: composerImages.length,
+        terminalContexts: composerTerminalContexts,
+      });
+      if (!hasContent) return;
+      messageQueue.enqueue(trimmed);
+      promptRef.current = "";
+      clearComposerDraftContent(activeThread.id);
+      setComposerHighlightedItemId(null);
+      setComposerCursor(0);
+      setComposerTrigger(null);
+      return;
+    }
+
     const api = readNativeApi();
-    if (!api || !activeThread || isSendBusy || isConnecting || sendInFlightRef.current) return;
+    if (!api || isSendBusy || isConnecting || sendInFlightRef.current) return;
     if (activePendingProgress) {
       onAdvanceActivePendingUserInput();
       return;
@@ -3370,17 +3389,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
           description: toastCopy.description,
         });
       }
-      return;
-    }
-
-    // Queue the message when the AI is currently working instead of blocking
-    if (phase === "running") {
-      messageQueue.enqueue(trimmed);
-      promptRef.current = "";
-      clearComposerDraftContent(activeThread.id);
-      setComposerHighlightedItemId(null);
-      setComposerCursor(0);
-      setComposerTrigger(null);
       return;
     }
 

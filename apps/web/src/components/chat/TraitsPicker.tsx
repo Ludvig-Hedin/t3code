@@ -320,7 +320,9 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                       {option.value === defaultContextWindow ? " (default)" : ""}
                     </div>
                     {option.description ? (
-                      <div className="text-[11px] text-muted-foreground/70">{option.description}</div>
+                      <div className="text-[11px] text-muted-foreground/70">
+                        {option.description}
+                      </div>
                     ) : null}
                   </div>
                 </MenuRadioItem>
