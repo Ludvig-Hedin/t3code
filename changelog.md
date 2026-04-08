@@ -1,5 +1,13 @@
 # Changelog
 
+## [2026-04-08] [Release] v0.0.15 — first public release + marketing site deployed
+
+- **GitHub Release v0.0.15** published at https://github.com/Ludvig-Hedin/t3code/releases/tag/v0.0.15 with macOS arm64 DMG, macOS x64 DMG, Windows x64 EXE, and Linux x86_64 AppImage. Auto-updater manifests (latest-mac.yml, latest.yml, latest-linux.yml) included.
+- **Marketing site** deployed to Vercel at https://marketing-nu-six.vercel.app/download — the download page auto-fetches from the GitHub Releases API and shows direct links to all platform binaries.
+- **Fix (CI):** Updated `server.test.ts` — the devUrl test now spins up a mock HTTP server to verify proxy behavior instead of asserting an old 302 redirect that no longer matches the proxy-based implementation in `http.ts`.
+- **Fix (CI):** `release.yml` — `Publish GitHub Release` no longer depends on `publish_cli`; CLI npm publish and the desktop release are now independent, preventing stranded artifacts when the npm step fails.
+- **Vercel setup:** Marketing Astro site linked at monorepo root via Vercel API (rootDirectory=null, installCommand=`bun install --frozen-lockfile`, buildCommand=`cd apps/marketing && node_modules/.bin/astro build`, outputDirectory=`apps/marketing/dist`).
+
 ## [2026-04-08] [Docs/Fix] Specs, GEMINI edit example, composer fences, diff card, parsing
 
 - **User-facing (web):** `FileDiffCard` uses theme-aware diff line colors, disclosure `aria-expanded` / `aria-controls`, preserves `@@` hunk lines without stripping, and `ComposerPendingApprovalPanel` restores `title` on truncated detail. Chat composer file attachments use dynamic Markdown fence length when file text contains backticks. `parseCssColor` rejects non-finite hex alpha.

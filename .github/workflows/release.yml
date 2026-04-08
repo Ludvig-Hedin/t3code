@@ -258,7 +258,10 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [preflight, build, publish_cli]
+    # publish_cli is intentionally NOT a prerequisite — CLI npm publish and the
+    # desktop GitHub Release are independent. Gating the release on CLI publish
+    # caused fully-built artifacts to be stranded when the npm step failed.
+    needs: [preflight, build]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
