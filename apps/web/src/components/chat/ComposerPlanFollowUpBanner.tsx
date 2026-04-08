@@ -14,8 +14,9 @@ export const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBann
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{planTitle}</span>
         ) : null}
       </div>
-      {/* Prompt the user to review the plan above and choose their next action */}
-      <p className="mt-1 text-xs text-muted-foreground/70">
+      {/* Prompt the user to review the plan above and choose their next action.
+          Use text-sm + text-muted-foreground (no opacity) to satisfy WCAG AA 4.5:1. */}
+      <p className="mt-1 text-sm text-muted-foreground">
         Review the plan above, then implement or refine it below.
       </p>
     </div>

@@ -190,9 +190,13 @@ async function spawnOneShotCli(
     try {
       child = spawn(binaryPath, [...args], {
         // Provide no stdin — the CLI must not wait for interactive input.
+        // Never use shell:true — it concatenates args into a shell command string
+        // on Windows and allows shell metacharacter injection from user prompts.
+        // Pass args directly to the binary so each element is treated as a
+        // separate argument regardless of its content.
         stdio: ["ignore", "pipe", "pipe"],
         env: process.env,
-        shell: process.platform === "win32",
+        shell: false,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

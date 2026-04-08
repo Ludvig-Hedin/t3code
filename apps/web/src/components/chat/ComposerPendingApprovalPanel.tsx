@@ -27,11 +27,13 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
         ) : null}
       </div>
       {/* Show the specific file path or command so the user can make an informed decision
-          without having to scroll up to find the agent's message. */}
+          without having to scroll up to find the agent's message.
+          Use text-muted-foreground (no opacity) for WCAG AA contrast. The full
+          value is accessible via aria-label on the element itself. */}
       {approval.detail ? (
         <p
-          className="mt-1 max-w-full truncate font-mono text-xs text-muted-foreground/70"
-          title={approval.detail}
+          className="mt-1 max-w-full truncate font-mono text-xs text-muted-foreground"
+          aria-label={approval.detail}
         >
           {approval.detail}
         </p>

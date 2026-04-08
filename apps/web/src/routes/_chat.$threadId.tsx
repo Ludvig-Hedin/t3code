@@ -20,6 +20,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useStore } from "../store";
 import { Sheet, SheetPopup } from "../components/ui/sheet";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/components/ui/sidebar";
+import { AppLoadingScreen } from "../components/AppLoadingScreen";
 
 const DiffPanel = lazy(() => import("../components/DiffPanel"));
 const DIFF_INLINE_LAYOUT_MEDIA_QUERY = "(max-width: 1180px)";
@@ -213,7 +214,7 @@ function ChatThreadRouteView() {
   }, [bootstrapComplete, navigate, routeThreadExists, threadId]);
 
   if (!bootstrapComplete || !routeThreadExists) {
-    return null;
+    return <AppLoadingScreen />;
   }
 
   const shouldRenderDiffContent = diffOpen || hasOpenedDiff;

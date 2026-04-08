@@ -54,7 +54,8 @@
     "sync:vscode-icons": "node scripts/sync-vscode-icons.mjs"
   },
   "dependencies": {
-    "electron": "40.6.0"
+    "electron": "40.6.0",
+    "parse-diff": "^0.11.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",

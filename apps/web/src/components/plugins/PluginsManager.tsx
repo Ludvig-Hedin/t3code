@@ -74,7 +74,19 @@ function PluginCard({ item, installedProviders, onOpen }: PluginCardProps) {
 
       {/* Name + description + installed badges */}
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
+        <div className="flex items-center gap-1.5 leading-tight">
+          <p className="text-sm font-medium text-foreground">{item.name}</p>
+          {item.status === "coming-soon" && (
+            <span
+              className={cn(
+                badgeVariants({ variant: "outline" }),
+                "text-[0.6rem] px-1 py-0 border-dashed text-muted-foreground shrink-0",
+              )}
+            >
+              Coming soon
+            </span>
+          )}
+        </div>
         <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2 leading-snug">
           {item.description}
         </p>
@@ -94,9 +106,9 @@ function PluginCard({ item, installedProviders, onOpen }: PluginCardProps) {
         )}
       </div>
 
-      {/* Action affordance */}
+      {/* Action affordance — hide the plus/check for coming-soon items */}
       <div className="shrink-0 mt-0.5">
-        {anyInstalled ? (
+        {item.status === "coming-soon" ? null : anyInstalled ? (
           <CheckIcon className="size-4 text-green-500" />
         ) : (
           <PlusIcon className="size-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />

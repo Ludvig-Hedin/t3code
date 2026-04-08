@@ -214,7 +214,10 @@ function InstructionRow({
 
         {justCopied && (
           <span className="text-xs text-green-600 dark:text-green-400">
-            ✓ Copied! Paste in your terminal to install.
+            {/* Config-only snippets go into a config file, not the terminal. */}✓ Copied!{" "}
+            {instr.configSnippet && !instr.cliCommand
+              ? "Paste into your config file."
+              : "Paste in your terminal to install."}
           </span>
         )}
       </div>

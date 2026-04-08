@@ -213,11 +213,11 @@ export const ChatHeader = memo(function ChatHeader({
                       green/red so the button is informative at a glance.
                       Falls back to icon-only when there are no working-tree changes. */}
                   {isGitRepo &&
-                    hasNonZeroStat({ additions: diffInsertions, deletions: diffDeletions }) ? (
-                      <span className="flex items-center gap-0.5 text-[10px] font-medium tabular-nums">
-                        <DiffStatLabel additions={diffInsertions} deletions={diffDeletions} />
-                      </span>
-                    ) : null}
+                  hasNonZeroStat({ additions: diffInsertions, deletions: diffDeletions }) ? (
+                    <span className="flex items-center gap-0.5 text-[10px] font-medium tabular-nums">
+                      <DiffStatLabel additions={diffInsertions} deletions={diffDeletions} />
+                    </span>
+                  ) : null}
                 </Toggle>
               }
             />
@@ -240,12 +240,12 @@ export const ChatHeader = memo(function ChatHeader({
                   aria-label="Pop out thread to new window"
                   className="shrink-0 px-2"
                   onClick={onPopout}
-                />
+                >
+                  <ExternalLinkIcon className="size-3" />
+                  <span className="text-[10px]">Pop out</span>
+                </Button>
               }
-            >
-              <ExternalLinkIcon className="size-3" />
-              <span className="text-[10px]">Pop out</span>
-            </TooltipTrigger>
+            />
             <TooltipPopup side="bottom">Pop out to new window</TooltipPopup>
           </Tooltip>
         </div>

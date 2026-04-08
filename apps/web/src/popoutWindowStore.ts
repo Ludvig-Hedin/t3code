@@ -103,7 +103,7 @@ export function focusThreadPopout(threadId: ThreadId): boolean {
  * Synchronously check whether a thread is currently displayed in a popout window.
  * (Non-reactive — use `usePopoutWindowStore` for reactive rendering.)
  */
-export function isThreadPopped(threadId: string): boolean {
+export function isThreadPopped(threadId: ThreadId): boolean {
   const win = _openWindows.get(threadId);
   return !!win && !win.closed;
 }

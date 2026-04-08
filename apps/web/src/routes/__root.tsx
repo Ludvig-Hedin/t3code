@@ -17,8 +17,7 @@ import { Throttler } from "@tanstack/react-pacer";
 import { APP_DISPLAY_NAME } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { isPopoutWindow } from "../env";
-import { BirdLogomark } from "../components/BirdLogo";
-import { Spinner } from "../components/ui/spinner";
+import { AppLoadingScreen } from "../components/AppLoadingScreen";
 import { Button } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
@@ -109,17 +108,6 @@ function AppBootstrapGate() {
       {/* Onboarding sheet: auto-opens on first launch, reopenable from Settings → Setup Guide */}
       <OnboardingSheet />
     </AppSidebarLayout>
-  );
-}
-
-/** Full-screen splash shown while waiting for the initial server snapshot. */
-function AppLoadingScreen() {
-  return (
-    <div className="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
-      {/* Logo pulses to indicate the app is alive and loading */}
-      <BirdLogomark className="size-12 animate-pulse text-foreground/60" />
-      <Spinner className="size-4 text-muted-foreground/50" />
-    </div>
   );
 }
 
@@ -239,6 +227,10 @@ function coalesceOrchestrationUiEvents(
 
 const REPLAY_RECOVERY_RETRY_DELAY_MS = 100;
 const MAX_NO_PROGRESS_REPLAY_RETRIES = 3;
+// Delay before retrying a failed snapshot fetch when bootstrap hasn't completed.
+// Prevents the app from being permanently stuck if a WS blip caused the first
+// getSnapshot() call to fail and no new "welcome" event will arrive.
+const SNAPSHOT_RETRY_DELAY_MS = 2_000;
 
 function ServerStateBootstrap() {
   useEffect(() => startServerStateSync(getWsRpcClient().server), []);
@@ -559,6 +551,17 @@ function EventRouter() {
       } catch {
         // Keep prior state and wait for welcome or a later replay attempt.
         recovery.failSnapshotRecovery();
+        // If bootstrap hasn't completed yet, schedule a retry. This handles the
+        // race where the WS briefly blips (causing a second "welcome" to be
+        // blocked as a duplicate), then the first getSnapshot() fails over the
+        // dropped connection, leaving the app stuck with no further trigger.
+        if (!disposed && !recovery.getState().bootstrapped) {
+          setTimeout(() => {
+            if (!disposed) {
+              void runSnapshotRecovery("bootstrap");
+            }
+          }, SNAPSHOT_RETRY_DELAY_MS);
+        }
       }
     };
 

@@ -107,6 +107,22 @@ function buildContextWindowActivityPayload(
   return event.payload.usage;
 }
 
+/**
+ * Detects whether a runtime error/turn-completed message originates from a
+ * user-initiated stop of the Claude agent.
+ *
+ * When the user clicks Stop while Claude is executing a tool, the Claude Code
+ * CLI emits a result with an [ede_diagnostic] entry that includes
+ * `result_type=user`. This is not a real error — it should be treated as an
+ * intentional interruption, shown neutrally in the work log, and must NOT
+ * surface an error banner to the user.
+ */
+function isUserStopMessage(message: string | undefined): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return lower.includes("ede_diagnostic") && lower.includes("result_type=user");
+}
+
 function normalizeRuntimeTurnState(
   value: string | undefined,
 ): "completed" | "failed" | "interrupted" | "cancelled" {
@@ -224,13 +240,16 @@ function runtimeEventToActivities(
     }
 
     case "runtime.error": {
+      // User-initiated stops produce a diagnostic message, not a real error.
+      // Show a neutral "Stopped by user" entry instead of a red "Runtime error".
+      const isUserStop = isUserStopMessage(event.payload.message);
       return [
         {
           id: event.eventId,
           createdAt: event.createdAt,
-          tone: "error",
+          tone: isUserStop ? "info" : "error",
           kind: "runtime.error",
-          summary: "Runtime error",
+          summary: isUserStop ? "Stopped by user" : "Runtime error",
           payload: {
             message: truncateDetail(event.payload.message),
           },
@@ -941,7 +960,12 @@ const make = Effect.fn("make")(function* () {
           case "session.exited":
             return "stopped";
           case "turn.completed":
-            return normalizeRuntimeTurnState(event.payload.state) === "failed" ? "error" : "ready";
+            // User-initiated stops arrive as "failed" turns but must not set the
+            // session to an error state — treat them as a clean interruption.
+            return normalizeRuntimeTurnState(event.payload.state) === "failed" &&
+              !isUserStopMessage(event.payload.errorMessage)
+              ? "error"
+              : "ready";
           case "session.started":
           case "thread.started":
             // Provider thread/session start notifications can arrive during an
@@ -953,7 +977,9 @@ const make = Effect.fn("make")(function* () {
         event.type === "session.state.changed" && event.payload.state === "error"
           ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
           : event.type === "turn.completed" &&
-              normalizeRuntimeTurnState(event.payload.state) === "failed"
+              normalizeRuntimeTurnState(event.payload.state) === "failed" &&
+              // User-initiated stops must not propagate a lastError (no error banner).
+              !isUserStopMessage(event.payload.errorMessage)
             ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
             : status === "ready"
               ? null
@@ -1144,9 +1170,17 @@ const make = Effect.fn("make")(function* () {
     if (event.type === "runtime.error") {
       const runtimeErrorMessage = event.payload.message;
 
-      const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
-        ? true
-        : activeTurnId === null || eventTurnId === undefined || sameId(activeTurnId, eventTurnId);
+      // User-initiated stops are not real errors — skip the error-session dispatch
+      // so the session stays in "ready" state and no error banner is shown.
+      const isUserStop = isUserStopMessage(runtimeErrorMessage);
+
+      const shouldApplyRuntimeError =
+        !isUserStop &&
+        (!STRICT_PROVIDER_LIFECYCLE_GUARD
+          ? true
+          : activeTurnId === null ||
+            eventTurnId === undefined ||
+            sameId(activeTurnId, eventTurnId));
 
       if (shouldApplyRuntimeError) {
         yield* orchestrationEngine.dispatch({

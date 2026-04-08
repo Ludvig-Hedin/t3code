@@ -47,6 +47,7 @@ describe("MessagesTimeline", () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
+        threadId={"test-thread-id" as import("@t3tools/contracts").ThreadId}
         hasMessages
         isWorking={false}
         activeTurnInProgress={false}
@@ -102,6 +103,7 @@ describe("MessagesTimeline", () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
+        threadId={"test-thread-id" as import("@t3tools/contracts").ThreadId}
         hasMessages
         isWorking={false}
         activeTurnInProgress={false}

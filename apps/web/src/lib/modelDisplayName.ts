@@ -81,10 +81,16 @@ export function formatModelDisplayName(slug: string): string {
 
   // 3. Claude pattern: claude-{tier(letters)}-{major}-{minor}[-{date}]
   //    e.g. "claude-sonnet-4-6" → "Claude Sonnet 4.6"
+  //    Guard: if the captured "minor" is 6+ digits it is a date suffix
+  //    (e.g. "20241022"), not a real minor version — fall through to claudeSimple.
   const claudeVersioned = slug.match(/^claude-([a-z]+)-(\d+)-(\d+)(?:-\d+)?$/);
   if (claudeVersioned) {
     const [, tier, major, minor] = claudeVersioned;
-    return `Claude ${capitalize(tier!)} ${major}.${minor}`;
+    if (minor!.length < 6) {
+      return `Claude ${capitalize(tier!)} ${major}.${minor}`;
+    }
+    // Looks like a date — treat as major-version-only (claudeSimple path).
+    return `Claude ${capitalize(tier!)} ${major}`;
   }
   // Claude without minor: claude-{tier}-{major}[-{date}]
   const claudeSimple = slug.match(/^claude-([a-z]+)-(\d+)(?:-\d+)?$/);

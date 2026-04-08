@@ -70,6 +70,11 @@ export interface PluginCatalogItem {
   /** Which providers have at least one instruction (drives filter pills). */
   providers: PluginProvider[];
   instructions: ProviderInstruction[];
+  /**
+   * Optional lifecycle status. "coming-soon" marks items that lack actionable
+   * install data so the UI can hide install buttons or show a badge instead.
+   */
+  status?: "coming-soon";
 }
 
 // ---------------------------------------------------------------------------
@@ -389,7 +394,8 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
     domain: "aws.amazon.com",
     fallbackColor: "bg-orange-600",
     category: "coding",
-    providers: ["claude", "opencode", "cursor", "gemini"],
+    // mcp() generates instructions for all 5 providers; keep providers in sync.
+    providers: ["claude", "opencode", "cursor", "codex", "gemini"],
     instructions: mcp("aws", "@aws/mcp-servers", "https://github.com/awslabs/mcp"),
   },
   {
@@ -586,7 +592,8 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
       {
         provider: "opencode",
         integrationType: "mcp",
-        cliCommand: "WEBFLOW_TOKEN=your_token opencode mcp add --name webflow -- npx -y webflow-mcp-server@latest",
+        cliCommand:
+          "WEBFLOW_TOKEN=your_token opencode mcp add --name webflow -- npx -y webflow-mcp-server@latest",
         cliLabel: "Set WEBFLOW_TOKEN first, then run",
         docsUrl: "https://github.com/webflow/mcp-server",
       },
@@ -625,11 +632,7 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
     fallbackColor: "bg-teal-600",
     category: "coding",
     providers: ["claude", "opencode", "cursor", "codex", "gemini"],
-    instructions: mcp(
-      "context7",
-      "@upstash/context7-mcp",
-      "https://github.com/upstash/context7",
-    ),
+    instructions: mcp("context7", "@upstash/context7-mcp", "https://github.com/upstash/context7"),
   },
   {
     id: "tavily",
@@ -921,6 +924,8 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
     domain: "canva.com",
     fallbackColor: "bg-cyan-600",
     category: "design",
+    // No cliCommand/configSnippet available yet — install flow is docs-only.
+    status: "coming-soon",
     providers: ["claude", "cursor"],
     instructions: [
       {
@@ -945,6 +950,8 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
     domain: "framer.com",
     fallbackColor: "bg-blue-500",
     category: "design",
+    // No cliCommand/configSnippet available yet — install flow is docs-only.
+    status: "coming-soon",
     providers: ["claude", "cursor"],
     instructions: [
       {
@@ -1002,14 +1009,17 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
       {
         provider: "claude",
         integrationType: "mcp",
-        cliCommand: "claude mcp add cloudinary -- npx -y --package @cloudinary/asset-management-mcp mcp start",
-        cliLabel: "Run in terminal (set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET)",
+        cliCommand:
+          "claude mcp add cloudinary -- npx -y --package @cloudinary/asset-management-mcp mcp start",
+        cliLabel:
+          "Run in terminal (set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET)",
         docsUrl: "https://github.com/cloudinary/mcp-servers",
       },
       {
         provider: "opencode",
         integrationType: "mcp",
-        cliCommand: "opencode mcp add --name cloudinary -- npx -y --package @cloudinary/asset-management-mcp mcp start",
+        cliCommand:
+          "opencode mcp add --name cloudinary -- npx -y --package @cloudinary/asset-management-mcp mcp start",
         cliLabel: "Run in terminal (set Cloudinary env vars first)",
         docsUrl: "https://github.com/cloudinary/mcp-servers",
       },
@@ -1228,6 +1238,8 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
     domain: "telegram.org",
     fallbackColor: "bg-sky-500",
     category: "communication",
+    // No cliCommand/configSnippet available yet — install flow is docs-only.
+    status: "coming-soon",
     providers: ["claude", "cursor"],
     instructions: [
       {

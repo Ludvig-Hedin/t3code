@@ -4,7 +4,7 @@
  * Load cascade:
  *   1. item.iconUrl (explicit override, e.g. Wikimedia SVGs for Google products)
  *   2. Google Favicon API  (https://www.google.com/s2/favicons?domain=…&sz=64)
- *   3. Colored initial tile (item.fallbackColor + item.fallbackInitial ?? name[0])
+ *   3. Colored initial tile (fallbackInitial ?? first char of name, or "?" if empty)
  *
  * ProviderLogo — Same approach but for AI provider pills and dialog rows.
  * Uses PROVIDER_DOMAINS to map provider id → favicon domain.
@@ -44,7 +44,7 @@ export function PluginIcon({ item, className }: PluginIconProps) {
           item.fallbackColor,
         )}
       >
-        {item.fallbackInitial ?? item.name[0]}
+        {item.fallbackInitial ?? (item.name.charAt(0) || "?")}
       </div>
     );
   }

@@ -104,6 +104,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  FileIcon,
   ListChecksIcon,
   ListTodoIcon,
   MessageSquareIcon,
@@ -145,6 +146,7 @@ import { isMacPlatform } from "../lib/utils";
 import { resolveAppModelSelection } from "../modelSelection";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
+  type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
   type PersistedComposerImageAttachment,
@@ -778,15 +780,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const composerDraft = useComposerThreadDraft(threadId);
   const prompt = composerDraft.prompt;
   const composerImages = composerDraft.images;
+  // Text/code file attachments — content is injected into the turn at send time
+  const composerFiles = composerDraft.files ?? [];
   const composerTerminalContexts = composerDraft.terminalContexts;
   const composerSendState = useMemo(
     () =>
       deriveComposerSendState({
         prompt,
-        imageCount: composerImages.length,
+        imageCount: composerImages.length + composerFiles.length,
         terminalContexts: composerTerminalContexts,
       }),
-    [composerImages.length, composerTerminalContexts, prompt],
+    [composerImages.length, composerFiles.length, composerTerminalContexts, prompt],
   );
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
@@ -801,6 +805,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const removeComposerDraftImage = useComposerDraftStore((store) => store.removeImage);
+  const addComposerDraftFile = useComposerDraftStore((store) => store.addFile);
+  const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
+  const removeComposerDraftFile = useComposerDraftStore((store) => store.removeFile);
   const insertComposerDraftTerminalContext = useComposerDraftStore(
     (store) => store.insertTerminalContext,
   );
@@ -982,6 +989,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
       removeComposerDraftImage(threadId, imageId);
     },
     [removeComposerDraftImage, threadId],
+  );
+  const addComposerFileToStore = useCallback(
+    (file: ComposerFileAttachment) => {
+      addComposerDraftFile(threadId, file);
+    },
+    [addComposerDraftFile, threadId],
+  );
+  const addComposerFilesToStore = useCallback(
+    (files: ComposerFileAttachment[]) => {
+      addComposerDraftFiles(threadId, files);
+    },
+    [addComposerDraftFiles, threadId],
+  );
+  const removeComposerFileFromStore = useCallback(
+    (fileId: string) => {
+      removeComposerDraftFile(threadId, fileId);
+    },
+    [removeComposerDraftFile, threadId],
   );
   const removeComposerTerminalContextFromDraft = useCallback(
     (contextId: string) => {
@@ -3087,48 +3112,37 @@ export default function ChatView({ threadId }: ChatViewProps) {
     toggleTerminalVisibility,
   ]);
 
-  // Reads text/code files and appends them as fenced code blocks to the composer prompt.
-  // Enforces a per-file size limit and a combined context (character) budget.
-  const addComposerTextFiles = async (files: File[]) => {
+  // Stages text/code files as composer file attachments (shown as chips, injected at send time).
+  // Enforces per-file size and combined context-budget limits.
+  const stageComposerTextFiles = (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
 
-    const currentPrompt = promptRef.current;
-    let usedChars = currentPrompt.length;
-    const blocks: string[] = [];
+    const currentPromptChars = promptRef.current.length;
+    // Account for chars already used by previously staged files (rough estimate: read sizeBytes).
+    const stagedFileChars = composerFiles.reduce((sum, f) => sum + f.sizeBytes, 0);
+    let usedChars = currentPromptChars + stagedFileChars;
+    const incoming: ComposerFileAttachment[] = [];
     let error: string | null = null;
 
     for (const file of files) {
       if (file.size > TEXT_FILE_SIZE_LIMIT_BYTES) {
-        error = `'${file.name}' exceeds the ${TEXT_FILE_SIZE_LIMIT_LABEL} text file limit (~${Math.round(TEXT_FILE_SIZE_LIMIT_BYTES / CHARS_PER_TOKEN_ESTIMATE / 1000)}k tokens).`;
+        error = `'${file.name}' exceeds the ${TEXT_FILE_SIZE_LIMIT_LABEL} per-file limit (~${Math.round(TEXT_FILE_SIZE_LIMIT_BYTES / CHARS_PER_TOKEN_ESTIMATE / 1000)}k tokens).`;
         continue;
       }
-
-      let text: string;
-      try {
-        text = await file.text();
-      } catch {
-        error = `Could not read '${file.name}'.`;
-        continue;
-      }
-
-      // Estimate how much context this file will consume.
-      const fileChars = text.length;
       const budgetRemaining = PROVIDER_SEND_TURN_MAX_INPUT_CHARS - usedChars;
-      if (fileChars > budgetRemaining) {
+      if (file.size > budgetRemaining) {
         const usedTokens = Math.round(usedChars / CHARS_PER_TOKEN_ESTIMATE);
-        error = `'${file.name}' would exceed the context limit (~${APPROX_MAX_TOKENS.toLocaleString()} tokens). Current usage: ~${usedTokens.toLocaleString()} tokens.`;
+        error = `'${file.name}' would exceed the context limit (~${APPROX_MAX_TOKENS.toLocaleString()} tokens). Used: ~${usedTokens.toLocaleString()} tokens.`;
         continue;
       }
-
-      const lang = langTagFromFilename(file.name);
-      // Wrap in a fenced code block with the filename as a header for clarity.
-      blocks.push(`**${file.name}**\n\`\`\`${lang}\n${text}\n\`\`\``);
-      usedChars += fileChars;
+      incoming.push({ id: randomUUID(), name: file.name || "file", sizeBytes: file.size, file });
+      usedChars += file.size;
     }
 
-    if (blocks.length > 0) {
-      const separator = currentPrompt.length > 0 ? "\n\n" : "";
-      setPrompt(currentPrompt + separator + blocks.join("\n\n"));
+    if (incoming.length === 1 && incoming[0]) {
+      addComposerFileToStore(incoming[0]);
+    } else if (incoming.length > 1) {
+      addComposerFilesToStore(incoming);
     }
     if (error) setThreadError(activeThreadId, error);
   };
@@ -3144,12 +3158,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
 
-    // Route text/code files through prompt injection; images go through the attachment system.
+    // Route text/code files to the file attachment store; images go through the image system.
     const imageFiles = files.filter((f) => f.type.startsWith("image/") && !isTextFile(f));
     const textFiles = files.filter((f) => isTextFile(f));
 
     if (textFiles.length > 0) {
-      void addComposerTextFiles(textFiles);
+      stageComposerTextFiles(textFiles);
     }
 
     if (imageFiles.length === 0) return;
@@ -3394,11 +3408,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
     beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
 
     const composerImagesSnapshot = [...composerImages];
+    const composerFilesSnapshot = [...composerFiles];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
-    const messageTextForSend = appendTerminalContextsToPrompt(
-      promptForSend,
-      composerTerminalContextsSnapshot,
-    );
+
+    // Read all staged text/code files and append them as fenced code blocks.
+    // This happens at send time so the textarea stays clean while files are staged.
+    let fileBlocksText = "";
+    if (composerFilesSnapshot.length > 0) {
+      const fileBlocks = await Promise.all(
+        composerFilesSnapshot.map(async (f) => {
+          try {
+            const text = await f.file.text();
+            const lang = langTagFromFilename(f.name);
+            return `**${f.name}**\n\`\`\`${lang}\n${text}\n\`\`\``;
+          } catch {
+            return `**${f.name}** _(could not read file)_`;
+          }
+        }),
+      );
+      fileBlocksText = "\n\n" + fileBlocks.join("\n\n");
+    }
+
+    const messageTextForSend =
+      appendTerminalContextsToPrompt(promptForSend, composerTerminalContextsSnapshot) +
+      fileBlocksText;
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const outgoingMessageText = formatOutgoingPrompt({
@@ -4425,6 +4458,49 @@ export default function ChatView({ threadId }: ChatViewProps) {
     void onRevertToTurnCount(targetTurnCount);
   };
 
+  /**
+   * Runs a shell command string in the thread's active terminal.
+   *
+   * If the terminal drawer is already open we write immediately.
+   * If not, we open it (which causes ThreadTerminalDrawer to mount and call
+   * api.terminal.open), then wait one animation frame for the PTY session to
+   * initialise before sending the write. A second-frame retry handles slow
+   * PTY startups on first open. Silent failure on error — the terminal is
+   * visible so the user can re-run if the write arrived too early.
+   */
+  const handleRunInTerminal = useCallback(
+    (command: string) => {
+      const api = readNativeApi();
+      if (!api) return;
+
+      // Ensure the terminal panel is visible and the active terminal is registered
+      const currentTerminalState = selectThreadTerminalState(
+        useTerminalStateStore.getState().terminalStateByThreadId,
+        threadId,
+      );
+      const terminalId = currentTerminalState.activeTerminalId;
+
+      const doWrite = () => {
+        void api.terminal
+          .write({ threadId, terminalId, data: `${command}\r` })
+          .catch(() => undefined);
+      };
+
+      if (currentTerminalState.terminalOpen) {
+        // Terminal is already open — write straight away
+        doWrite();
+      } else {
+        // Open the terminal drawer first; the PTY session will be started by
+        // ThreadTerminalDrawer on mount. Give it two animation frames to initialise.
+        storeSetTerminalOpen(threadId, true);
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(doWrite);
+        });
+      }
+    },
+    [threadId, storeSetTerminalOpen],
+  );
+
   // Empty state: no active thread
   if (!activeThread) {
     return (
@@ -4633,7 +4709,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   timelineEntries={timelineEntries}
                   completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                   completionSummary={completionSummary}
-                  turnDiffSummaryByAssistantMessageId={displayTurnDiffSummaryByAssistantMessageId}
+                  // Use per-turn map so each assistant message gets its own
+                  // inline diff card showing only what that turn changed.
+                  // (displayTurnDiffSummaryByAssistantMessageId merged all
+                  // turns into one end-of-thread card — replaced by this.)
+                  threadId={threadId}
+                  turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
                   modelByTurnId={modelByTurnId}
                   nowIso={nowIso}
                   expandedWorkGroups={expandedWorkGroups}
@@ -4647,6 +4728,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   resolvedTheme={resolvedTheme}
                   timestampFormat={timestampFormat}
                   workspaceRoot={activeProject?.cwd ?? undefined}
+                  onRunInTerminal={handleRunInTerminal}
                 />
               )}
             </div>
@@ -4752,8 +4834,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
                     {!isComposerApprovalState &&
                       pendingUserInputs.length === 0 &&
-                      composerImages.length > 0 && (
+                      (composerImages.length > 0 || composerFiles.length > 0) && (
                         <div className="mb-3 flex flex-wrap gap-2">
+                          {/* File attachment chips — rendered before image chips */}
+                          {composerFiles.map((f) => (
+                            <div
+                              key={f.id}
+                              className="relative flex h-9 max-w-48 items-center gap-1.5 rounded-lg border border-border/80 bg-background px-2.5 pr-7 text-sm text-foreground/80"
+                              title={f.name}
+                            >
+                              <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate text-xs">{f.name}</span>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 bg-background/80 hover:bg-background/90"
+                                onClick={() => removeComposerFileFromStore(f.id)}
+                                aria-label={`Remove ${f.name}`}
+                              >
+                                <XIcon />
+                              </Button>
+                            </div>
+                          ))}
                           {composerImages.map((image) => (
                             <div
                               key={image.id}

@@ -506,10 +506,12 @@ function TerminalViewport({
       selectionGestureActiveRef.current = event.button === 0;
     };
 
-    // Click-to-move-cursor: on left mousedown, calculate which terminal cell
-    // was clicked and send ANSI arrow sequences to move the shell cursor there.
-    // We skip this when a TUI (vim, less, etc.) has enabled mouse-reporting mode,
-    // since those apps handle mouse events themselves via the terminal protocol.
+    // Click-to-move-cursor: on left mousedown record the start position, then
+    // defer cursor movement to mouseup so it does not interfere with text
+    // selection (which also starts on mousedown).  If the pointer moved more
+    // than DRAG_THRESHOLD pixels between down and up we treat it as a drag
+    // (selection) and skip the cursor movement entirely.
+    const DRAG_THRESHOLD = 4; // pixels
     const handleTerminalMouseDown = (event: MouseEvent) => {
       if (event.button !== 0) return;
 
@@ -525,42 +527,69 @@ function TerminalViewport({
       // If the cursor is above the viewport the user has scrolled up — skip.
       if (buffer.cursorY < buffer.viewportY) return;
 
-      const rect = mountEl.getBoundingClientRect();
-      const cellWidth = rect.width / activeTerminal.cols;
-      const cellHeight = rect.height / activeTerminal.rows;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let dragged = false;
 
-      // Clicked cell (clamped to terminal grid bounds).
-      const clickCellX = Math.max(
-        0,
-        Math.min(Math.floor((event.clientX - rect.left) / cellWidth), activeTerminal.cols - 1),
-      );
-      const clickCellY = Math.max(
-        0,
-        Math.min(Math.floor((event.clientY - rect.top) / cellHeight), activeTerminal.rows - 1),
-      );
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        if (
+          Math.abs(moveEvent.clientX - startX) > DRAG_THRESHOLD ||
+          Math.abs(moveEvent.clientY - startY) > DRAG_THRESHOLD
+        ) {
+          dragged = true;
+        }
+      };
 
-      // Current cursor position relative to the visible viewport.
-      const cursorX = buffer.cursorX;
-      const cursorY = buffer.cursorY - buffer.viewportY;
+      const onMouseUp = (upEvent: MouseEvent) => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
 
-      const deltaX = clickCellX - cursorX;
-      const deltaY = clickCellY - cursorY;
-      if (deltaX === 0 && deltaY === 0) return;
+        // User was selecting text — don't move the shell cursor.
+        if (dragged) return;
 
-      // Build movement sequence using standard ANSI cursor-movement codes.
-      // Up/down arrows navigate readline history for single-line commands but
-      // correctly move through multi-line (continued) commands.
-      let movement = "";
-      if (deltaY > 0)
-        movement += "\x1b[B".repeat(deltaY); // down
-      else if (deltaY < 0) movement += "\x1b[A".repeat(-deltaY); // up
-      if (deltaX > 0)
-        movement += "\x1b[C".repeat(deltaX); // right
-      else if (deltaX < 0) movement += "\x1b[D".repeat(-deltaX); // left
+        const rect = mountEl.getBoundingClientRect();
+        const cellWidth = rect.width / activeTerminal.cols;
+        const cellHeight = rect.height / activeTerminal.rows;
 
-      if (movement) {
-        void sendTerminalInput(movement, "Failed to move cursor");
-      }
+        // Use the mouseup position for accuracy (pointer may have moved slightly).
+        const clickCellX = Math.max(
+          0,
+          Math.min(Math.floor((upEvent.clientX - rect.left) / cellWidth), activeTerminal.cols - 1),
+        );
+        const clickCellY = Math.max(
+          0,
+          Math.min(Math.floor((upEvent.clientY - rect.top) / cellHeight), activeTerminal.rows - 1),
+        );
+
+        // Re-read cursor position at mouseup time (it may have changed).
+        const buf = activeTerminal.buffer.active;
+        const cursorX = buf.cursorX;
+        const cursorY = buf.cursorY - buf.viewportY;
+
+        const deltaX = clickCellX - cursorX;
+        const deltaY = clickCellY - cursorY;
+        if (deltaX === 0 && deltaY === 0) return;
+
+        // Build movement sequence using standard ANSI cursor-movement codes.
+        // Up/down arrows navigate readline history for single-line commands but
+        // correctly move through multi-line (continued) commands.
+        let movement = "";
+        if (deltaY > 0)
+          movement += "\x1b[B".repeat(deltaY); // down
+        else if (deltaY < 0) movement += "\x1b[A".repeat(-deltaY); // up
+        if (deltaX > 0)
+          movement += "\x1b[C".repeat(deltaX); // right
+        else if (deltaX < 0) movement += "\x1b[D".repeat(-deltaX); // left
+
+        if (movement) {
+          // Only intercept the event when we're actually sending movement.
+          upEvent.preventDefault();
+          void sendTerminalInput(movement, "Failed to move cursor");
+        }
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
     };
 
     window.addEventListener("mouseup", handleMouseUp);

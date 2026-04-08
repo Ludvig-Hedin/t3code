@@ -165,10 +165,17 @@ export const PopoutChatHeader = memo(function PopoutChatHeader({
 
   // Open a new thread in the main window (opener) if possible; otherwise
   // navigate within the popout itself, falling back to the thread index.
+  // Accessing window.opener properties can throw a SecurityError when the opener
+  // is cross-origin, so we guard with try/catch and fall back to navigate().
   const handleNewThread = useCallback(() => {
     if (typeof window !== "undefined" && window.opener && !window.opener.closed) {
-      window.opener.location.href = "/";
-      window.opener.focus();
+      try {
+        window.opener.location.href = "/";
+        window.opener.focus();
+      } catch {
+        // Cross-origin security error — fall back to navigating within this window.
+        void navigate({ to: "/" });
+      }
     } else {
       void navigate({ to: "/" });
     }

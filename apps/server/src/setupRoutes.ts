@@ -201,12 +201,19 @@ export const importExecuteRouteLayer = Layer.unwrap(
       "POST",
       "/api/setup/import/execute",
       Effect.gen(function* () {
-        // Parse request body using the ImportRequest schema from contracts
-        const body = yield* HttpServerRequest.schemaBodyJson(ImportRequest).pipe(
-          Effect.catch(() =>
-            Effect.succeed({ selections: [] as (typeof ImportRequest.Type)["selections"] }),
-          ),
+        // Parse request body — return 400 explicitly instead of silently
+        // returning an empty selection list, so callers see why their request failed.
+        // Effect v4 uses Effect.result / Result._tag "Success" | "Failure".
+        const bodyResult = yield* HttpServerRequest.schemaBodyJson(ImportRequest).pipe(
+          Effect.result,
         );
+        if (bodyResult._tag === "Failure") {
+          return HttpServerResponse.jsonUnsafe(
+            { error: "Invalid request body", detail: String(bodyResult.failure) },
+            { status: 400 },
+          );
+        }
+        const body = bodyResult.success;
 
         let importedProjectCount = 0;
         let importedThreadCount = 0;
@@ -236,12 +243,16 @@ export const importExecuteRouteLayer = Layer.unwrap(
             createdAt,
           };
 
-          yield* engine.dispatch(projectCommand).pipe(
+          // Only increment the counter when the dispatch actually succeeded.
+          const projectResult = yield* engine.dispatch(projectCommand).pipe(
             Effect.catch((err) => {
               errors.push(`Dispatch project "${selection.projectName}": ${String(err)}`);
               return Effect.succeed({ sequence: -1 });
             }),
           );
+          if (projectResult.sequence === -1) {
+            continue;
+          }
           importedProjectCount++;
 
           // ── Scan for thread files ─────────────────────────────────────────
@@ -253,10 +264,12 @@ export const importExecuteRouteLayer = Layer.unwrap(
               ),
           ).pipe(Effect.orElseSucceed(() => [] as string[]));
 
+          // Apply the same 80-char truncation as rawTitle so the TrimmedNonEmptyString
+          // constraint is satisfied even when projectName is very long.
           const filesToImport =
             conversationFiles.length > 0
               ? conversationFiles
-              : [`${selection.projectName} (imported)`];
+              : [`${selection.projectName} (imported)`.slice(0, 80).trim()];
 
           for (const file of filesToImport) {
             const rawTitle =
@@ -289,13 +302,16 @@ export const importExecuteRouteLayer = Layer.unwrap(
               createdAt,
             };
 
-            yield* engine.dispatch(threadCommand).pipe(
+            // Only increment the counter when the dispatch actually succeeded.
+            const threadResult = yield* engine.dispatch(threadCommand).pipe(
               Effect.catch((err) => {
                 errors.push(`Dispatch thread "${rawTitle}": ${String(err)}`);
                 return Effect.succeed({ sequence: -1 });
               }),
             );
-            importedThreadCount++;
+            if (threadResult.sequence !== -1) {
+              importedThreadCount++;
+            }
           }
         }
 

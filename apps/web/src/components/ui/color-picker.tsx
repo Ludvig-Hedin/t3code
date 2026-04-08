@@ -185,15 +185,26 @@ export function parseCssColor(css: string): RGBA | null {
   if (!css || typeof css !== "string") return null;
   const s = css.trim();
 
-  // Hex
+  // Hex — supports #RGB (3), #RGBA (4), #RRGGBB (6), #RRGGBBAA (8).
+  // hexToRgb only handles 3 and 6 char; expand shorthand and strip alpha before calling it.
   if (s.startsWith("#")) {
-    const rgb = hexToRgb(s);
-    if (!rgb) return null;
-    let a = 1;
     const clean = s.replace(/^#/, "");
-    if (clean.length === 8) {
+    let hexForRgb = s;
+    let a = 1;
+
+    if (clean.length === 4) {
+      // #RGBA → expand each nibble, parse alpha from the 4th char.
+      const [r, g, b, alpha] = [clean[0]!, clean[1]!, clean[2]!, clean[3]!];
+      hexForRgb = `#${r}${r}${g}${g}${b}${b}`;
+      a = parseInt(alpha + alpha, 16) / 255;
+    } else if (clean.length === 8) {
+      // #RRGGBBAA → strip the last two bytes for hexToRgb, parse alpha separately.
+      hexForRgb = `#${clean.slice(0, 6)}`;
       a = parseInt(clean.slice(6, 8), 16) / 255;
     }
+
+    const rgb = hexToRgb(hexForRgb);
+    if (!rgb) return null;
     return { ...rgb, a };
   }
 

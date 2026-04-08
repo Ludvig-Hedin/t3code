@@ -240,8 +240,10 @@ export const makeRoutesLayer = Layer.mergeAll(
   gitStatusRouteLayer,
   importScanRouteLayer,
   importExecuteRouteLayer,
-  staticAndDevRouteLayer, // must remain last — wildcard catch-all
+  // WebSocket RPC must be registered before the static catch-all so upgrade
+  // requests are matched here rather than swallowed by the wildcard handler.
   websocketRpcRouteLayer,
+  staticAndDevRouteLayer, // must remain last — wildcard catch-all
 );
 
 export const makeServerLayer = Layer.unwrap(

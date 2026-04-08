@@ -54,11 +54,11 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   type DesktopUpdateState,
   ProjectId,
+  PROVIDER_DISPLAY_NAMES,
   ThreadId,
   type GitStatusResult,
   type ProviderKind,
 } from "@t3tools/contracts";
-import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts/model";
 import { useQueries } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -885,7 +885,10 @@ function FlatThreadRowList({
 
 // --- SidebarOrganizedView: renders grouped/flat view for non-by_project organize modes ---
 
-interface SidebarOrganizedViewProps extends Omit<FlatThreadRowListProps, "threadIds" | "orderedProjectThreadIds"> {
+interface SidebarOrganizedViewProps extends Omit<
+  FlatThreadRowListProps,
+  "threadIds" | "orderedProjectThreadIds"
+> {
   organizeMode: SidebarOrganizeMode;
   visibleThreads: Array<{
     id: ThreadId;
@@ -2023,17 +2026,20 @@ export default function Sidebar() {
       }
       reorderProjects(activeProject.id, overProject.id);
     },
-    [appSettings.sidebarProjectSortOrder, reorderProjects, setProjectOrder, sidebarProjects, updateSettings],
+    [
+      appSettings.sidebarProjectSortOrder,
+      reorderProjects,
+      setProjectOrder,
+      sidebarProjects,
+      updateSettings,
+    ],
   );
 
-  const handleProjectDragStart = useCallback(
-    (_event: DragStartEvent) => {
-      // Always arm drag regardless of sort mode — we auto-switch to manual on drop
-      dragInProgressRef.current = true;
-      suppressProjectClickAfterDragRef.current = true;
-    },
-    [],
-  );
+  const handleProjectDragStart = useCallback((_event: DragStartEvent) => {
+    // Always arm drag regardless of sort mode — we auto-switch to manual on drop
+    dragInProgressRef.current = true;
+    suppressProjectClickAfterDragRef.current = true;
+  }, []);
 
   const handleProjectDragCancel = useCallback((_event: DragCancelEvent) => {
     dragInProgressRef.current = false;
@@ -3098,7 +3104,9 @@ export default function Sidebar() {
                   >
                     <SidebarMenu>
                       <SortableContext
-                        items={renderedProjects.map((renderedProject) => renderedProject.project.id)}
+                        items={renderedProjects.map(
+                          (renderedProject) => renderedProject.project.id,
+                        )}
                         strategy={verticalListSortingStrategy}
                       >
                         {renderedProjects.map((renderedProject) => (

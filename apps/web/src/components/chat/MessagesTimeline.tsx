@@ -1,8 +1,9 @@
-import { type MessageId, type TurnId } from "@t3tools/contracts";
+import { type MessageId, type ThreadId, type TurnId } from "@t3tools/contracts";
 import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -26,8 +27,9 @@ import { Button } from "../ui/button";
 import { clamp } from "effect/Number";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
-import { ChangedFilesTree } from "./ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
+import { FileDiffCard } from "./FileDiffCard";
+import { useFileDiff } from "../../hooks/useFileDiff";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   MAX_VISIBLE_WORK_LOG_ENTRIES,
@@ -54,6 +56,8 @@ import {
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 
 interface MessagesTimelineProps {
+  /** Needed to fetch per-turn raw diffs for inline FileDiffCard display. */
+  threadId: ThreadId;
   hasMessages: boolean;
   isWorking: boolean;
   activeTurnInProgress: boolean;
@@ -77,6 +81,11 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  /**
+   * When provided, shell-type code blocks show a "Run in terminal" button that
+   * calls this callback with the raw command string.
+   */
+  onRunInTerminal?: (command: string) => void;
   onVirtualizerSnapshot?: (snapshot: {
     totalSize: number;
     measurements: ReadonlyArray<{
@@ -91,6 +100,7 @@ interface MessagesTimelineProps {
 }
 
 export const MessagesTimeline = memo(function MessagesTimeline({
+  threadId,
   hasMessages,
   isWorking,
   activeTurnInProgress,
@@ -113,6 +123,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  onRunInTerminal,
   onVirtualizerSnapshot,
 }: MessagesTimelineProps) {
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
@@ -295,6 +306,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       [turnId]: !(current[turnId] ?? true),
     }));
   }, []);
+
+  // The most-recent checkpoint's turn count — that card auto-expands.
+  // All historical cards start collapsed.
+  const mostRecentCheckpointTurnCount = useMemo(() => {
+    let max = -1;
+    for (const summary of turnDiffSummaryByAssistantMessageId.values()) {
+      if ((summary.checkpointTurnCount ?? 0) > max) {
+        max = summary.checkpointTurnCount ?? 0;
+      }
+    }
+    return max >= 0 ? max : undefined;
+  }, [turnDiffSummaryByAssistantMessageId]);
 
   const renderRowContent = (row: TimelineRow) => (
     <div
@@ -491,6 +514,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   text={messageText}
                   cwd={markdownCwd}
                   isStreaming={Boolean(row.message.streaming)}
+                  {...(onRunInTerminal !== undefined ? { onRunInTerminal } : {})}
                 />
                 {(() => {
                   const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
@@ -499,11 +523,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   if (checkpointFiles.length === 0) return null;
                   const allDirectoriesExpanded =
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
+                  // Auto-expand the most-recently completed turn; collapse history
+                  const isRecentTurn =
+                    mostRecentCheckpointTurnCount != null &&
+                    turnSummary.checkpointTurnCount === mostRecentCheckpointTurnCount;
                   return (
                     <ChangedFilesBox
                       key={`changed-files-box:${turnSummary.turnId}`}
+                      threadId={threadId}
                       turnId={turnSummary.turnId}
                       files={checkpointFiles}
+                      checkpointTurnCount={turnSummary.checkpointTurnCount}
+                      isRecentTurn={isRecentTurn}
                       allDirectoriesExpanded={allDirectoriesExpanded}
                       resolvedTheme={resolvedTheme}
                       onOpenTurnDiff={onOpenTurnDiff}
@@ -661,48 +692,96 @@ const UserMessageTerminalContextInlineLabel = memo(
   },
 );
 
-/** Collapsible wrapper around ChangedFilesTree — collapsed by default. */
+/**
+ * ChangedFilesBox
+ *
+ * Collapsible wrapper that renders per-file FileDiffCard components for each
+ * file changed in a turn.
+ *
+ * Behaviour:
+ *  - `isRecentTurn = true`  → starts expanded so the diff is immediately visible.
+ *  - `isRecentTurn = false` → starts collapsed with a "N files changed" summary
+ *    header; the user clicks to expand.
+ *
+ * The raw unified diff (needed to populate FileDiffCard lines) is fetched
+ * lazily via useFileDiff the first time the card is opened.  Results are
+ * cached so re-opens are instant.
+ *
+ * Fallback: even before the diff loads, each FileDiffCard shows the filename
+ * and +/- stats from the checkpoint summary, so users always see something.
+ */
 const ChangedFilesBox = memo(function ChangedFilesBox(props: {
+  threadId: ThreadId;
   turnId: TurnId;
+  checkpointTurnCount: number | undefined;
   files: ReadonlyArray<import("../../types").TurnDiffFileChange>;
+  isRecentTurn: boolean;
   allDirectoriesExpanded: boolean;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleAllDirectories: (turnId: TurnId) => void;
 }) {
   const {
+    threadId,
     turnId,
+    checkpointTurnCount,
     files,
-    allDirectoriesExpanded,
+    isRecentTurn,
     resolvedTheme,
     onOpenTurnDiff,
-    onToggleAllDirectories,
   } = props;
-  // Collapsed by default so the tree doesn't dominate every assistant message
-  const [isOpen, setIsOpen] = useState(false);
+
+  // Recent turns start open; historical turns start collapsed.
+  const [isOpen, setIsOpen] = useState(isRecentTurn);
+
+  const changedFilesPanelId = useId();
+  const changedFilesHeaderId = useId();
+
+  // Fetch the raw diff lazily — only when the box is first opened.
+  const { files: parsedFiles, isLoading } = useFileDiff(
+    threadId,
+    checkpointTurnCount,
+    isOpen, // enabled only when open
+  );
+
+  // Build a path → ParsedFile lookup for O(1) access per file card.
+  const parsedFileByPath = useMemo(() => {
+    const map = new Map<string, (typeof parsedFiles)[number]>();
+    for (const pf of parsedFiles) {
+      const path = pf.to ?? pf.from ?? "";
+      if (path) map.set(path, pf);
+    }
+    return map;
+  }, [parsedFiles]);
+
   const summaryStat = summarizeTurnDiffStats(files);
-  const changedFileCountLabel = String(files.length);
 
   return (
-    <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
-      <div className="flex items-center justify-between gap-2">
-        {/* Clickable header toggles the tree open/closed */}
+    <div className="mt-2 space-y-0">
+      {/* ── Collapsed summary header (always visible) ──
+          Outer wrapper is non-interactive so the expand toggle and "Full diff"
+          are sibling buttons (nested <button> is invalid HTML). */}
+      <div className="flex w-full items-center gap-1.5 rounded-lg border border-border/50 bg-card/30 px-2.5 py-1.5 transition-colors hover:bg-card/50">
         <button
           type="button"
-          className="flex items-center gap-1.5 text-left"
+          id={changedFilesHeaderId}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-md"
+          aria-expanded={isOpen}
+          aria-controls={changedFilesPanelId}
           onClick={() => setIsOpen((v) => !v)}
         >
           <ChevronRightIcon
             className={cn(
-              "size-3 shrink-0 text-muted-foreground/50 transition-transform",
+              "size-3 shrink-0 text-muted-foreground/50 transition-transform duration-150",
               isOpen && "rotate-90",
             )}
+            aria-hidden
           />
-          <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-            <span>Changed files ({changedFileCountLabel})</span>
+          <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/60">
+            <span>{files.length === 1 ? "1 file changed" : `${files.length} files changed`}</span>
             {hasNonZeroStat(summaryStat) && (
               <>
-                <span className="mx-1">•</span>
+                <span className="mx-1.5 text-muted-foreground/30">·</span>
                 <DiffStatLabel
                   additions={summaryStat.additions}
                   deletions={summaryStat.deletions}
@@ -711,40 +790,44 @@ const ChangedFilesBox = memo(function ChangedFilesBox(props: {
             )}
           </p>
         </button>
-        <div className="flex items-center gap-1.5">
-          {isOpen && (
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              data-scroll-anchor-ignore
-              onClick={() => onToggleAllDirectories(turnId)}
-            >
-              {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
-            </Button>
-          )}
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            onClick={() => onOpenTurnDiff(turnId, files[0]?.path)}
-          >
-            View diff
-          </Button>
-        </div>
+        <button
+          type="button"
+          className="ml-auto shrink-0 text-[9px] uppercase tracking-[0.1em] text-muted-foreground/40 outline-none hover:text-foreground/60 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenTurnDiff(turnId, files[0]?.path);
+          }}
+        >
+          Full diff
+        </button>
       </div>
-      {isOpen && (
-        <div className="mt-1.5">
-          <ChangedFilesTree
-            key={`changed-files-tree:${turnId}`}
-            turnId={turnId}
-            files={files}
-            allDirectoriesExpanded={allDirectoriesExpanded}
-            resolvedTheme={resolvedTheme}
-            onOpenTurnDiff={onOpenTurnDiff}
-          />
-        </div>
-      )}
+
+      {/* ── Per-file diff cards (shown when open) ── */}
+      <div
+        id={changedFilesPanelId}
+        role="region"
+        aria-labelledby={changedFilesHeaderId}
+        hidden={!isOpen}
+      >
+        {isOpen && (
+          <div className="mt-1.5 space-y-1">
+            {files.map((fileChange) => {
+              const parsedFile = parsedFileByPath.get(fileChange.path) ?? null;
+              return (
+                <FileDiffCard
+                  key={`file-diff-card:${turnId}:${fileChange.path}`}
+                  fileChange={fileChange}
+                  parsedFile={parsedFile}
+                  isLoading={isLoading && parsedFiles.length === 0}
+                  defaultExpanded={isRecentTurn}
+                  resolvedTheme={resolvedTheme}
+                  onViewFullDiff={() => onOpenTurnDiff(turnId, fileChange.path)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 });

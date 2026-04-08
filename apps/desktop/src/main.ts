@@ -1542,20 +1542,32 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeHandler(TUNNEL_DISABLE_CHANNEL);
   ipcMain.handle(TUNNEL_DISABLE_CHANNEL, async () => {
-    tunnelManager?.disable();
+    try {
+      tunnelManager?.disable();
+      return { ok: true };
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.removeHandler(KEEP_AWAKE_SET_CHANNEL);
   ipcMain.handle(KEEP_AWAKE_SET_CHANNEL, async (_event, enabled: unknown) => {
-    if (!keepAwakeManager) return;
+    // Validate that the argument is a boolean before proceeding.
+    if (typeof enabled !== "boolean") {
+      return { ok: false, error: "expected boolean" };
+    }
+    if (!keepAwakeManager) {
+      return { ok: false, error: "keepAwakeManager not initialized" };
+    }
     const settings = readRemoteSettings(app.getPath("userData"));
-    if (enabled === true) {
+    if (enabled) {
       keepAwakeManager.enable();
       writeRemoteSettings(app.getPath("userData"), { ...settings, keepAwakeEnabled: true });
     } else {
       keepAwakeManager.disable();
       writeRemoteSettings(app.getPath("userData"), { ...settings, keepAwakeEnabled: false });
     }
+    return { ok: true };
   });
 }
 

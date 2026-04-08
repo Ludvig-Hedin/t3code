@@ -12,6 +12,12 @@ import { readRemoteSettings, writeRemoteSettings } from "./remoteSettings";
 
 const CLOUDFLARED_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
 const MAX_RESTART_ATTEMPTS = 5;
+/** Maximum ms to wait for the cloudflared binary download before aborting. */
+const DOWNLOAD_TIMEOUT_MS = 120_000; // 2 minutes
+/** Maximum ms to wait for `cloudflared tunnel create` to complete. */
+const TUNNEL_CREATE_TIMEOUT_MS = 60_000; // 1 minute
+/** Maximum ms to wait for the tunnel to become ready after spawning. */
+const TUNNEL_STARTUP_TIMEOUT_MS = 30_000; // 30 seconds
 
 function getCloudflaredAssetName(): string {
   const arch = process.arch === "arm64" ? "arm64" : "amd64";
@@ -84,28 +90,64 @@ export class TunnelManager extends EventEmitter {
 
     this.setStatus({ status: "downloading", progress: 0 });
 
-    // Stream the .tgz with progress tracking.
-    const res = await fetch(tgzUrl);
+    // Keep the AbortController alive for the entire download (fetch + body read)
+    // so a stalled stream is cancelled the same way as a stalled connection.
+    const controller = new AbortController();
+    const downloadTimer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await fetch(tgzUrl, { signal: controller.signal });
+    } catch (err) {
+      clearTimeout(downloadTimer);
+      if ((err as Error).name === "AbortError") {
+        throw new Error(
+          `Download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s — check your internet connection.`,
+        );
+      }
+      throw err;
+    }
+
     if (!res.ok) {
+      clearTimeout(downloadTimer);
       throw new Error(`Failed to download cloudflared: HTTP ${res.status}`);
     }
     const totalBytes = Number(res.headers.get("content-length") ?? "0");
     const chunks: Uint8Array[] = [];
     let downloadedBytes = 0;
     const reader = res.body?.getReader();
-    if (!reader) throw new Error("Response body is not readable.");
+    if (!reader) {
+      clearTimeout(downloadTimer);
+      throw new Error("Response body is not readable.");
+    }
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        chunks.push(value);
-        downloadedBytes += value.byteLength;
-        if (totalBytes > 0) {
-          const progress = Math.round((downloadedBytes / totalBytes) * 100);
-          this.setStatus({ status: "downloading", progress });
+    // Race each read against the shared abort signal; if the timer fires while
+    // the stream is stalled the AbortController cancels the underlying fetch
+    // body and reader.read() will reject with an AbortError.
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          downloadedBytes += value.byteLength;
+          if (totalBytes > 0) {
+            const progress = Math.round((downloadedBytes / totalBytes) * 100);
+            this.setStatus({ status: "downloading", progress });
+          }
         }
       }
+    } catch (err) {
+      reader.releaseLock();
+      if ((err as Error).name === "AbortError") {
+        throw new Error(
+          `Download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s — check your internet connection.`,
+        );
+      }
+      throw err;
+    } finally {
+      // Clear the timer whether reading succeeded or failed.
+      clearTimeout(downloadTimer);
     }
 
     // Assemble into a single buffer and write the .tgz to a temp file.
@@ -126,12 +168,17 @@ export class TunnelManager extends EventEmitter {
     FS.writeFileSync(tgzPath, tgzBuffer);
 
     try {
-      // Extract the single `cloudflared` binary from the tarball.
-      ChildProcess.execSync(`tar xzf "${tgzPath}" -C "${binDir}" cloudflared`, {
+      // Use execFileSync (not execSync) to avoid shell interpolation risk when
+      // tgzPath or binDir contain special characters.
+      ChildProcess.execFileSync("tar", ["xzf", tgzPath, "-C", binDir, "cloudflared"], {
         stdio: "ignore",
       });
     } finally {
-      try { FS.unlinkSync(tgzPath); } catch { /* ignore */ }
+      try {
+        FS.unlinkSync(tgzPath);
+      } catch {
+        /* ignore */
+      }
     }
 
     FS.chmodSync(this.binaryPath, 0o755);
@@ -191,6 +238,14 @@ export class TunnelManager extends EventEmitter {
 
     const output = await new Promise<string>((resolve, reject) => {
       let combined = "";
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (!settled) {
+          settled = true;
+          fn();
+        }
+      };
+
       const proc = ChildProcess.spawn(
         this.binaryPath,
         ["tunnel", "--no-autoupdate", "create", tunnelName],
@@ -198,6 +253,20 @@ export class TunnelManager extends EventEmitter {
       );
       // Track so stop() can kill this if called while tunnel creation is in progress.
       this.activeSetupProcess = proc;
+
+      // Timeout guard: kill and reject if cloudflared doesn't exit in time.
+      const creationTimer = setTimeout(() => {
+        this.activeSetupProcess = null;
+        proc.kill("SIGKILL");
+        settle(() =>
+          reject(
+            new Error(
+              `cloudflared tunnel create timed out after ${TUNNEL_CREATE_TIMEOUT_MS / 1000}s.`,
+            ),
+          ),
+        );
+      }, TUNNEL_CREATE_TIMEOUT_MS);
+
       proc.stdout?.on("data", (d: Buffer) => {
         combined += d.toString();
       });
@@ -206,12 +275,19 @@ export class TunnelManager extends EventEmitter {
       });
       proc.on("close", (code) => {
         this.activeSetupProcess = null;
-        if (code === 0) resolve(combined);
-        else reject(new Error(`cloudflared tunnel create failed (exit ${code}):\n${combined}`));
+        clearTimeout(creationTimer);
+        if (code === 0) {
+          settle(() => resolve(combined));
+        } else {
+          settle(() =>
+            reject(new Error(`cloudflared tunnel create failed (exit ${code}):\n${combined}`)),
+          );
+        }
       });
       proc.on("error", (err) => {
         this.activeSetupProcess = null;
-        reject(err);
+        clearTimeout(creationTimer);
+        settle(() => reject(err));
       });
     });
 
@@ -286,11 +362,31 @@ export class TunnelManager extends EventEmitter {
     this.tunnelProcess = proc;
 
     let ready = false;
+
+    // Startup timeout: if the tunnel has not signalled readiness within
+    // TUNNEL_STARTUP_TIMEOUT_MS, set an error status and kill the process so
+    // the close handler can schedule a restart (or exhaust MAX_RESTART_ATTEMPTS).
+    const startupTimer = setTimeout(() => {
+      if (!ready) {
+        proc.stdout?.removeListener("data", onData);
+        proc.stderr?.removeListener("data", onData);
+        this.setStatus({
+          status: "error",
+          message: `Tunnel did not become ready within ${TUNNEL_STARTUP_TIMEOUT_MS / 1000}s.`,
+        });
+        proc.kill("SIGTERM");
+      }
+    }, TUNNEL_STARTUP_TIMEOUT_MS);
+
     const onData = (chunk: Buffer) => {
       const text = chunk.toString();
       // cloudflared emits this line when the tunnel is established.
       if (!ready && /registered tunnel connection|ready to proxy/i.test(text)) {
         ready = true;
+        // Clear the startup timeout — normal flow proceeds.
+        clearTimeout(startupTimer);
+        proc.stdout?.removeListener("data", onData);
+        proc.stderr?.removeListener("data", onData);
         this.setStatus({ status: "active", url: tunnelUrl });
       }
     };
@@ -298,6 +394,8 @@ export class TunnelManager extends EventEmitter {
     proc.stderr?.on("data", onData);
 
     proc.on("close", (code) => {
+      // Always clear the startup timer when the process exits.
+      clearTimeout(startupTimer);
       if (this._status.status === "idle") return; // intentionally stopped
       this.tunnelProcess = null;
       if (this.restartAttempts < MAX_RESTART_ATTEMPTS) {
@@ -314,6 +412,9 @@ export class TunnelManager extends EventEmitter {
     });
 
     proc.on("error", (err) => {
+      clearTimeout(startupTimer);
+      // Clear the stored reference so we don't hold onto a defunct process.
+      this.tunnelProcess = null;
       this.setStatus({ status: "error", message: err.message });
     });
   }

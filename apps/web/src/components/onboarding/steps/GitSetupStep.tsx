@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
@@ -23,11 +23,25 @@ const GIT_INSTALL_COMMANDS: Record<Platform, string> = {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  // Store the timeout id so we can clear it on unmount and avoid calling
+  // setCopied after the component has been removed from the tree.
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
+      if (timeoutRef.current !== null) clearTimeout(timeoutRef.current);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      timeoutRef.current = setTimeout(() => {
+        setCopied(false);
+        timeoutRef.current = null;
+      }, 1800);
     } catch {
       // ignore
     }
@@ -152,7 +166,9 @@ export function GitSetupStep() {
           )}
         </div>
 
-        {status?.nameConfigured && status.emailConfigured ? (
+        {/* Also verify that the values themselves are non-empty strings, not just
+            that the flags are set — the server may return true with an empty value. */}
+        {status?.nameConfigured && status.emailConfigured && status.name && status.email ? (
           <div className="space-y-0.5">
             <p className="text-xs text-muted-foreground">{status.name}</p>
             <p className="text-xs text-muted-foreground">{status.email}</p>

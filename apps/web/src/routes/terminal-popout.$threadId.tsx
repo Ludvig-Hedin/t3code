@@ -162,19 +162,29 @@ function TerminalPopoutRouteView() {
           api.terminal.write({ threadId, terminalId, data: "exit\n" }).catch(() => undefined);
 
         if ("close" in api.terminal && typeof api.terminal.close === "function") {
+          // Close the popout window AFTER async cleanup finishes to avoid a
+          // race where window.close() aborts the in-flight clear/close calls.
           void (async () => {
             if (isFinalTerminal) {
               await api.terminal.clear({ threadId, terminalId }).catch(() => undefined);
             }
             await api.terminal.close({ threadId, terminalId, deleteHistory: true });
-          })().catch(() => fallbackExitWrite());
+            if (isFinalTerminal) window.close();
+          })().catch(async () => {
+            await fallbackExitWrite();
+            if (isFinalTerminal) window.close();
+          });
         } else {
-          void fallbackExitWrite();
+          if (isFinalTerminal) {
+            // No native close — write "exit" and then close the window.
+            void fallbackExitWrite().then(() => window.close());
+          } else {
+            void fallbackExitWrite();
+          }
         }
 
-        // Close the popout window when the last terminal is gone.
+        // Return early for the final-terminal case; window.close is deferred above.
         if (isFinalTerminal) {
-          window.close();
           return;
         }
       }

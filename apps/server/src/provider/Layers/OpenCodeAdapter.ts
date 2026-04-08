@@ -271,7 +271,8 @@ function mapSseEvent(
       // error shape: { name: string, data: { message: string } }
       const errData = props.error as { data?: { message?: string } } | undefined;
       const message =
-        errData?.data?.message ?? (typeof props.message === "string" ? props.message : "Unknown opencode session error");
+        errData?.data?.message ??
+        (typeof props.message === "string" ? props.message : "Unknown opencode session error");
       emitEvent(
         makeThreadEvent(
           "turn.error" as ProviderRuntimeEvent["type"],

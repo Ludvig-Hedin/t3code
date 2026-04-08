@@ -12,16 +12,16 @@
 
 ## File Map
 
-| File | Action | Purpose |
-|------|--------|---------|
-| [`packages/contracts/src/ipc.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/packages/contracts/src/ipc.ts) | Modify | Add `TunnelState`, `RemoteSettings` types; extend `DesktopBridge` |
-| [`apps/desktop/src/remoteSettings.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/remoteSettings.ts) | Create | Read/write `userData/remote-settings.json` |
-| [`apps/desktop/src/tunnelManager.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/tunnelManager.ts) | Create | cloudflared binary download, auth, named-tunnel lifecycle |
-| [`apps/desktop/src/keepAwakeManager.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/keepAwakeManager.ts) | Create | `powerSaveBlocker` + `caffeinate` |
-| [`apps/desktop/src/main.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/main.ts) | Modify | Create managers, register IPC channels, update `backendPairingUrl` on tunnel active |
-| [`apps/desktop/src/preload.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/preload.ts) | Modify | Expose new bridge methods |
-| [`apps/desktop/src/remoteSettings.test.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/remoteSettings.test.ts) | Create | Unit tests for settings read/write |
-| [`apps/web/src/components/settings/MobileCompanionPanel.tsx`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/web/src/components/settings/MobileCompanionPanel.tsx) | Modify | Add Remote Access section + Keep Awake toggle |
+| File                                                                                                                                                                                        | Action | Purpose                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
+| [`packages/contracts/src/ipc.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/packages/contracts/src/ipc.ts)                                                         | Modify | Add `TunnelState`, `RemoteSettings` types; extend `DesktopBridge`                   |
+| [`apps/desktop/src/remoteSettings.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/remoteSettings.ts)                                               | Create | Read/write `userData/remote-settings.json`                                          |
+| [`apps/desktop/src/tunnelManager.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/tunnelManager.ts)                                                 | Create | cloudflared binary download, auth, named-tunnel lifecycle                           |
+| [`apps/desktop/src/keepAwakeManager.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/keepAwakeManager.ts)                                           | Create | `powerSaveBlocker` + `caffeinate`                                                   |
+| [`apps/desktop/src/main.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/main.ts)                                                                   | Modify | Create managers, register IPC channels, update `backendPairingUrl` on tunnel active |
+| [`apps/desktop/src/preload.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/preload.ts)                                                             | Modify | Expose new bridge methods                                                           |
+| [`apps/desktop/src/remoteSettings.test.ts`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/desktop/src/remoteSettings.test.ts)                                     | Create | Unit tests for settings read/write                                                  |
+| [`apps/web/src/components/settings/MobileCompanionPanel.tsx`](file:///Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/web/src/components/settings/MobileCompanionPanel.tsx) | Modify | Add Remote Access section + Keep Awake toggle                                       |
 
 ---
 
@@ -371,7 +371,11 @@ export class TunnelManager extends EventEmitter {
         stdio: "ignore",
       });
     } finally {
-      try { FS.unlinkSync(tgzPath); } catch { /* ignore */ }
+      try {
+        FS.unlinkSync(tgzPath);
+      } catch {
+        /* ignore */
+      }
     }
 
     FS.chmodSync(this.binaryPath, 0o755);
@@ -1182,7 +1186,7 @@ Expected: all tests pass including the new `remoteSettings` tests.
 - [ ] **Step 3: iOS build**
 
 ```bash
-xcodebuild -project /Users/ludvighedin/Programming/personal/AB/coder-new/t3code/apps/mobile/BirdCode.xcodeproj -scheme BirdCode -sdk iphoneos build CODE_SIGNING_ALLOWED=NO 2>&1 | grep "BUILD "
+xcodebuild -project "$(git rev-parse --show-toplevel)/apps/mobile/BirdCode.xcodeproj" -scheme BirdCode -sdk iphoneos build CODE_SIGNING_ALLOWED=NO 2>&1 | grep "BUILD "
 ```
 
 Expected: `** BUILD SUCCEEDED **`

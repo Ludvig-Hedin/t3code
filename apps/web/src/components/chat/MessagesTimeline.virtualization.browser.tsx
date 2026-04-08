@@ -147,6 +147,7 @@ function createBaseTimelineProps(input: {
   return {
     hasMessages: true,
     isWorking: false,
+    threadId: "test-thread-id" as import("@t3tools/contracts").ThreadId,
     activeTurnInProgress: false,
     activeTurnStartedAt: null,
     timelineEntries: deriveTimelineEntries(

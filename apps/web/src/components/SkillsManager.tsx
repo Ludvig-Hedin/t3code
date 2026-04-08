@@ -1279,7 +1279,8 @@ const TEMPLATES: Template[] = [
   },
   {
     name: "documentation-writer",
-    title: "Write documentation",
+    // Distinct title to avoid the duplicate "Write documentation" card from write-documentation.
+    title: "Technical documentation",
     category: "Documentation",
     icon: <FileTextIcon className="size-4" />,
     description:

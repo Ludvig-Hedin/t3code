@@ -377,18 +377,28 @@ async function fetchGeminiRateLimits(): Promise<ProviderRateLimitEntry | null> {
     const bestByModelId = pickBestBucket(buckets);
 
     // Step 2: merge by display label — multiple model versions (e.g. gemini-2.5-flash,
-    // gemini-3-flash-preview) map to the same label. Keep worst case (highest usedPercent).
+    // gemini-3-flash-preview) map to the same label.
+    // Keep worst case (highest usedPercent) and earliest resetsAt so the
+    // displayed reset time is never misleadingly late.
     const byLabel = new Map<string, RateLimitWindow>();
     for (const b of bestByModelId.values()) {
       const label = geminiModelLabel(b.modelId);
       const usedPercent = (1 - b.remainingFraction) * 100;
+      const resetsAt = isoToUnix(b.resetTime);
       const existing = byLabel.get(label);
-      if (!existing || usedPercent > existing.usedPercent) {
+      if (!existing) {
         byLabel.set(label, {
           id: label.toLowerCase().replace(/\s+/g, "_"),
           label,
           usedPercent,
-          resetsAt: isoToUnix(b.resetTime),
+          resetsAt,
+        });
+      } else {
+        byLabel.set(label, {
+          ...existing,
+          // Always track worst-case usage and earliest reset time.
+          usedPercent: Math.max(existing.usedPercent, usedPercent),
+          resetsAt: Math.min(existing.resetsAt, resetsAt),
         });
       }
     }

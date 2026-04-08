@@ -387,13 +387,25 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown .chat-markdown-codeblock pre {
   margin: 0;
+  /* Reserve space at top-right so always-visible action buttons don't overlap code text.
+     Width: 2 × 1.5rem button + 0.25rem gap + 0.75rem outer padding ≈ 4rem. */
+  padding-right: 4rem !important;
 }
 
-.chat-markdown .chat-markdown-copy-button {
+/* Action button group (copy + run) — always visible, top-right of code card */
+.chat-markdown .chat-markdown-codeblock-actions {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
   z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Shared styles for both copy and run buttons */
+.chat-markdown .chat-markdown-copy-button,
+.chat-markdown .chat-markdown-run-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -403,23 +415,19 @@ label:has(> select#reasoning-effort) select {
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--background) 82%, transparent);
   color: var(--muted-foreground);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-}
-
-.chat-markdown .chat-markdown-codeblock:hover .chat-markdown-copy-button,
-.chat-markdown .chat-markdown-codeblock:focus-within .chat-markdown-copy-button {
-  opacity: 1;
+  /* Always visible — no opacity hide */
   pointer-events: auto;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
-.chat-markdown .chat-markdown-copy-button:hover {
+.chat-markdown .chat-markdown-copy-button:hover,
+.chat-markdown .chat-markdown-run-button:hover {
   color: var(--foreground);
   border-color: color-mix(in srgb, var(--border) 70%, var(--foreground));
+  background: color-mix(in srgb, var(--background) 95%, var(--foreground));
 }
 
 .chat-markdown .chat-markdown-shiki .shiki {

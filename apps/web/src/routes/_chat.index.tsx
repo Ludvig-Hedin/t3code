@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { FolderPlusIcon } from "lucide-react";
 import { useCallback, useEffect } from "react";
 
+import { AppLoadingScreen } from "../components/AppLoadingScreen";
+
 import { isElectron } from "../env";
 import { SidebarTrigger } from "../components/ui/sidebar";
 import { AppPageHeader } from "../components/AppPageHeader";
@@ -117,8 +119,8 @@ function ChatIndexRouteView() {
     );
   }
 
-  // Projects exist — rendering nothing while the useEffect navigates to the draft thread.
-  return null;
+  // Projects exist — show loading screen while useEffect navigates to the draft thread.
+  return <AppLoadingScreen />;
 }
 
 export const Route = createFileRoute("/_chat/")({

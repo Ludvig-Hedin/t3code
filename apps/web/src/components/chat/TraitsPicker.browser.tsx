@@ -172,6 +172,7 @@ async function mountClaudePicker(props?: {
     [CLAUDE_THREAD_ID]: {
       prompt: props?.prompt ?? "",
       images: [],
+      files: [],
       nonPersistedImageIds: [],
       persistedAttachments: [],
       terminalContexts: [],
@@ -376,6 +377,7 @@ async function mountCodexPicker(props: { model?: string; options?: CodexModelOpt
     [threadId]: {
       prompt: "",
       images: [],
+      files: [],
       nonPersistedImageIds: [],
       persistedAttachments: [],
       terminalContexts: [],

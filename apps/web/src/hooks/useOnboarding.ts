@@ -37,9 +37,16 @@ function loadState(): { state: OnboardingState; wasStored: boolean } {
   }
 }
 
+/** Custom event name used to notify same-tab listeners when state changes. */
+const ONBOARDING_CHANGED_EVENT = "onboarding:changed";
+
 function saveState(state: OnboardingState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Dispatch a custom event so same-tab components (e.g. the Settings sidebar
+    // button) are notified immediately — the native "storage" event only fires
+    // for writes from *other* tabs/windows.
+    window.dispatchEvent(new CustomEvent(ONBOARDING_CHANGED_EVENT));
   } catch {
     // ignore — storage may be unavailable
   }
@@ -52,15 +59,24 @@ export function useOnboarding() {
     return { ...loaded, open: !wasStored && !loaded.completed };
   });
 
-  // Sync state when another component writes to localStorage (e.g. Settings "Setup Guide" button)
+  // Sync state when another component writes to localStorage.
+  // - "storage" fires for cross-tab writes (browser native).
+  // - ONBOARDING_CHANGED_EVENT fires for same-tab writes dispatched by saveState().
   useEffect(() => {
-    const handler = (e: StorageEvent) => {
+    const storageHandler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
         setState(loadState().state);
       }
     };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    const customHandler = () => {
+      setState(loadState().state);
+    };
+    window.addEventListener("storage", storageHandler);
+    window.addEventListener(ONBOARDING_CHANGED_EVENT, customHandler);
+    return () => {
+      window.removeEventListener("storage", storageHandler);
+      window.removeEventListener(ONBOARDING_CHANGED_EVENT, customHandler);
+    };
   }, []);
 
   const update = useCallback((patch: Partial<OnboardingState>) => {
