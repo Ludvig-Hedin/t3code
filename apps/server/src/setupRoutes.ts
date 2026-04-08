@@ -25,6 +25,11 @@ import {
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 
 const execAsync = promisify(exec);
+const SETUP_CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "content-type",
+} as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -121,14 +126,17 @@ export const gitStatusRouteLayer = HttpRouter.add(
       ]),
     ).pipe(Effect.orElseSucceed(() => [null, null] as const));
 
-    return HttpServerResponse.jsonUnsafe({
-      installed: version !== null,
-      version: version ?? null,
-      nameConfigured: typeof name === "string" && name.length > 0,
-      emailConfigured: typeof email === "string" && email.length > 0,
-      name: name ?? null,
-      email: email ?? null,
-    });
+    return HttpServerResponse.setHeaders(
+      HttpServerResponse.jsonUnsafe({
+        installed: version !== null,
+        version: version ?? null,
+        nameConfigured: typeof name === "string" && name.length > 0,
+        emailConfigured: typeof email === "string" && email.length > 0,
+        name: name ?? null,
+        email: email ?? null,
+      }),
+      SETUP_CORS_HEADERS,
+    );
   }),
 );
 
@@ -163,8 +171,17 @@ export const importScanRouteLayer = HttpRouter.add(
       }
     }
 
-    return HttpServerResponse.jsonUnsafe({ projects: allProjects });
+    return HttpServerResponse.setHeaders(
+      HttpServerResponse.jsonUnsafe({ projects: allProjects }),
+      SETUP_CORS_HEADERS,
+    );
   }),
+);
+
+export const setupOptionsRouteLayer = HttpRouter.add(
+  "OPTIONS",
+  "/api/setup/*",
+  Effect.succeed(HttpServerResponse.empty({ status: 204, headers: SETUP_CORS_HEADERS })),
 );
 
 // ── Import Execute Route ──────────────────────────────────────────────────────
@@ -209,9 +226,12 @@ export const importExecuteRouteLayer = Layer.unwrap(
           Effect.result,
         );
         if (bodyResult._tag === "Failure") {
-          return HttpServerResponse.jsonUnsafe(
-            { error: "Invalid request body", detail: String(bodyResult.failure) },
-            { status: 400 },
+          return HttpServerResponse.setHeaders(
+            HttpServerResponse.jsonUnsafe(
+              { error: "Invalid request body", detail: String(bodyResult.failure) },
+              { status: 400 },
+            ),
+            SETUP_CORS_HEADERS,
           );
         }
         const body = bodyResult.success;
@@ -318,11 +338,14 @@ export const importExecuteRouteLayer = Layer.unwrap(
           }
         }
 
-        return HttpServerResponse.jsonUnsafe({
-          importedProjectCount,
-          importedThreadCount,
-          errors,
-        });
+        return HttpServerResponse.setHeaders(
+          HttpServerResponse.jsonUnsafe({
+            importedProjectCount,
+            importedThreadCount,
+            errors,
+          }),
+          SETUP_CORS_HEADERS,
+        );
       }),
     );
   }),

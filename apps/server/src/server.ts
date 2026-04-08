@@ -4,7 +4,12 @@ import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 import { ServerConfig } from "./config";
 import { attachmentsRouteLayer, projectFaviconRouteLayer, staticAndDevRouteLayer } from "./http";
 import { mobileCompanionRouteLayer } from "./mobile";
-import { gitStatusRouteLayer, importScanRouteLayer, importExecuteRouteLayer } from "./setupRoutes";
+import {
+  gitStatusRouteLayer,
+  importScanRouteLayer,
+  importExecuteRouteLayer,
+  setupOptionsRouteLayer,
+} from "./setupRoutes";
 import { fixPath } from "./os-jank";
 import { websocketRpcRouteLayer } from "./ws";
 import { OpenLive } from "./open";
@@ -239,6 +244,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   // Onboarding setup routes (git status check + conversation import)
   gitStatusRouteLayer,
   importScanRouteLayer,
+  setupOptionsRouteLayer,
   importExecuteRouteLayer,
   // WebSocket RPC must be registered before the static catch-all so upgrade
   // requests are matched here rather than swallowed by the wildcard handler.
