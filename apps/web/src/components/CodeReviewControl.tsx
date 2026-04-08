@@ -12,7 +12,7 @@ import { type CodeReviewFixMode, type ThreadId } from "@t3tools/contracts";
 import { ClipboardCheckIcon, LoaderIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
-import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
+import { Popover, PopoverPopup } from "~/components/ui/popover";
 import {
   Select,
   SelectItem,
@@ -144,22 +144,25 @@ export function CodeReviewControl({ gitCwd, activeThreadId, isGitRepo }: CodeRev
 
   const disabled = !isGitRepo || !gitCwd || isReviewing;
 
+  const openReviewPopover = useCallback(() => {
+    if (!disabled) {
+      setPopoverOpen((current) => !current);
+    }
+  }, [disabled]);
+
   return (
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
       <Tooltip>
         <TooltipTrigger
           render={
-            <PopoverTrigger
-              render={
-                <Toggle
-                  className="shrink-0 px-2"
-                  pressed={popoverOpen}
-                  aria-label="Run code review"
-                  variant="outline"
-                  size="xs"
-                  disabled={disabled}
-                />
-              }
+            <Toggle
+              className="shrink-0 px-2"
+              pressed={popoverOpen}
+              aria-label="Run code review"
+              variant="outline"
+              size="xs"
+              disabled={disabled}
+              onClick={openReviewPopover}
             />
           }
         >
