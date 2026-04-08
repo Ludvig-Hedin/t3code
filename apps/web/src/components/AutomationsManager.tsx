@@ -814,11 +814,11 @@ export function AutomationsManager() {
   // ── Render ─────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden p-6">
+    <div className="flex flex-1 flex-col overflow-hidden px-6 pb-6 pt-4">
       {/* ── Toolbar ── */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border py-3">
         <div className="flex flex-col gap-0.5">
-          <p className="text-sm font-medium text-foreground">Automations</p>
+          <p className="text-xl font-semibold tracking-tight text-foreground">Automations</p>
           <p className="text-xs text-muted-foreground">
             {automations.length === 0
               ? "Schedule recurring agent tasks"

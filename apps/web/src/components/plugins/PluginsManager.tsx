@@ -197,12 +197,12 @@ export function PluginsManager() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col p-6">
+    <div className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-4">
       {/* ------------------------------------------------------------------ */}
       {/* Hero                                                                */}
       {/* ------------------------------------------------------------------ */}
       <div className="pb-5">
-        <h1 className="text-2xl font-semibold text-foreground tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Make Bird Code work your way
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">

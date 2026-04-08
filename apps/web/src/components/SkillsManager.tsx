@@ -2039,11 +2039,11 @@ export function SkillsManager() {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto p-6">
+    <div className="flex h-full flex-col overflow-y-auto px-6 pb-6 pt-4">
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-gradient-to-b from-background from-[calc(100%-24px)] to-transparent">
-        <div className="flex flex-col gap-2 pb-8 pt-6">
-          <h2 className="text-base font-medium text-foreground">Skills</h2>
+        <div className="flex flex-col gap-2 pb-6 pt-0">
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">Skills</h2>
           <p className="text-[13px] text-muted-foreground">
             Browse every available skill, inspect details before adding them, and manage your
             installed copies.
