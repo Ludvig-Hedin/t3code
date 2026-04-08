@@ -12,7 +12,7 @@ import { type CodeReviewFixMode, type ThreadId } from "@t3tools/contracts";
 import { ClipboardCheckIcon, LoaderIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
-import { Popover, PopoverPopup } from "~/components/ui/popover";
+import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import {
   Select,
   SelectItem,
@@ -20,8 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
-import { Toggle } from "~/components/ui/toggle";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useSettings } from "~/hooks/useSettings";
 import { buildCodeReviewPrompt, runtimeModeForFixMode } from "~/lib/codeReview";
 import { ensureNativeApi } from "~/nativeApi";
@@ -144,43 +142,33 @@ export function CodeReviewControl({ gitCwd, activeThreadId, isGitRepo }: CodeRev
 
   const disabled = !isGitRepo || !gitCwd || isReviewing;
 
-  const openReviewPopover = useCallback(() => {
-    if (!disabled) {
-      setPopoverOpen((current) => !current);
-    }
-  }, [disabled]);
-
   return (
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Toggle
-              className="shrink-0 px-2"
-              pressed={popoverOpen}
-              aria-label="Run code review"
-              variant="outline"
-              size="xs"
-              disabled={disabled}
-              onClick={openReviewPopover}
-            />
-          }
-        >
-          {isReviewing ? (
-            <LoaderIcon className="size-3 animate-spin" />
-          ) : (
-            <ClipboardCheckIcon className="size-3" />
-          )}
-          <span className="text-[10px]">Review</span>
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">
-          {!isGitRepo
-            ? "Code review is unavailable because this project is not a git repository."
-            : isReviewing
-              ? "Review in progress…"
-              : "Run code review"}
-        </TooltipPopup>
-      </Tooltip>
+      <PopoverTrigger
+        render={
+          <Button
+            className="shrink-0 px-2"
+            aria-label="Run code review"
+            variant="outline"
+            size="xs"
+            disabled={disabled}
+            title={
+              !isGitRepo
+                ? "Code review is unavailable because this project is not a git repository."
+                : isReviewing
+                  ? "Review in progress…"
+                  : "Run code review"
+            }
+          />
+        }
+      >
+        {isReviewing ? (
+          <LoaderIcon className="size-3 animate-spin" />
+        ) : (
+          <ClipboardCheckIcon className="size-3" />
+        )}
+        <span className="text-[10px]">Review</span>
+      </PopoverTrigger>
 
       <PopoverPopup side="bottom" align="end">
         <div className="space-y-3 px-1">
