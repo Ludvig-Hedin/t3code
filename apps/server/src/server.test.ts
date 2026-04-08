@@ -390,17 +390,41 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("redirects to dev URL when configured", () =>
+  it.effect("proxies to dev URL when configured", () =>
     Effect.gen(function* () {
+      // http.ts now proxies dev-URL traffic instead of issuing a 302 redirect, so
+      // that mobile clients (WKWebView) reach the local Vite server without being
+      // redirected to a localhost that only exists on the desktop.
+      // Start a tiny mock "Vite" server on a random port so the proxy has a target.
+      const { createServer } = yield* Effect.promise(() => import("node:http"));
+      const { port, closeServer } = yield* Effect.promise(
+        () =>
+          new Promise<{ port: number; closeServer: () => Promise<void> }>((resolve) => {
+            const mock = createServer((_req, res) => {
+              res.writeHead(200, { "Content-Type": "text/html" });
+              res.end("<html>vite-dev-ok</html>");
+            });
+            mock.listen(0, "127.0.0.1", () => {
+              const { port } = mock.address() as { port: number };
+              resolve({
+                port,
+                closeServer: () => new Promise<void>((r) => mock.close(() => r())),
+              });
+            });
+          }),
+      );
+
       yield* buildAppUnderTest({
-        config: { devUrl: new URL("http://127.0.0.1:5173") },
+        config: { devUrl: new URL(`http://127.0.0.1:${port}`) },
       });
 
       const url = yield* getHttpServerUrl("/foo/bar");
-      const response = yield* Effect.promise(() => fetch(url, { redirect: "manual" }));
+      const response = yield* Effect.promise(() => fetch(url));
+      yield* Effect.promise(closeServer);
 
-      assert.equal(response.status, 302);
-      assert.equal(response.headers.get("location"), "http://127.0.0.1:5173/");
+      assert.equal(response.status, 200);
+      const body = yield* Effect.promise(() => response.text());
+      assert.include(body, "vite-dev-ok");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
