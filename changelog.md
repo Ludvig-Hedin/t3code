@@ -1,5 +1,25 @@
 # Changelog
 
+## [2026-04-10] [Fix] Preview panel white-screen CORS failure for Vite / React dev servers
+- **Root cause (3 compounding issues):**
+  1. `<iframe sandbox>` lacked `allow-same-origin`, so the iframe's origin was opaque `null`. Every resource request from the iframe carried `Origin: null`, which Vite rejects.
+  2. Vite embeds absolute URLs (`http://localhost:{PORT}/@vite/client`, `/src/main.tsx`, `/@react-refresh`) in its served HTML. These bypassed the Bird Code proxy and hit Vite directly, where the `null`-origin CORS rejection fired.
+  3. The proxy forwarded the client's `Accept-Encoding: gzip` header, meaning Vite could return gzip-compressed HTML that couldn't be inspected or rewritten.
+- **Fix:**
+  - `previewProxyRoute.ts`: Strip `Accept-Encoding` before forwarding; override `Access-Control-Allow-Origin: *` on all proxy responses (removing Vite's restrictive header); rewrite `http://localhost:{port}/…` / `http://127.0.0.1:{port}/…` occurrences in HTML and JS response bodies to the Bird Code proxy base path so all resource fetches route through the proxy; add OPTIONS preflight handler; add PATCH verb.
+  - `PreviewPanel.tsx`: Add `allow-same-origin` to the iframe sandbox (acceptable for a local dev tool where the user's own code is previewed).
+- **Files:** `apps/server/src/preview/previewProxyRoute.ts`, `apps/web/src/components/PreviewPanel.tsx`
+
+## [2026-04-10] [Fix] Hydration error due to whitespace text nodes in `<colgroup>`
+- **Root cause:** Inline comments on `<col>` elements inside `<colgroup>` were creating text nodes in the DOM. HTML spec disallows text nodes as children of `<colgroup>` (only `<col>` and `<colgroup>` allowed), causing hydration mismatch between server and client.
+- **Fix:** Removed inline comments from the `<col>` elements to eliminate whitespace text nodes. Column purposes are documented in the block comment above the `<colgroup>`.
+- **Files:** `apps/web/src/components/AutomationsManager.tsx`
+
+## [2026-04-10] [Fix] Code review button fails for repos without a `main` branch
+- **Root cause:** `prepareReviewContext` in `GitManager.ts` hardcoded `"main"` as the final fallback base branch. Repos using `"master"` (or any other name) have no `main` ref, so `git log --oneline main..HEAD` threw `fatal: ambiguous argument 'main..HEAD': unknown revision or path not in the working tree`.
+- **Fix:** After resolving the candidate base branch, call `listLocalBranchNames` to verify it exists. If not, walk through `["main", "master", "develop", "trunk"]` to find the first available branch that isn't the current one. Falls back to any other local branch, then last-resort keeps the original candidate so git still produces a useful error message.
+- **Files:** `apps/server/src/git/Layers/GitManager.ts`
+
 ## [2026-04-10] [Fix] Infinite re-render loop in Sidebar — "Maximum update depth exceeded"
 - **Root cause:** Zustand selector `useStore((store) => store.projects.filter(...))` called `.filter()` inside the selector, creating a new array reference on every invocation. React's `useSyncExternalStore` (used internally by Zustand) re-checks snapshots during the passive effect commit phase — since `.filter()` always returns a new reference, `Object.is` always fails, forcing a re-render → infinite loop.
 - **Fix:** Moved `.filter()` out of the Zustand selector and into `useMemo`, reading the raw `store.projects` (stable reference) from the store instead.
