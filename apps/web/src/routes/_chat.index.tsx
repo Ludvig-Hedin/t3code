@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FolderPlusIcon } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { AppLoadingScreen } from "../components/AppLoadingScreen";
 
@@ -18,8 +18,13 @@ import { newCommandId } from "../lib/utils";
 import { ProjectId } from "@t3tools/contracts";
 
 function ChatIndexRouteView() {
-  const projects = useStore((store) =>
-    store.projects.filter((project) => project.deletedAt === null),
+  // Read raw projects array from store (stable reference) then filter in useMemo.
+  // IMPORTANT: .filter() inside a Zustand selector creates a new array on every call,
+  // which breaks useSyncExternalStore's Object.is check and causes an infinite re-render loop.
+  const allProjects = useStore((store) => store.projects);
+  const projects = useMemo(
+    () => allProjects.filter((project) => project.deletedAt === null),
+    [allProjects],
   );
   const { defaultProjectId, handleNewThread } = useHandleNewThread();
   const appSettings = useSettings();

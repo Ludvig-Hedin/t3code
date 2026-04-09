@@ -61,6 +61,14 @@ import { PreviewServerManagerLive } from "./preview/Layers/PreviewServerManager"
 import { previewProxyRouteLayer } from "./preview/previewProxyRoute";
 import { McpServiceLive } from "./mcp";
 import { PluginServiceLive } from "./plugins";
+import { A2aAdapterLive } from "./provider/Layers/A2aAdapter";
+import {
+  A2aAgentCardServiceLive,
+  A2aTaskServiceLive,
+  A2aClientServiceLive,
+  a2aAgentCardRoute,
+  a2aJsonRpcRoute,
+} from "./a2a";
 
 const PtyAdapterLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -167,6 +175,8 @@ const ProviderLayerLive = Layer.unwrap(
     const openCodeAdapterLayer = OpenCodeAdapterLive;
     // ManifestAdapterLive reads settings from ServerSettingsService (injected by the outer layer)
     const manifestAdapterLayer = ManifestAdapterLive;
+    // A2aAdapterLive bridges to A2aClientService for outbound agent communication
+    const a2aAdapterLayer = A2aAdapterLive;
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
@@ -174,6 +184,7 @@ const ProviderLayerLive = Layer.unwrap(
       Layer.provide(ollamaAdapterLayer),
       Layer.provide(openCodeAdapterLayer),
       Layer.provide(manifestAdapterLayer),
+      Layer.provide(a2aAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(
@@ -212,7 +223,13 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(CheckpointingLayerLive),
   Layer.provideMerge(GitLayerLive),
   Layer.provideMerge(OrchestrationLayerLive),
+  // A2A services must be provided before ProviderLayerLive because
+  // A2aAdapterLive (inside ProviderLayerLive) depends on A2aClientService.
+  // Dependency chain: PersistenceLayerLive → A2aAgentCardServiceLive → A2aClientServiceLive → A2aAdapterLive
   Layer.provideMerge(ProviderLayerLive),
+  Layer.provideMerge(A2aClientServiceLive),
+  Layer.provideMerge(A2aAgentCardServiceLive),
+  Layer.provideMerge(A2aTaskServiceLive),
   Layer.provideMerge(TerminalLayerLive),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(KeybindingsLive),
@@ -241,6 +258,9 @@ export const makeRoutesLayer = Layer.mergeAll(
   mobileCompanionRouteLayer,
   previewProxyRouteLayer,
   projectFaviconRouteLayer,
+  // A2A protocol endpoints (agent card discovery + JSON-RPC)
+  a2aAgentCardRoute,
+  a2aJsonRpcRoute,
   // Onboarding setup routes (git status check + conversation import)
   gitStatusRouteLayer,
   importScanRouteLayer,

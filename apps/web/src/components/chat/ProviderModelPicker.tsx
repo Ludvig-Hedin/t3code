@@ -59,6 +59,8 @@ const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   cursor: CursorIcon,
   opencode: OpenCodeIcon,
   ollama: OllamaIcon,
+  // a2a = Agent-to-Agent protocol — reuse AutoIcon as a generic stand-in
+  a2a: AutoIcon,
 };
 
 export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);

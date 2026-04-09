@@ -261,6 +261,12 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
     renderTraitsMenuContent: () => null,
     renderTraitsPicker: () => null,
   },
+  // a2a = Agent-to-Agent protocol. Remote agents via HTTP — no local traits or model picking.
+  a2a: {
+    getState: (input) => getProviderStateFromCapabilities(input),
+    renderTraitsMenuContent: () => null,
+    renderTraitsPicker: () => null,
+  },
 };
 
 export function getComposerProviderState(input: ComposerProviderStateInput): ComposerProviderState {

@@ -26,3 +26,13 @@ reference/
 .worktrees/
 .env*.local
 .turbo
+
+# Memory compiler (claude-memory-compiler)
+memory-compiler/.venv/
+memory-compiler/scripts/state.json
+memory-compiler/scripts/last-flush.json
+memory-compiler/scripts/flush.log
+memory-compiler/scripts/compile.log
+memory-compiler/scripts/session-flush-*.md
+memory-compiler/scripts/flush-context-*.md
+memory-compiler/reports/

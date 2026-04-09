@@ -74,6 +74,14 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     placeholder: "auto",
     example: "auto",
   },
+  // a2a = Agent-to-Agent protocol. Remote agents accessed via HTTP — no custom model slugs.
+  a2a: {
+    provider: "a2a",
+    title: "A2A",
+    description: "Agent-to-Agent protocol — remote agents accessed via HTTP.",
+    placeholder: "remote-agent",
+    example: "remote-agent",
+  },
 };
 
 export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
@@ -128,9 +136,10 @@ export function getAppModelOptions(
       .map((model) => model.slug),
   );
 
-  // OllamaSettings does not have customModels — fall back to empty array
+  // OllamaSettings does not have customModels — fall back to empty array.
+  // A2A providers have no entry in settings.providers; the cast handles missing keys safely.
   const customModels =
-    (settings.providers[provider] as { customModels?: readonly string[] }).customModels ?? [];
+    ((settings.providers as Record<string, unknown>)[provider] as { customModels?: readonly string[] } | undefined)?.customModels ?? [];
   for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
     if (seen.has(slug)) {
       continue;
@@ -234,6 +243,13 @@ export function getCustomModelOptionsByProvider(
       "manifest",
       selectedProvider === "manifest" ? selectedModel : undefined,
     ),
+    // a2a = remote agents via HTTP — no custom model slugs
+    a2a: getAppModelOptions(
+      settings,
+      providers,
+      "a2a",
+      selectedProvider === "a2a" ? selectedModel : undefined,
+    ),
   };
 }
 
@@ -261,9 +277,10 @@ export function resolveAppModelSelectionState(
     },
   });
 
+  // A2A model selections are not resolved through this settings-based path.
   return {
     provider,
     model,
     ...(modelOptionsForDispatch ? { options: modelOptionsForDispatch } : {}),
-  };
+  } as ModelSelection;
 }

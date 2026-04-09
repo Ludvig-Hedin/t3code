@@ -77,6 +77,20 @@ import {
 } from "./server";
 import { McpServer, McpServerInput, McpServerError } from "./mcp";
 import { PluginInfo, PluginInstallInput, PluginError } from "./plugins";
+import {
+  A2A_WS_METHODS,
+  A2aAgentCard,
+  A2aCancelTaskInput,
+  A2aClientError,
+  A2aGetTaskInput,
+  A2aMessageSendInput,
+  A2aMessageSendResult,
+  A2aRegisterAgentInput,
+  A2aRemoveAgentInput,
+  A2aServiceError,
+  A2aSseEvent,
+  A2aTask,
+} from "./a2a";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings";
 import {
   SkillDeleteInput,
@@ -167,6 +181,17 @@ export const WS_METHODS = {
   subscribeServerConfig: "subscribeServerConfig",
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeProviderRateLimits: "subscribeProviderRateLimits",
+
+  // A2A (Agent-to-Agent) protocol methods
+  a2aListAgents: A2A_WS_METHODS.listAgents,
+  a2aRegisterAgent: A2A_WS_METHODS.registerAgent,
+  a2aRemoveAgent: A2A_WS_METHODS.removeAgent,
+  a2aDiscoverAgent: A2A_WS_METHODS.discoverAgent,
+  a2aSendMessage: A2A_WS_METHODS.sendMessage,
+  a2aGetTask: A2A_WS_METHODS.getTask,
+  a2aListTasks: A2A_WS_METHODS.listTasks,
+  a2aCancelTask: A2A_WS_METHODS.cancelTask,
+  subscribeA2aEvents: A2A_WS_METHODS.subscribeEvents,
 
   // Preview / dev-server methods
   previewDetectApps: "preview.detectApps",
@@ -522,6 +547,61 @@ export const WsOllamaQuitServerRpc = Rpc.make(WS_METHODS.ollamaQuitServer, {
   success: Schema.Struct({ success: Schema.Boolean, message: Schema.optional(Schema.String) }),
 });
 
+// ── A2A RPCs ──────────────────────────────────────────────────────────────
+
+export const WsA2aListAgentsRpc = Rpc.make(WS_METHODS.a2aListAgents, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(A2aAgentCard),
+  error: A2aServiceError,
+});
+
+export const WsA2aRegisterAgentRpc = Rpc.make(WS_METHODS.a2aRegisterAgent, {
+  payload: A2aRegisterAgentInput,
+  success: A2aAgentCard,
+  error: Schema.Union([A2aServiceError, A2aClientError]),
+});
+
+export const WsA2aRemoveAgentRpc = Rpc.make(WS_METHODS.a2aRemoveAgent, {
+  payload: A2aRemoveAgentInput,
+  error: A2aServiceError,
+});
+
+export const WsA2aDiscoverAgentRpc = Rpc.make(WS_METHODS.a2aDiscoverAgent, {
+  payload: Schema.Struct({ url: Schema.String }),
+  success: A2aAgentCard,
+  error: Schema.Union([A2aServiceError, A2aClientError]),
+});
+
+export const WsA2aSendMessageRpc = Rpc.make(WS_METHODS.a2aSendMessage, {
+  payload: A2aMessageSendInput,
+  success: A2aMessageSendResult,
+  error: Schema.Union([A2aServiceError, A2aClientError]),
+});
+
+export const WsA2aGetTaskRpc = Rpc.make(WS_METHODS.a2aGetTask, {
+  payload: A2aGetTaskInput,
+  success: A2aTask,
+  error: A2aServiceError,
+});
+
+export const WsA2aListTasksRpc = Rpc.make(WS_METHODS.a2aListTasks, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(A2aTask),
+  error: A2aServiceError,
+});
+
+export const WsA2aCancelTaskRpc = Rpc.make(WS_METHODS.a2aCancelTask, {
+  payload: A2aCancelTaskInput,
+  success: A2aTask,
+  error: Schema.Union([A2aServiceError, A2aClientError]),
+});
+
+export const WsSubscribeA2aEventsRpc = Rpc.make(WS_METHODS.subscribeA2aEvents, {
+  payload: Schema.Struct({}),
+  success: A2aSseEvent,
+  stream: true,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -579,4 +659,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsPluginsRemoveRpc,
   WsOllamaPullModelRpc,
   WsOllamaQuitServerRpc,
+  WsA2aListAgentsRpc,
+  WsA2aRegisterAgentRpc,
+  WsA2aRemoveAgentRpc,
+  WsA2aDiscoverAgentRpc,
+  WsA2aSendMessageRpc,
+  WsA2aGetTaskRpc,
+  WsA2aListTasksRpc,
+  WsA2aCancelTaskRpc,
+  WsSubscribeA2aEventsRpc,
 );

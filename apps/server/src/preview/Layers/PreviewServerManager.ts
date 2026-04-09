@@ -1,5 +1,6 @@
 // apps/server/src/preview/Layers/PreviewServerManager.ts
 import { spawn, spawnSync } from "node:child_process";
+import type { Server } from "node:http";
 import * as readline from "node:readline";
 import * as fs from "node:fs";
 import * as nodePath from "node:path";
@@ -12,12 +13,22 @@ import {
   PreviewServerManager,
   type PreviewServerManagerShape,
 } from "../Services/PreviewServerManager";
-import { buildDetectionCandidates, detectPortFromLine, type DetectionEntry } from "../appDetection";
+import {
+  buildDetectionCandidates,
+  detectPortFromLine,
+  parseStandalonePreviewCommand,
+  type DetectionEntry,
+} from "../appDetection";
 
 interface RunningSession {
   session: PreviewSession;
   process: ReturnType<typeof spawn>;
   app: PreviewApp;
+}
+
+interface StandaloneServerSession {
+  session: PreviewSession;
+  server: Server;
 }
 
 /** Scan a directory shallowly for known config files. Does not throw. */
@@ -47,6 +58,26 @@ async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
     for (const f of ["manage.py", "pyproject.toml", "Cargo.toml"]) {
       if (rootFiles.includes(f)) {
         entries.push({ relativePath: f, hasDevScript: false, hasBunLock: false });
+      }
+    }
+
+    // Standalone file previews at the repo root.
+    for (const f of rootFiles) {
+      const lower = f.toLowerCase();
+      if (
+        lower.endsWith(".html") ||
+        lower.endsWith(".htm") ||
+        lower.endsWith(".md") ||
+        lower.endsWith(".mdx") ||
+        lower.endsWith(".tsx") ||
+        lower.endsWith(".jsx") ||
+        lower.endsWith(".docx")
+      ) {
+        entries.push({
+          relativePath: f,
+          hasDevScript: false,
+          hasBunLock: false,
+        });
       }
     }
 
@@ -133,6 +164,7 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
 
   // projectId:appId -> RunningSession
   const runningSessions = new Map<string, RunningSession>();
+  const standaloneSessions = new Map<string, StandaloneServerSession>();
   // projectId -> PreviewApp[] (detected + overrides)
   const projectApps = new Map<string, PreviewApp[]>();
   // projectId -> manual overrides (appId -> partial PreviewApp patch)
@@ -149,6 +181,14 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         tryKill(child);
       }
       runningSessions.clear();
+      for (const { server } of standaloneSessions.values()) {
+        try {
+          server.close();
+        } catch {
+          /* already closed */
+        }
+      }
+      standaloneSessions.clear();
     }),
   );
 
@@ -169,6 +209,169 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
       session: existing.session,
     });
   };
+
+  const updateStandaloneSessionStatus = (key: string, patch: Partial<PreviewSession>): void => {
+    const existing = standaloneSessions.get(key);
+    if (!existing) return;
+    existing.session = { ...existing.session, ...patch };
+    emitEvent({
+      type: "status-change",
+      appId: existing.session.appId,
+      projectId: existing.session.projectId,
+      session: existing.session,
+    });
+  };
+
+  const startStandaloneServer = (
+    projectId: string,
+    app: PreviewApp,
+    payload: NonNullable<ReturnType<typeof parseStandalonePreviewCommand>>,
+  ): Effect.Effect<PreviewSession, Error> =>
+    Effect.promise(async () => {
+      const fsPromises = (await import("node:fs/promises")) as typeof import("node:fs/promises");
+      const http = await import("node:http");
+      const path = await import("node:path");
+      const { createStandaloneRenderer } = await import("../StandalonePreviewRenderer");
+      const entryFilePath = path.join(app.cwd, payload.relativePath);
+      const rootRealPath = await fsPromises.realpath(app.cwd);
+      const previewHtml =
+        payload.kind === "html"
+          ? null
+          : await createStandaloneRenderer({
+              filePath: entryFilePath,
+              kind: payload.kind,
+              fs: fsPromises,
+            });
+
+      const mimeTypes: Record<string, string> = {
+        ".css": "text/css; charset=utf-8",
+        ".csv": "text/csv; charset=utf-8",
+        ".html": "text/html; charset=utf-8",
+        ".htm": "text/html; charset=utf-8",
+        ".js": "text/javascript; charset=utf-8",
+        ".mjs": "text/javascript; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".md": "text/html; charset=utf-8",
+        ".mdx": "text/html; charset=utf-8",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+        ".tsx": "text/html; charset=utf-8",
+        ".jsx": "text/html; charset=utf-8",
+        ".txt": "text/plain; charset=utf-8",
+        ".webp": "image/webp",
+      };
+
+      const serveFile = async (
+        filePath: string,
+      ): Promise<{
+        body: Buffer;
+        contentType: string;
+      } | null> => {
+        try {
+          const stat = await fsPromises.stat(filePath);
+          if (!stat.isFile()) return null;
+          const extension = path.extname(filePath).toLowerCase();
+          const contentType = mimeTypes[extension] ?? "application/octet-stream";
+          return {
+            body: Buffer.from(await fsPromises.readFile(filePath)),
+            contentType,
+          };
+        } catch {
+          return null;
+        }
+      };
+
+      return await new Promise<PreviewSession>((resolve, reject) => {
+        const server = http.createServer(async (request, res) => {
+          try {
+            const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+            const pathname = decodeURIComponent(requestUrl.pathname);
+            const normalizedPath = pathname === "/" ? payload.relativePath : pathname.slice(1);
+            const fileCandidate = path.resolve(app.cwd, normalizedPath);
+            let resolvedServePath: string | null = null;
+            try {
+              const candidateRealPath = await fsPromises.realpath(fileCandidate);
+              const relativeToRoot = path.relative(rootRealPath, candidateRealPath);
+              const underRoot =
+                relativeToRoot !== "" &&
+                !relativeToRoot.startsWith("..") &&
+                !path.isAbsolute(relativeToRoot);
+              if (underRoot) {
+                resolvedServePath = candidateRealPath;
+              }
+            } catch {
+              /* Symlink escape, missing path, or realpath failure — do not serve static files. */
+            }
+
+            if (resolvedServePath !== null) {
+              const servedFile = await serveFile(resolvedServePath);
+              if (servedFile) {
+                res.statusCode = 200;
+                res.setHeader("content-type", servedFile.contentType);
+                res.end(servedFile.body);
+                return;
+              }
+            }
+
+            if (payload.kind === "html") {
+              const fallback = await serveFile(entryFilePath);
+              if (fallback) {
+                res.statusCode = 200;
+                res.setHeader("content-type", fallback.contentType);
+                res.end(fallback.body);
+                return;
+              }
+            }
+
+            if (previewHtml !== null) {
+              res.statusCode = 200;
+              res.setHeader("content-type", "text/html; charset=utf-8");
+              res.end(previewHtml);
+              return;
+            }
+
+            res.statusCode = 404;
+            res.setHeader("content-type", "text/plain; charset=utf-8");
+            res.end("Preview file not found.");
+          } catch (error) {
+            res.statusCode = 500;
+            res.setHeader("content-type", "text/plain; charset=utf-8");
+            res.end(error instanceof Error ? error.message : "Failed to render preview.");
+          }
+        });
+
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          const address = server.address();
+          if (!address || typeof address === "string") {
+            reject(new Error("Failed to allocate a preview port."));
+            return;
+          }
+
+          const session: PreviewSession = {
+            appId: app.id,
+            projectId: ProjectId.makeUnsafe(projectId),
+            status: "running",
+            port: address.port,
+            pid: process.pid,
+            startedAt: new Date().toISOString(),
+            errorMessage: null,
+          };
+
+          standaloneSessions.set(`${projectId}:${app.id}`, { session, server });
+          emitEvent({
+            type: "status-change",
+            appId: app.id,
+            projectId: session.projectId,
+            session,
+          });
+          resolve(session);
+        });
+      });
+    });
 
   const service: PreviewServerManagerShape = {
     detectApps: (projectId, cwd) =>
@@ -206,6 +409,10 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         }
 
         const key = `${projectId}:${appId}`;
+        const standalonePayload = parseStandalonePreviewCommand(app.command);
+        if (standalonePayload) {
+          return yield* startStandaloneServer(projectId, app, standalonePayload);
+        }
 
         // Stop any existing process for this key before starting fresh.
         // Extracted to Effect.sync to keep try/catch out of the generator body.
@@ -289,6 +496,17 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
     stopApp: (projectId, appId) =>
       Effect.sync(() => {
         const key = `${projectId}:${appId}`;
+        const standalone = standaloneSessions.get(key);
+        if (standalone) {
+          try {
+            standalone.server.close();
+          } catch {
+            /* already closed */
+          }
+          updateStandaloneSessionStatus(key, { status: "stopped", port: null });
+          standaloneSessions.delete(key);
+          return;
+        }
         const existing = runningSessions.get(key);
         if (!existing) return;
 
@@ -299,11 +517,14 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
 
     getSession: (projectId, appId) => {
       const key = `${projectId}:${appId}`;
+      if (standaloneSessions.has(key)) {
+        return standaloneSessions.get(key)!.session;
+      }
       return runningSessions.get(key)?.session ?? null;
     },
 
     getSessions: (projectId) =>
-      [...runningSessions.values()]
+      [...runningSessions.values(), ...standaloneSessions.values()]
         .filter((s) => s.session.projectId === projectId)
         .map((s) => s.session),
 

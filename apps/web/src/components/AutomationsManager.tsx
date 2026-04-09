@@ -54,7 +54,7 @@ import {
   MenuTrigger,
 } from "~/components/ui/menu";
 import { cn } from "~/lib/utils";
-import { DEFAULT_RUNTIME_MODE, type ProviderKind, type ServerProvider } from "@t3tools/contracts";
+import { DEFAULT_RUNTIME_MODE, type ModelSelection, type ProviderKind, type ServerProvider } from "@t3tools/contracts";
 import { buildAutomationRunTitle, resolveAutomationProject } from "~/automationsRunner";
 import {
   type AutomItem,
@@ -655,10 +655,11 @@ export function AutomationsManager() {
         providerStatuses,
         automation.model,
       );
+      // Automations do not support A2A providers; type assertion is safe here.
       const modelSelection = {
         provider: resolvedProvider,
         model: resolvedModel,
-      };
+      } as ModelSelection;
       const title = buildAutomationRunTitle(automation);
 
       try {

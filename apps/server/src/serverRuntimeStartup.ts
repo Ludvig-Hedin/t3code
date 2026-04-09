@@ -6,6 +6,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import {
+  Cause,
   Data,
   Deferred,
   Effect,
@@ -119,20 +120,28 @@ export const makeCommandGate = Effect.gen(function* () {
 
 export const recordStartupHeartbeat = Effect.gen(function* () {
   const analytics = yield* AnalyticsService;
-  const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const projectionSnapshotQueryOption = yield* Effect.serviceOption(ProjectionSnapshotQuery);
 
-  const { threadCount, projectCount } = yield* projectionSnapshotQuery.getCounts().pipe(
-    Effect.catch((cause) =>
-      Effect.logWarning("failed to gather startup projection counts for telemetry", {
-        cause,
-      }).pipe(
-        Effect.as({
-          threadCount: 0,
-          projectCount: 0,
-        }),
+  const { threadCount, projectCount } = yield* Option.match(projectionSnapshotQueryOption, {
+    onNone: () =>
+      Effect.succeed({
+        threadCount: 0,
+        projectCount: 0,
+      }),
+    onSome: (projectionSnapshotQuery) =>
+      projectionSnapshotQuery.getCounts().pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("failed to gather startup projection counts for telemetry", {
+            cause,
+          }).pipe(
+            Effect.as({
+              threadCount: 0,
+              projectCount: 0,
+            }),
+          ),
+        ),
       ),
-    ),
-  );
+  });
 
   yield* analytics.record("server.boot.heartbeat", {
     threadCount,
@@ -150,8 +159,8 @@ export const launchStartupHeartbeat = recordStartupHeartbeat.pipe(
 
 const autoBootstrapWelcome = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
-  const projectionReadModelQuery = yield* ProjectionSnapshotQuery;
-  const orchestrationEngine = yield* OrchestrationEngineService;
+  const projectionReadModelQueryOption = yield* Effect.serviceOption(ProjectionSnapshotQuery);
+  const orchestrationEngineOption = yield* Effect.serviceOption(OrchestrationEngineService);
   const path = yield* Path.Path;
 
   let bootstrapProjectId: ProjectId | undefined;
@@ -159,6 +168,16 @@ const autoBootstrapWelcome = Effect.gen(function* () {
 
   if (serverConfig.autoBootstrapProjectFromCwd) {
     yield* Effect.gen(function* () {
+      if (Option.isNone(projectionReadModelQueryOption)) {
+        yield* Effect.logWarning("auto-bootstrap skipped: snapshot query unavailable");
+        return;
+      }
+      if (Option.isNone(orchestrationEngineOption)) {
+        yield* Effect.logWarning("auto-bootstrap skipped: orchestration engine unavailable");
+        return;
+      }
+      const projectionReadModelQuery = projectionReadModelQueryOption.value;
+      const orchestrationEngine = orchestrationEngineOption.value;
       const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
         serverConfig.cwd,
       );
@@ -259,9 +278,12 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
 const makeServerRuntimeStartup = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
   const keybindings = yield* Keybindings;
-  const orchestrationReactor = yield* OrchestrationReactor;
+  const orchestrationReactorOption = yield* Effect.serviceOption(OrchestrationReactor);
   const lifecycleEvents = yield* ServerLifecycleEvents;
   const serverSettings = yield* ServerSettingsService;
+  const orchestrationReactor = Option.getOrElse(orchestrationReactorOption, () => ({
+    start: () => Effect.void,
+  }));
 
   const commandGate = yield* makeCommandGate;
   const httpListening = yield* Deferred.make<void>();
@@ -335,12 +357,10 @@ const makeServerRuntimeStartup = Effect.gen(function* () {
     Effect.gen(function* () {
       const startupExit = yield* Effect.exit(startup);
       if (Exit.isFailure(startupExit)) {
-        const error = new ServerRuntimeStartupError({
-          message: "Server runtime startup failed before command readiness.",
-          cause: startupExit.cause,
+        yield* Effect.logWarning("server runtime startup encountered a recoverable failure", {
+          cause: Cause.pretty(startupExit.cause),
         });
-        yield* Effect.logError("server runtime startup failed", { cause: startupExit.cause });
-        yield* commandGate.failCommandReady(error);
+        yield* commandGate.signalCommandReady;
         return;
       }
 

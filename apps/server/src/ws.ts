@@ -58,6 +58,7 @@ import { Mem0Service, type Mem0Memory, type Mem0ServiceShape } from "./memory/Se
 import { PreviewServerManager } from "./preview/Services/PreviewServerManager";
 import { McpService } from "./mcp";
 import { PluginService } from "./plugins";
+import { A2aAgentCardService, A2aTaskService, A2aClientService } from "./a2a";
 
 // ---------------------------------------------------------------------------
 // Memory helpers — used in the dispatchCommand handler to enrich user messages
@@ -176,6 +177,9 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const previewManager = yield* PreviewServerManager;
     const mcpService = yield* McpService;
     const pluginService = yield* PluginService;
+    const a2aAgentCardService = yield* A2aAgentCardService;
+    const a2aTaskService = yield* A2aTaskService;
+    const a2aClientService = yield* A2aClientService;
 
     const serverCommandId = (tag: string) =>
       CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -1112,6 +1116,54 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         observeRpcEffect(WS_METHODS.pluginsRemove, pluginService.remove(location), {
           "rpc.aggregate": "plugins",
         }),
+
+      // ── A2A (Agent-to-Agent) handlers ──────────────────────────────────────
+      [WS_METHODS.a2aListAgents]: () =>
+        observeRpcEffect(WS_METHODS.a2aListAgents, a2aAgentCardService.list(), {
+          "rpc.aggregate": "a2a",
+        }),
+      [WS_METHODS.a2aRegisterAgent]: ({ url, name }) =>
+        observeRpcEffect(WS_METHODS.a2aRegisterAgent, a2aAgentCardService.register({ url, ...(name != null ? { name } : {}) }), {
+          "rpc.aggregate": "a2a",
+        }),
+      [WS_METHODS.a2aRemoveAgent]: ({ agentCardId }) =>
+        observeRpcEffect(WS_METHODS.a2aRemoveAgent, a2aAgentCardService.remove(agentCardId), {
+          "rpc.aggregate": "a2a",
+        }),
+      [WS_METHODS.a2aDiscoverAgent]: ({ url }) =>
+        observeRpcEffect(WS_METHODS.a2aDiscoverAgent, a2aAgentCardService.discover(url), {
+          "rpc.aggregate": "a2a",
+        }),
+      [WS_METHODS.a2aSendMessage]: ({ agentCardId, message, taskId }) =>
+        observeRpcEffect(
+          WS_METHODS.a2aSendMessage,
+          a2aClientService.sendMessage({
+            agentCardId,
+            message,
+            ...(taskId != null ? { taskId } : {}),
+          }).pipe(
+            Effect.map((task) => ({ task })),
+          ),
+          { "rpc.aggregate": "a2a" },
+        ),
+      [WS_METHODS.a2aGetTask]: ({ taskId }) =>
+        observeRpcEffect(WS_METHODS.a2aGetTask, a2aTaskService.getTask(taskId), {
+          "rpc.aggregate": "a2a",
+        }),
+      [WS_METHODS.a2aListTasks]: () =>
+        observeRpcEffect(WS_METHODS.a2aListTasks, a2aTaskService.listTasks(), {
+          "rpc.aggregate": "a2a",
+        }),
+      [WS_METHODS.a2aCancelTask]: ({ taskId }) =>
+        observeRpcEffect(WS_METHODS.a2aCancelTask, a2aTaskService.cancelTask(taskId), {
+          "rpc.aggregate": "a2a",
+        }),
+      [WS_METHODS.subscribeA2aEvents]: () =>
+        observeRpcStream(
+          WS_METHODS.subscribeA2aEvents,
+          a2aTaskService.streamEvents,
+          { "rpc.aggregate": "a2a" },
+        ),
     });
   }),
 );

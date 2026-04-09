@@ -418,8 +418,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <div className="flex justify-end">
               {/* Timestamp sits above the bubble, right-aligned, ~6px gap via mb-1.5 */}
-              <div className="flex flex-col items-end">
-                <div className="group relative max-w-[80%] rounded-2xl bg-secondary/50 px-3 py-2">
+              <div className="group flex flex-col items-end">
+                <div className="relative max-w-[80%] rounded-2xl bg-secondary/50 px-3 py-2">
                   {userImages.length > 0 && (
                     <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
                       {userImages.map(
@@ -464,28 +464,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       terminalContexts={terminalContexts}
                     />
                   )}
-                  {/* Only render when there's something — avoids phantom bottom padding from empty div */}
-                  {(displayedUserMessage.copyText || canRevertAgentWork) && (
-                    <div className="mt-1 flex items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
-                      {displayedUserMessage.copyText && (
-                        <MessageCopyButton text={displayedUserMessage.copyText} />
-                      )}
-                      {canRevertAgentWork && (
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          disabled={isRevertingCheckpoint || isWorking}
-                          onClick={() => onRevertUserMessage(row.message.id)}
-                          title="Revert to this message"
-                        >
-                          <Undo2Icon className="size-3" />
-                        </Button>
-                      )}
-                    </div>
-                  )}
                 </div>
-                {/* Timestamp above bubble, outside, right-aligned — 6px gap via mt-1.5 order */}
+                {/* Action buttons below bubble, only show on hover — prevents invisible space inside bubble */}
+                {(displayedUserMessage.copyText || canRevertAgentWork) && (
+                  <div className="mt-1 flex items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                    {displayedUserMessage.copyText && (
+                      <MessageCopyButton text={displayedUserMessage.copyText} />
+                    )}
+                    {canRevertAgentWork && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        disabled={isRevertingCheckpoint || isWorking}
+                        onClick={() => onRevertUserMessage(row.message.id)}
+                        title="Revert to this message"
+                      >
+                        <Undo2Icon className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {/* Timestamp above bubble, outside, right-aligned — 6px gap via mb-1.5 order */}
                 <p className="mb-1.5 order-first text-right text-[10px] text-muted-foreground/40">
                   {formatTimestamp(row.message.createdAt, timestampFormat)}
                 </p>

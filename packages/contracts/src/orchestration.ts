@@ -1,5 +1,6 @@
 import { Option, Schema, SchemaIssue, Struct } from "effect";
 import {
+  A2aModelOptions,
   ClaudeModelOptions,
   CodexModelOptions,
   GeminiModelOptions,
@@ -7,6 +8,7 @@ import {
   OllamaModelOptions,
   OpenCodeModelOptions,
 } from "./model";
+import { A2aAgentCardId } from "./a2a";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -38,6 +40,8 @@ export const ProviderKind = Schema.Literals([
   "ollama",
   // manifest = Manifest smart router: routes each request to the cheapest capable model automatically
   "manifest",
+  // a2a = A2A protocol: routes to external or internal agents via Agent-to-Agent protocol
+  "a2a",
 ]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
@@ -99,6 +103,15 @@ export const ManifestModelSelection = Schema.Struct({
 });
 export type ManifestModelSelection = typeof ManifestModelSelection.Type;
 
+// A2aModelSelection: routes to an external or internal agent via A2A protocol
+export const A2aModelSelection = Schema.Struct({
+  provider: Schema.Literal("a2a"),
+  model: TrimmedNonEmptyString, // agent card name or identifier
+  agentCardId: A2aAgentCardId, // target agent card
+  options: Schema.optionalKey(A2aModelOptions),
+});
+export type A2aModelSelection = typeof A2aModelSelection.Type;
+
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   ClaudeModelSelection,
@@ -106,8 +119,24 @@ export const ModelSelection = Schema.Union([
   OpenCodeModelSelection,
   OllamaModelSelection,
   ManifestModelSelection,
+  A2aModelSelection,
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
+
+// Non-A2A model selection: used by UI code that constructs {provider, model} generically
+// without an agentCardId. A2A requires agentCardId so it must be handled separately.
+export const NonA2aModelSelection = Schema.Union([
+  CodexModelSelection,
+  ClaudeModelSelection,
+  GeminiModelSelection,
+  OpenCodeModelSelection,
+  OllamaModelSelection,
+  ManifestModelSelection,
+]);
+export type NonA2aModelSelection = typeof NonA2aModelSelection.Type;
+
+// Provider kinds that do NOT require agentCardId for model selection
+export type NonA2aProviderKind = Exclude<ProviderKind, "a2a">;
 
 export const RuntimeMode = Schema.Literals(["approval-required", "full-access", "custom"]);
 export type RuntimeMode = typeof RuntimeMode.Type;

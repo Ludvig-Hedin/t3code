@@ -5,6 +5,7 @@ import {
   BellIcon,
   CodeIcon,
   GitBranchIcon,
+  NetworkIcon,
   PaletteIcon,
   PlugIcon,
   QrCodeIcon,
@@ -32,6 +33,7 @@ export type SettingsSectionPath =
   | "/settings/personalization"
   | "/settings/mobile"
   | "/settings/mcp"
+  | "/settings/a2a"
   | "/settings/archived";
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
@@ -47,6 +49,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Personalization", to: "/settings/personalization", icon: UserIcon },
   { label: "Mobile", to: "/settings/mobile", icon: QrCodeIcon },
   { label: "MCP & Plugins", to: "/settings/mcp", icon: PlugIcon },
+  { label: "A2A Agents", to: "/settings/a2a", icon: NetworkIcon },
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
 ];
 

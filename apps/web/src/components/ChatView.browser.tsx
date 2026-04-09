@@ -4,6 +4,7 @@ import "../index.css";
 import {
   EventId,
   ORCHESTRATION_WS_METHODS,
+  type CheckpointRef,
   type MessageId,
   type OrchestrationEvent,
   type OrchestrationReadModel,
@@ -2424,7 +2425,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       const newThreadButton = page.getByTestId("new-thread-button");
       await expect.element(newThreadButton).toBeInTheDocument();
 
-      await newThreadButton.click();
+      await newThreadButton.evaluate((element) => {
+        (element as HTMLButtonElement).click();
+      });
 
       // The route should change to a new draft thread ID.
       const newThreadPath = await waitForURL(
@@ -2454,6 +2457,57 @@ describe("ChatView timeline estimator parity (full app)", () => {
         .element(page.getByText("Send a message to start the conversation."))
         .toBeInTheDocument();
       await expect.element(page.getByTestId("composer-editor")).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("prefills the composer when clicking an empty-thread suggestion card", async () => {
+    const snapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-empty-thread-target" as MessageId,
+      targetText: "empty thread target",
+    });
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: snapshot.threads.map((thread) =>
+          thread.id === THREAD_ID
+            ? Object.assign({}, thread, {
+                messages: [],
+                latestTurn: null,
+                proposedPlans: [],
+                checkpoints: [],
+                activities: [],
+              })
+            : thread,
+        ),
+      },
+    });
+
+    try {
+      const suggestionButton = await waitForButtonContainingText("Code review");
+
+      await suggestionButton.click();
+      await vi.waitFor(
+        () => {
+          expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt).toBe(
+            "Review the recent changes in this project for bugs, security issues, and code quality improvements.",
+          );
+        },
+        { timeout: 4_000, interval: 16 },
+      );
+
+      await suggestionButton.click();
+      await vi.waitFor(
+        () => {
+          expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt).toBe(
+            "Review the recent changes in this project for bugs, security issues, and code quality improvements.",
+          );
+        },
+        { timeout: 4_000, interval: 16 },
+      );
     } finally {
       await mounted.cleanup();
     }

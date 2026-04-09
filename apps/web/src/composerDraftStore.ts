@@ -574,11 +574,13 @@ function normalizeModelSelection(
           : provider === "ollama"
             ? modelOptions?.ollama
             : modelOptions?.gemini;
+  // A2A model selections require agentCardId and are not constructed through this generic path.
+  // Type assertion is safe because normalizeProviderKind won't produce "a2a" from legacy data.
   return {
     provider,
     model,
     ...(options ? { options } : {}),
-  };
+  } as ModelSelection;
 }
 
 // ── Legacy sync helpers (used only during migration from v2 storage) ──
@@ -591,11 +593,12 @@ function legacySyncModelSelectionOptions(
     return null;
   }
   const options = modelOptions?.[modelSelection.provider];
+  // A2A model selections are not constructed through this legacy sync path.
   return {
     provider: modelSelection.provider,
     model: modelSelection.model,
     ...(options ? { options } : {}),
-  };
+  } as ModelSelection;
 }
 
 function legacyMergeModelSelectionIntoProviderModelOptions(
@@ -1708,11 +1711,13 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
               nextMap[normalized.provider] = normalized;
             } else {
               // No options in selection → preserve existing options, update provider+model
+              // A2A selections always carry agentCardId via the normalized object; this path
+              // only reconstructs non-A2A selections from provider+model.
               nextMap[normalized.provider] = {
                 provider: normalized.provider,
                 model: normalized.model,
                 ...(current?.options ? { options: current.options } : {}),
-              };
+              } as ModelSelection;
             }
           }
           const nextActiveProvider = normalized?.provider ?? base.activeProvider;
@@ -1804,11 +1809,12 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           const nextMap = { ...base.modelSelectionByProvider };
           const currentForProvider = nextMap[normalizedProvider];
           if (providerOpts) {
+            // A2A model options are not set through this generic provider options path.
             nextMap[normalizedProvider] = {
               provider: normalizedProvider,
               model: currentForProvider?.model ?? DEFAULT_MODEL_BY_PROVIDER[normalizedProvider],
               options: providerOpts,
-            };
+            } as ModelSelection;
           } else if (currentForProvider?.options) {
             const { options: _, ...rest } = currentForProvider;
             nextMap[normalizedProvider] = rest as ModelSelection;
@@ -1827,11 +1833,12 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
                 model: DEFAULT_MODEL_BY_PROVIDER[normalizedProvider],
               } as ModelSelection);
             if (providerOpts) {
+              // A2A model options are not set through this generic provider options path.
               nextStickyMap[normalizedProvider] = {
                 ...stickyBase,
                 provider: normalizedProvider,
                 options: providerOpts,
-              };
+              } as ModelSelection;
             } else if (stickyBase.options) {
               const { options: _, ...rest } = stickyBase;
               nextStickyMap[normalizedProvider] = rest as ModelSelection;

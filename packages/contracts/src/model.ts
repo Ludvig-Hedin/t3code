@@ -35,6 +35,10 @@ export type OllamaModelOptions = typeof OllamaModelOptions.Type;
 export const ManifestModelOptions = Schema.Struct({});
 export type ManifestModelOptions = typeof ManifestModelOptions.Type;
 
+// A2aModelOptions: no per-request options — delegated to remote agent
+export const A2aModelOptions = Schema.Struct({});
+export type A2aModelOptions = typeof A2aModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
@@ -42,6 +46,7 @@ export const ProviderModelOptions = Schema.Struct({
   opencode: Schema.optional(OpenCodeModelOptions),
   ollama: Schema.optional(OllamaModelOptions),
   manifest: Schema.optional(ManifestModelOptions),
+  a2a: Schema.optional(A2aModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 
@@ -78,6 +83,8 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
   ollama: "llama3.2",
   // manifest always uses "auto" — the router picks the actual model internally
   manifest: "auto",
+  // a2a uses the agent card name as the "model" identifier
+  a2a: "remote-agent",
 };
 
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
@@ -90,9 +97,13 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   opencode: "openrouter/moonshotai/kimi-k2.5",
   ollama: "llama3.2",
   manifest: "auto",
+  // a2a agents don't support text generation directly — placeholder
+  a2a: "remote-agent",
 };
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, string>> = {
+  // a2a has no aliases — agent card name is the identifier
+  a2a: {},
   codex: {
     "5.4": "gpt-5.4",
     "5.3": "gpt-5.3-codex",
@@ -165,4 +176,6 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   ollama: "Ollama",
   // "Auto" is the user-facing name — Manifest is the implementation detail
   manifest: "Auto",
+  // A2A agents: remote or internal agents via Agent-to-Agent protocol
+  a2a: "A2A Agent",
 };

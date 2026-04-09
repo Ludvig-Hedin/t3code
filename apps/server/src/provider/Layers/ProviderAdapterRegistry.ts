@@ -15,6 +15,7 @@ import {
   ProviderAdapterRegistry,
   type ProviderAdapterRegistryShape,
 } from "../Services/ProviderAdapterRegistry.ts";
+import { A2aAdapter } from "../Services/A2aAdapter.ts";
 import { ClaudeAdapter } from "../Services/ClaudeAdapter.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
 import { GeminiAdapter } from "../Services/GeminiAdapter.ts";
@@ -39,6 +40,7 @@ const makeProviderAdapterRegistry = Effect.fn("makeProviderAdapterRegistry")(fun
           yield* OpenCodeAdapter,
           yield* OllamaAdapter,
           yield* ManifestAdapter,
+          yield* A2aAdapter,
         ];
   const byProvider = new Map(adapters.map((adapter) => [adapter.provider, adapter]));
 

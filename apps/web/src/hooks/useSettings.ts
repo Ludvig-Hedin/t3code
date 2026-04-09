@@ -145,7 +145,9 @@ export function buildLegacyServerSettingsMigrationPatch(legacySettings: Record<s
   }
 
   if (Schema.is(ModelSelection)(legacySettings.textGenerationModelSelection)) {
-    patch.textGenerationModelSelection = legacySettings.textGenerationModelSelection;
+    // Legacy settings never contain A2A model selections; safe to assign to the patch type.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (patch as any).textGenerationModelSelection = legacySettings.textGenerationModelSelection;
   }
 
   if (typeof legacySettings.codexBinaryPath === "string") {

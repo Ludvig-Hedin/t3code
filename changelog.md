@@ -1,9 +1,68 @@
 # Changelog
 
+## [2026-04-10] [Fix] Infinite re-render loop in Sidebar — "Maximum update depth exceeded"
+- **Root cause:** Zustand selector `useStore((store) => store.projects.filter(...))` called `.filter()` inside the selector, creating a new array reference on every invocation. React's `useSyncExternalStore` (used internally by Zustand) re-checks snapshots during the passive effect commit phase — since `.filter()` always returns a new reference, `Object.is` always fails, forcing a re-render → infinite loop.
+- **Fix:** Moved `.filter()` out of the Zustand selector and into `useMemo`, reading the raw `store.projects` (stable reference) from the store instead.
+- **Files:** `apps/web/src/components/Sidebar.tsx`, `apps/web/src/routes/_chat.index.tsx`
+- **Introduced by:** commit `2aa3fc53` which changed from `store.projects` to `store.projects.filter(...)`.
+
+## [2026-04-09] [Fix] Reliability and consistency (setup CORS, A2A, memory-compiler, web types)
+- **Server:** `setupRoutes` 503 import response now includes `SETUP_CORS_HEADERS`; A2A JSON-RPC body uses `Effect.exit(request.json)` (no JS try/catch); safer JSON parsing in `A2aTaskServiceLive.taskFromRow`; `A2aClientServiceLive.sendMessage` defaults missing task status to `submitted`; `A2aAgentCardServiceLive` uses `Effect.catchCause` / `Effect.catch` (Effect v4); `A2aAdapter` maps send failures to `ProviderAdapterRequestError`, uses `Effect.catch` for cancel, cancels remote task in `stopSession`.
+- **Contracts:** Replaced invalid `Schema.Literals` with `Schema.Union([Schema.Literal(...)])` patterns used elsewhere in the package.
+- **Web:** `Project.deletedAt` aligned with other optional timestamps; `store.mapProject` normalizes null to undefined; DiffPanel project overview turn label; MessagesTimeline `group` on user-message column for hover actions.
+- **Mobile:** Stub `CheckpointDiffQuery` matches real method signatures and `CheckpointServiceError`.
+- **memory-compiler:** AGENTS.md hook examples match `uv run --directory memory-compiler`; session-end flush spawn sets `CLAUDE_INVOKED_BY` and `start_new_session` on Unix; stricter flush OK/error detection; `compile.py` requires KB output before state update; `config.py` honors `TIMEZONE`; utilities and query/flush robustness; knowledge index/log YAML frontmatter; Obsidian wikilinks without `.md` in sources.
+
+## [2026-04-08] [Feature] A2A Agents Web UI — store, settings panel, and route
+- Added `a2aStore.ts` Zustand store for managing A2A agent cards and tasks via WS RPC.
+- Added `A2aAgentsPanel.tsx` settings panel with agent list, discover/register form, expandable skill details, and remove action.
+- Added `settings.a2a.tsx` TanStack Router route for `/settings/a2a`.
+- Updated `SettingsSidebarNav.tsx` to include "A2A Agents" nav item with NetworkIcon.
+- Extended `wsRpcClient.ts` with `a2a` namespace exposing all 8 A2A RPC methods.
+- Files: `apps/web/src/a2aStore.ts`, `apps/web/src/components/settings/A2aAgentsPanel.tsx`, `apps/web/src/routes/settings.a2a.tsx`, `apps/web/src/components/settings/SettingsSidebarNav.tsx`, `apps/web/src/wsRpcClient.ts`
+
+## [2026-04-08] [Fix] Resolve type errors from A2aModelSelection requiring agentCardId
+- Added `NonA2aModelSelection` and `NonA2aProviderKind` types to contracts for future use.
+- Fixed type errors in web app where generic `{provider, model}` construction doesn't include `agentCardId`.
+- Used type assertions in composerDraftStore, ChatView, AutomationsManager, modelSelection where A2A is unreachable.
+- Narrowed `InstallProviderSettings.provider` to `Exclude<ProviderKind, "a2a">` in SettingsPanels since A2A has no binary/install settings.
+- Files: `packages/contracts/src/orchestration.ts`, `apps/web/src/composerDraftStore.ts`, `apps/web/src/components/ChatView.tsx`, `apps/web/src/components/AutomationsManager.tsx`, `apps/web/src/components/settings/SettingsPanels.tsx`, `apps/web/src/hooks/useSettings.ts`, `apps/web/src/modelSelection.ts`
+
+## [2026-04-08] [Feature] Claude Memory Compiler - Automatic knowledge base from conversations
+
+- **Setup:** Integrated [claude-memory-compiler](https://github.com/coleam00/claude-memory-compiler) into `memory-compiler/` directory.
+- **Hooks:** Configured SessionStart, SessionEnd, and PreCompact hooks in `.claude/settings.json` to automatically capture conversations into daily logs and inject knowledge context into every session.
+- **How it works:** Conversations are captured → flushed to `daily/YYYY-MM-DD.md` → compiled into `knowledge/` articles → injected back at session start. End-of-day auto-compilation runs after 6 PM.
+- **Files:**
+  - `memory-compiler/` — full memory compiler system (hooks, scripts, knowledge dirs)
+  - `.claude/settings.json` — added SessionStart, PreCompact, SessionEnd hooks
+  - `.gitignore` — added memory compiler runtime artifacts
+
+## [2026-04-08] [UX] Add immediate visual feedback when sending messages
+
+- **Web:** Added instant toast notification when message send begins (shows "Sending message..." or "Preparing worktree..." based on context).
+- **Web:** Enhanced send button to display "Sending..." or "Connecting..." text next to the spinner when actively sending, providing clear visual feedback immediately.
+- **Impact:** Users now get clear, immediate feedback when they click send — no more confusion about whether the message was submitted. Toast appears instantly and button shows spinning indicator with status text.
+- **Files:** 
+  - `apps/web/src/components/ChatView.tsx` — added `toastManager.add()` call immediately after `beginLocalDispatch()`
+  - `apps/web/src/components/chat/ComposerPrimaryActions.tsx` — wrapped button with status text that appears when sending/connecting, increased spinner size for better visibility
+
+## [2026-04-08] [Fix] User message bubble bottom spacing from hidden action buttons
+
+- **Web:** Moved action buttons (copy, revert) below the user message bubble instead of inside it.
+- **Impact:** Eliminates unwanted bottom padding in message bubbles; buttons now appear in dedicated space below the bubble on hover/focus.
+- **Files:** `apps/web/src/components/chat/MessagesTimeline.tsx` — repositioned buttons outside the `.rounded-2xl` bubble container but kept them in the flex column layout.
+
+## [2026-04-08] [Feature] Show thread token usage (input/output) setting
+
+- **Contracts:** Added `showThreadTokenUsage` boolean to `ClientSettingsSchema` (default: false).
+- **Web:** New `ThreadTokenUsage` component displays cumulative input/output tokens and last-turn breakdown next to the context window meter.
+- **Web:** Added toggle in General Settings → "Thread token usage" to enable/disable the display.
+
 ## [2026-04-08] [Fix] Desktop Finder path trim, API URL scheme, preview hardening
 
 - **Desktop:** `OPEN_IN_FINDER` passes trimmed paths to `shell.showItemInFolder`.
-- **Web:** `resolveApiUrl` maps `resolveServerUrl` scheme (ws/wss/http/https) to `http`/`https` instead of forcing `http`.
+- **Web:** `resolveApiUrl` preserves the correct HTTP scheme by reading the base URL via `resolveServerUrl` and mapping `ws`/`http` → `http` and `wss`/`https` → `https` (instead of always forcing `http`). See `resolveApiUrl` and `resolveServerUrl` in `apps/web/src/lib/utils.ts`.
 - **Server:** Standalone preview static file serving compares `fs.realpath` for app root and candidate paths to block symlink escape; DOCX extraction uses async `execFile` with timeout; `createStandaloneRenderer` reads files only per kind with an explicit `docx` branch.
 
 ## [2026-04-08] [Fix] Project sidebar context menu actions

@@ -19,6 +19,7 @@ import {
   useState,
 } from "react";
 import { openInPreferredEditor } from "../editorPreferences";
+import { useComposerDraftStore } from "../composerDraftStore";
 import { gitStatusQueryOptions } from "~/lib/gitReactQuery";
 import { checkpointDiffQueryOptions } from "~/lib/providerReactQuery";
 import { cn } from "~/lib/utils";
@@ -33,7 +34,11 @@ import { useStore } from "../store";
 import { useSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
+import { ChangedFilesTree } from "./chat/ChangedFilesTree";
+import { DiffStatLabel, hasNonZeroStat } from "./chat/DiffStatLabel";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
+import { summarizeTurnDiffStats } from "../lib/turnDiffTree";
+import type { Thread } from "../types";
 
 type DiffRenderMode = "stacked" | "split";
 type DiffThemeType = "light" | "dark";
@@ -184,9 +189,17 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const activeThread = useStore((store) =>
     activeThreadId ? store.threads.find((thread) => thread.id === activeThreadId) : undefined,
   );
-  const activeProjectId = activeThread?.projectId ?? null;
+  const activeDraftThread = useComposerDraftStore((store) =>
+    routeThreadId ? (store.draftThreadsByThreadId[routeThreadId] ?? null) : null,
+  );
+  const activeProjectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? null;
   const activeProject = useStore((store) =>
     activeProjectId ? store.projects.find((project) => project.id === activeProjectId) : undefined,
+  );
+  const threads = useStore((store) => store.threads);
+  const activeProjectThreads = useMemo(
+    () => (activeProjectId ? threads.filter((thread) => thread.projectId === activeProjectId) : []),
+    [activeProjectId, threads],
   );
   const activeCwd = activeThread?.worktreePath ?? activeProject?.cwd;
   const gitStatusQuery = useQuery(gitStatusQueryOptions(activeCwd ?? null));
@@ -414,6 +427,47 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
     selectedChip?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }, [selectedTurn?.turnId, selectedTurnId]);
 
+  const projectThreadDiffs = useMemo(() => {
+    return activeProjectThreads
+      .map((thread) => {
+        const latestSummary = thread.turnDiffSummaries.at(-1) ?? null;
+        return { thread, latestSummary };
+      })
+      .toSorted((left, right) => {
+        const leftTime =
+          left.latestSummary?.completedAt ?? left.thread.updatedAt ?? left.thread.createdAt;
+        const rightTime =
+          right.latestSummary?.completedAt ?? right.thread.updatedAt ?? right.thread.createdAt;
+        return rightTime.localeCompare(leftTime);
+      });
+  }, [activeProjectThreads]);
+
+  const navigateToThreadDiff = useCallback(
+    (threadId: Thread["id"], turnId: TurnId, filePath?: string) => {
+      void navigate({
+        to: "/$threadId",
+        params: { threadId },
+        search: (previous) => {
+          const rest = stripDiffSearchParams(previous);
+          return {
+            ...rest,
+            diff: "1",
+            diffTurnId: turnId,
+            ...(filePath ? { diffFilePath: filePath } : {}),
+          };
+        },
+      });
+    },
+    [navigate],
+  );
+  const makeProjectThreadDiffOpener = useCallback(
+    (threadId: Thread["id"]): ((turnId: TurnId, filePath?: string) => void) =>
+      (turnId: TurnId, filePath?: string) => {
+        navigateToThreadDiff(threadId, turnId, filePath);
+      },
+    [navigateToThreadDiff],
+  );
+
   const headerRow = (
     <>
       <div className="relative min-w-0 flex-1 [-webkit-app-region:no-drag]">
@@ -542,9 +596,149 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
     </>
   );
 
+  const projectOverviewHeaderRow = (
+    <>
+      <div className="relative min-w-0 flex-1 [-webkit-app-region:no-drag]">
+        <div className="flex min-w-0 items-center gap-2 px-2">
+          <div className="min-w-0">
+            <div className="text-[10px] leading-tight font-medium uppercase tracking-wide text-muted-foreground/70">
+              Project diffs
+            </div>
+            <div className="truncate text-sm font-medium text-foreground">
+              {activeProject?.name ?? "This project"}
+            </div>
+          </div>
+          <div className="text-[10px] leading-tight text-muted-foreground/70">
+            {projectThreadDiffs.length} thread{projectThreadDiffs.length === 1 ? "" : "s"}
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
+        <ToggleGroup
+          className="shrink-0"
+          variant="outline"
+          size="xs"
+          value={[diffRenderMode]}
+          onValueChange={(value) => {
+            const next = value[0];
+            if (next === "stacked" || next === "split") {
+              setDiffRenderMode(next);
+            }
+          }}
+        >
+          <Toggle aria-label="Stacked diff view" value="stacked">
+            <Rows3Icon className="size-3" />
+          </Toggle>
+          <Toggle aria-label="Split diff view" value="split">
+            <Columns2Icon className="size-3" />
+          </Toggle>
+        </ToggleGroup>
+        <Toggle
+          aria-label={diffWordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
+          title={diffWordWrap ? "Disable line wrapping" : "Enable line wrapping"}
+          variant="outline"
+          size="xs"
+          pressed={diffWordWrap}
+          onPressedChange={(pressed) => {
+            setDiffWordWrap(Boolean(pressed));
+          }}
+        >
+          <TextWrapIcon className="size-3" />
+        </Toggle>
+      </div>
+    </>
+  );
+
   return (
-    <DiffPanelShell mode={mode} header={headerRow}>
-      {!activeThread ? (
+    <DiffPanelShell
+      mode={mode}
+      header={activeThread ? headerRow : activeProjectId ? projectOverviewHeaderRow : headerRow}
+    >
+      {!activeThread && activeProjectId ? (
+        <div
+          ref={patchViewportRef}
+          className="diff-panel-viewport min-h-0 min-w-0 flex-1 overflow-auto p-2"
+        >
+          {projectThreadDiffs.length === 0 ? (
+            <div className="flex h-full items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+              No completed thread diffs yet in this project.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {projectThreadDiffs.map(({ thread, latestSummary }) => {
+                if (!latestSummary) {
+                  return (
+                    <article
+                      key={thread.id}
+                      className="overflow-hidden rounded-md border border-border/70 bg-card/30"
+                    >
+                      <div className="border-b border-border/60 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {thread.title}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/70">
+                            No completed turns yet
+                          </span>
+                        </div>
+                      </div>
+                      <div className="px-3 py-3 text-xs text-muted-foreground/70">
+                        This thread has not produced any turn diffs yet.
+                      </div>
+                    </article>
+                  );
+                }
+
+                const stat = summarizeTurnDiffStats(latestSummary.files);
+
+                return (
+                  <article
+                    key={thread.id}
+                    className="overflow-hidden rounded-md border border-border/70 bg-card/30"
+                  >
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 border-b border-border/60 px-3 py-2 text-left transition-colors hover:bg-background/50"
+                      onClick={() => navigateToThreadDiff(thread.id, latestSummary.turnId)}
+                    >
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {thread.title}
+                      </span>
+                      {hasNonZeroStat(stat) ? (
+                        <span className="flex items-center gap-0.5 text-[10px] font-medium tabular-nums">
+                          <DiffStatLabel additions={stat.additions} deletions={stat.deletions} />
+                        </span>
+                      ) : null}
+                      <span className="ml-auto text-[10px] text-muted-foreground/70">
+                        Turn{" "}
+                        {latestSummary.checkpointTurnCount ?? "?"}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/60">
+                        {formatShortTimestamp(latestSummary.completedAt, settings.timestampFormat)}
+                      </span>
+                    </button>
+                    <div className="p-2">
+                      {latestSummary.files.length > 0 ? (
+                        <ChangedFilesTree
+                          turnId={latestSummary.turnId}
+                          files={latestSummary.files}
+                          allDirectoriesExpanded={false}
+                          resolvedTheme={resolvedTheme}
+                          onOpenTurnDiff={makeProjectThreadDiffOpener(thread.id)}
+                        />
+                      ) : (
+                        <div className="px-1 py-1 text-xs text-muted-foreground/70">
+                          No file changes in this checkpoint.
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : !activeThread ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Select a thread to inspect turn diffs.
         </div>

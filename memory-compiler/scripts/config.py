@@ -1,0 +1,36 @@
+"""Path constants and configuration for the personal knowledge base."""
+
+from pathlib import Path
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+# ── Paths ──────────────────────────────────────────────────────────────
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DAILY_DIR = ROOT_DIR / "daily"
+KNOWLEDGE_DIR = ROOT_DIR / "knowledge"
+CONCEPTS_DIR = KNOWLEDGE_DIR / "concepts"
+CONNECTIONS_DIR = KNOWLEDGE_DIR / "connections"
+QA_DIR = KNOWLEDGE_DIR / "qa"
+REPORTS_DIR = ROOT_DIR / "reports"
+SCRIPTS_DIR = ROOT_DIR / "scripts"
+HOOKS_DIR = ROOT_DIR / "hooks"
+AGENTS_FILE = ROOT_DIR / "AGENTS.md"
+
+INDEX_FILE = KNOWLEDGE_DIR / "index.md"
+LOG_FILE = KNOWLEDGE_DIR / "log.md"
+STATE_FILE = SCRIPTS_DIR / "state.json"
+
+# ── Timezone ───────────────────────────────────────────────────────────
+TIMEZONE = "America/Chicago"
+
+
+def now_iso() -> str:
+    """Current time in ISO 8601 format (wall clock in configured TIMEZONE)."""
+    tz = ZoneInfo(TIMEZONE)
+    return datetime.now(timezone.utc).astimezone(tz).isoformat(timespec="seconds")
+
+
+def today_iso() -> str:
+    """Current date in ISO 8601 format (date in configured TIMEZONE)."""
+    tz = ZoneInfo(TIMEZONE)
+    return datetime.now(timezone.utc).astimezone(tz).strftime("%Y-%m-%d")

@@ -1247,8 +1247,13 @@ function SidebarFilterButton({
 }
 
 export default function Sidebar() {
-  const projects = useStore((store) =>
-    store.projects.filter((project) => project.deletedAt === null),
+  // Read raw projects array from store (stable reference) then filter in useMemo.
+  // IMPORTANT: .filter() inside a Zustand selector creates a new array on every call,
+  // which breaks useSyncExternalStore's Object.is check and causes an infinite re-render loop.
+  const allProjects = useStore((store) => store.projects);
+  const projects = useMemo(
+    () => allProjects.filter((project) => project.deletedAt === null),
+    [allProjects],
   );
   // bootstrapComplete flips to true once the server read model has been synced for the first time.
   // We use this to distinguish "still loading" from "genuinely no projects".

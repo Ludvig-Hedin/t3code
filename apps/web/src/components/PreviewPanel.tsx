@@ -203,6 +203,7 @@ function PreviewPanelInner({ projectId, onDetach }: PreviewPanelProps) {
   // exist — stable primitives/references, no infinite-loop risk.
   const activeSession = usePreviewStore(selectSession(projectId, activeApp?.id ?? ""));
   const activeLogs = usePreviewStore(selectLogs(projectId, activeApp?.id ?? ""));
+  const autoStartedStandaloneAppIds = useRef(new Set<string>());
 
   // Detect apps and subscribe to events on mount.
   useEffect(() => {
@@ -243,6 +244,21 @@ function PreviewPanelInner({ projectId, onDetach }: PreviewPanelProps) {
       unsubscribe?.();
     };
   }, [projectId, applyEvent, setApps, setDetectionStatus]);
+
+  useEffect(() => {
+    if (detectionStatus !== "done") return;
+    if (!activeApp || activeSession) return;
+    if (!activeApp.command.startsWith("preview-file ")) return;
+    const appKey = `${projectId}:${activeApp.id}`;
+    if (autoStartedStandaloneAppIds.current.has(appKey)) return;
+
+    autoStartedStandaloneAppIds.current.add(appKey);
+    void getWsRpcClient()
+      .preview.start({ projectId: projectId as ProjectId, appId: activeApp.id })
+      .catch(() => {
+        autoStartedStandaloneAppIds.current.delete(appKey);
+      });
+  }, [activeApp, activeSession, detectionStatus, projectId]);
 
   const handleStart = useCallback(
     (app: PreviewApp) => {

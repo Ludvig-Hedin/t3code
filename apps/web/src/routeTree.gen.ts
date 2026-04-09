@@ -25,6 +25,7 @@ import { Route as SettingsGitRouteImport } from './routes/settings.git'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
+import { Route as SettingsA2aRouteImport } from './routes/settings.a2a'
 import { Route as PopoutThreadIdRouteImport } from './routes/popout.$threadId'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
 
@@ -107,6 +108,11 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   path: '/appearance',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsA2aRoute = SettingsA2aRouteImport.update({
+  id: '/a2a',
+  path: '/a2a',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const PopoutThreadIdRoute = PopoutThreadIdRouteImport.update({
   id: '/popout/$threadId',
   path: '/popout/$threadId',
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
   '/popout/$threadId': typeof PopoutThreadIdRoute
+  '/settings/a2a': typeof SettingsA2aRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
   '/popout/$threadId': typeof PopoutThreadIdRoute
+  '/settings/a2a': typeof SettingsA2aRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -165,6 +173,7 @@ export interface FileRoutesById {
   '/skills': typeof SkillsRoute
   '/_chat/$threadId': typeof ChatThreadIdRoute
   '/popout/$threadId': typeof PopoutThreadIdRoute
+  '/settings/a2a': typeof SettingsA2aRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/skills'
     | '/$threadId'
     | '/popout/$threadId'
+    | '/settings/a2a'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/skills'
     | '/$threadId'
     | '/popout/$threadId'
+    | '/settings/a2a'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/skills'
     | '/_chat/$threadId'
     | '/popout/$threadId'
+    | '/settings/a2a'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
@@ -362,6 +374,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/a2a': {
+      id: '/settings/a2a'
+      path: '/a2a'
+      fullPath: '/settings/a2a'
+      preLoaderRoute: typeof SettingsA2aRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/popout/$threadId': {
       id: '/popout/$threadId'
       path: '/popout/$threadId'
@@ -392,6 +411,7 @@ const ChatRouteChildren: ChatRouteChildren = {
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsA2aRoute: typeof SettingsA2aRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
@@ -404,6 +424,7 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsA2aRoute: SettingsA2aRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,

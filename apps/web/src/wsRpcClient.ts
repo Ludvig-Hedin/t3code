@@ -1,4 +1,13 @@
 import {
+  type A2aAgentCard,
+  type A2aAgentCardId,
+  type A2aCancelTaskInput,
+  type A2aGetTaskInput,
+  type A2aMessageSendInput,
+  type A2aMessageSendResult,
+  type A2aRegisterAgentInput,
+  type A2aRemoveAgentInput,
+  type A2aTask,
   type GitActionProgressEvent,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
@@ -148,6 +157,16 @@ export interface WsRpcClient {
       patch: { label?: string; command?: string; cwd?: string; type?: "browser" | "logs" };
     }) => Promise<PreviewApp>;
     readonly onEvent: (projectId: ProjectId, listener: (event: PreviewEvent) => void) => () => void;
+  };
+  readonly a2a: {
+    readonly listAgents: () => Promise<readonly A2aAgentCard[]>;
+    readonly registerAgent: (input: A2aRegisterAgentInput) => Promise<A2aAgentCard>;
+    readonly removeAgent: (input: A2aRemoveAgentInput) => Promise<void>;
+    readonly discoverAgent: (input: { url: string }) => Promise<A2aAgentCard>;
+    readonly sendMessage: (input: A2aMessageSendInput) => Promise<A2aMessageSendResult>;
+    readonly getTask: (input: A2aGetTaskInput) => Promise<A2aTask>;
+    readonly listTasks: () => Promise<readonly A2aTask[]>;
+    readonly cancelTask: (input: A2aCancelTaskInput) => Promise<A2aTask>;
   };
 }
 
@@ -332,6 +351,28 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
           (client) => client[WS_METHODS.subscribePreviewEvents]({ projectId }),
           listener,
         ),
+    },
+    a2a: {
+      listAgents: () =>
+        transport
+          .request((client) => client[WS_METHODS.a2aListAgents]({}))
+          .then((agents) => [...agents]),
+      registerAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.a2aRegisterAgent](input)),
+      removeAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.a2aRemoveAgent](input)),
+      discoverAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.a2aDiscoverAgent](input)),
+      sendMessage: (input) =>
+        transport.request((client) => client[WS_METHODS.a2aSendMessage](input)),
+      getTask: (input) =>
+        transport.request((client) => client[WS_METHODS.a2aGetTask](input)),
+      listTasks: () =>
+        transport
+          .request((client) => client[WS_METHODS.a2aListTasks]({}))
+          .then((tasks) => [...tasks]),
+      cancelTask: (input) =>
+        transport.request((client) => client[WS_METHODS.a2aCancelTask](input)),
     },
   };
 }

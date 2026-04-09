@@ -18,6 +18,7 @@ import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useStat
 import {
   type CodeReviewFixMode,
   EDITORS,
+  type ModelSelection,
   PROVIDER_DISPLAY_NAMES,
   type ProviderKind,
   type ServerProvider,
@@ -111,7 +112,8 @@ const TIMESTAMP_FORMAT_LABELS = {
 } as const;
 
 type InstallProviderSettings = {
-  provider: ProviderKind;
+  // A2A providers don't have binary/install settings; exclude from this UI config.
+  provider: Exclude<ProviderKind, "a2a">;
   title: string;
   binaryPlaceholder: string;
   binaryDescription: ReactNode;
@@ -889,6 +891,32 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        <SettingsRow
+          title="Thread token usage"
+          description="Show input and output token counts for each thread next to the context window meter."
+          resetAction={
+            settings.showThreadTokenUsage !== DEFAULT_UNIFIED_SETTINGS.showThreadTokenUsage ? (
+              <SettingResetButton
+                label="thread token usage"
+                onClick={() =>
+                  updateSettings({
+                    showThreadTokenUsage: DEFAULT_UNIFIED_SETTINGS.showThreadTokenUsage,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.showThreadTokenUsage}
+              onCheckedChange={(checked) =>
+                updateSettings({ showThreadTokenUsage: Boolean(checked) })
+              }
+              aria-label="Show thread token usage"
+            />
+          }
+        />
       </SettingsSection>
 
       {/* Confirmation dialogs */}
@@ -1240,7 +1268,7 @@ function ProviderCard({
   providerConfig: AnyProviderConfig;
   defaultProviderConfig: AnyProviderConfig;
   customModelOptions: ReadonlyArray<string>;
-  onUpdateProviderConfig: (provider: ProviderKind, patch: Partial<AnyProviderConfig>) => void;
+  onUpdateProviderConfig: (provider: Exclude<ProviderKind, "a2a">, patch: Partial<AnyProviderConfig>) => void;
 }) {
   const [customModelInput, setCustomModelInput] = useState("");
   const [customModelError, setCustomModelError] = useState<string | null>(null);
@@ -1448,7 +1476,7 @@ export function ProvidersSettingsPanel() {
   const serverProviders = useServerProviders();
 
   const handleUpdateProviderConfig = useCallback(
-    (provider: ProviderKind, patch: Partial<AnyProviderConfig>) => {
+    (provider: Exclude<ProviderKind, "a2a">, patch: Partial<AnyProviderConfig>) => {
       updateSettings({
         providers: {
           ...settings.providers,
@@ -1537,7 +1565,8 @@ export function GitSettingsPanel() {
 
   const handleModelChange = useCallback(
     (provider: ProviderKind, model: string) => {
-      updateSettings({ textGenerationModelSelection: { provider, model } });
+      // A2A model selection requires agentCardId and is not set through this settings UI.
+      updateSettings({ textGenerationModelSelection: { provider, model } as ModelSelection });
     },
     [updateSettings],
   );

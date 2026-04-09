@@ -161,6 +161,8 @@ export const PROVIDER_SLASH_COMMANDS: Record<ProviderKind, readonly ProviderSlas
   ollama: [],
   // manifest routes to Manifest smart router — no provider-specific slash commands
   manifest: [],
+  // a2a = Agent-to-Agent protocol — no provider-specific slash commands
+  a2a: [],
 };
 
 /**

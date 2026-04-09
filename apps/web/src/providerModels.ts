@@ -32,6 +32,8 @@ export function getProviderModelsByProvider(
     opencode: getProviderModels(providers, "opencode"),
     ollama: getProviderModels(providers, "ollama"),
     manifest: getProviderModels(providers, "manifest"),
+    // a2a has no hardcoded models — remote agents are discovered dynamically
+    a2a: getProviderModels(providers, "a2a"),
   };
 }
 

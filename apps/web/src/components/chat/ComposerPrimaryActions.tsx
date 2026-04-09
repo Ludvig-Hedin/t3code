@@ -232,50 +232,59 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         ? "Sending"
         : sendShortcutLabel;
 
+  // Show text feedback when sending or connecting to make it more obvious
+  const showStatusText = isSendBusy || isConnecting;
+  const statusText = isConnecting ? "Connecting..." : isSendBusy ? "Sending..." : null;
+
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="submit"
-            className="flex h-9 w-9 enabled:cursor-pointer items-center justify-center rounded-full bg-foreground/90 text-background transition-all duration-150 hover:bg-foreground hover:scale-105 disabled:pointer-events-none disabled:opacity-30 disabled:hover:scale-100 sm:h-8 sm:w-8"
-            disabled={isSendBusy || isConnecting || !hasSendableContent}
-            aria-label={statusLabel}
-          />
-        }
-      >
-        {isConnecting || isSendBusy ? (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            className="animate-spin"
-            aria-hidden="true"
-          >
-            <circle
-              cx="7"
-              cy="7"
-              r="5.5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeDasharray="20 12"
+    <div className="flex items-center gap-2">
+      {showStatusText && (
+        <span className="text-xs text-muted-foreground animate-pulse">{statusText}</span>
+      )}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="submit"
+              className="flex h-9 w-9 enabled:cursor-pointer items-center justify-center rounded-full bg-foreground/90 text-background transition-all duration-150 hover:bg-foreground hover:scale-105 disabled:pointer-events-none disabled:opacity-30 disabled:hover:scale-100 sm:h-8 sm:w-8"
+              disabled={isSendBusy || isConnecting || !hasSendableContent}
+              aria-label={statusLabel}
             />
-          </svg>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-            <path
-              d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </TooltipTrigger>
-      <TooltipPopup side="top">{statusLabel}</TooltipPopup>
-    </Tooltip>
+          }
+        >
+          {isConnecting || isSendBusy ? (
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              className="animate-spin"
+              aria-hidden="true"
+            >
+              <circle
+                cx="8"
+                cy="8"
+                r="6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeDasharray="22 14"
+              />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path
+                d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </TooltipTrigger>
+        <TooltipPopup side="top">{statusLabel}</TooltipPopup>
+      </Tooltip>
+    </div>
   );
 });

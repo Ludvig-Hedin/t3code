@@ -181,6 +181,7 @@ import { AppPageHeader, AppPageHeaderLeading } from "./AppPageHeader";
 import { isPopoutWindow } from "../env";
 import { openThreadPopout } from "../popoutWindowStore";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
+import { ThreadTokenUsage } from "./chat/ThreadTokenUsage";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
@@ -1260,12 +1261,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
+  // A2A model selections are constructed separately with agentCardId; this generic
+  // path only handles standard (non-A2A) providers selected via the composer UI.
   const selectedModelSelection = useMemo<ModelSelection>(
-    () => ({
-      provider: selectedProvider,
-      model: selectedModel,
-      ...(selectedModelOptionsForDispatch ? { options: selectedModelOptionsForDispatch } : {}),
-    }),
+    () =>
+      ({
+        provider: selectedProvider,
+        model: selectedModel,
+        ...(selectedModelOptionsForDispatch ? { options: selectedModelOptionsForDispatch } : {}),
+      }) as ModelSelection,
     [selectedModel, selectedModelOptionsForDispatch, selectedProvider],
   );
   const selectedModelForPicker = selectedModel;
@@ -3415,6 +3419,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     sendInFlightRef.current = true;
     beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
 
+    // Show immediate feedback that the message is being sent
+    toastManager.add({
+      type: "default",
+      description: baseBranchForWorktree ? "Preparing worktree..." : "Sending message...",
+    });
+
     const composerImagesSnapshot = [...composerImages];
     const composerFilesSnapshot = [...composerFiles];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
@@ -3521,6 +3531,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
       }
       const title = truncate(titleSeed);
+      // A2A model selections are not constructed through the thread creation UI path.
       const threadCreateModelSelection: ModelSelection = {
         provider: selectedProvider,
         model:
@@ -3528,7 +3539,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           activeProject.defaultModelSelection?.model ||
           DEFAULT_MODEL_BY_PROVIDER.codex,
         ...(selectedModelSelection.options ? { options: selectedModelSelection.options } : {}),
-      };
+      } as ModelSelection;
 
       // Auto-title from first message
       if (isFirstMessage && isServerThread) {
@@ -4082,10 +4093,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
         providerStatuses,
         model,
       );
+      // A2A selections are not reachable from the provider/model picker UI.
       const nextModelSelection: ModelSelection = {
         provider: resolvedProvider,
         model: resolvedModel,
-      };
+      } as ModelSelection;
       setComposerDraftModelSelection(activeThread.id, nextModelSelection);
       setStickyComposerModelSelection(nextModelSelection);
       scheduleComposerFocus();
@@ -4692,7 +4704,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         onClick={() => {
                           // Pre-fill the real composer with the suggestion text and focus it
                           setPrompt(suggestion.prompt);
-                          composerEditorRef.current?.focusAtEnd();
+                          scheduleComposerFocus();
                         }}
                       >
                         <suggestion.icon className="size-5 text-muted-foreground" />
@@ -5161,10 +5173,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                       >
                         {activeContextWindow ? (
-                          <ContextWindowMeter
-                            usage={activeContextWindow}
-                            {...(isServerThread ? { onCompact: handleCompactContext } : {})}
-                          />
+                          <>
+                            {/* Per-thread input/output token counter — enabled via settings */}
+                            {settings.showThreadTokenUsage ? (
+                              <ThreadTokenUsage usage={activeContextWindow} />
+                            ) : null}
+                            <ContextWindowMeter
+                              usage={activeContextWindow}
+                              {...(isServerThread ? { onCompact: handleCompactContext } : {})}
+                            />
+                          </>
                         ) : null}
                         {isPreparingWorktree ? (
                           <span className="text-muted-foreground/70 text-xs">

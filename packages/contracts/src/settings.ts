@@ -44,6 +44,9 @@ export const ClientSettingsSchema = Schema.Struct({
   // Plugin names the user has explicitly disabled; defaults to empty (all plugins active)
   disabledPlugins: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
 
+  // Thread token usage — show input/output token counts per thread in the composer area
+  showThreadTokenUsage: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+
   // Appearance
   // Enabled by default — pointer cursors are generally preferred UX
   usePointerCursors: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),

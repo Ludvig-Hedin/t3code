@@ -19,6 +19,51 @@ export interface DetectionCandidate {
   type: PreviewType;
 }
 
+export type StandalonePreviewKind = "html" | "markdown" | "tsx" | "docx";
+
+const STANDALONE_PREVIEW_COMMAND_PREFIX = "preview-file";
+
+interface StandalonePreviewPayload {
+  readonly relativePath: string;
+  readonly kind: StandalonePreviewKind;
+}
+
+function encodeStandalonePreviewPayload(payload: StandalonePreviewPayload): string {
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+export function createStandalonePreviewCommand(input: StandalonePreviewPayload): string {
+  return `${STANDALONE_PREVIEW_COMMAND_PREFIX} ${encodeStandalonePreviewPayload(input)}`;
+}
+
+function decodeStandalonePreviewCommand(command: string): StandalonePreviewPayload | null {
+  const [prefix, payload] = command.trim().split(/\s+/, 2);
+  if (prefix !== STANDALONE_PREVIEW_COMMAND_PREFIX || !payload) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as Partial<StandalonePreviewPayload>;
+    if (
+      typeof parsed.relativePath !== "string" ||
+      typeof parsed.kind !== "string" ||
+      !["html", "markdown", "tsx", "docx"].includes(parsed.kind)
+    ) {
+      return null;
+    }
+
+    return { relativePath: parsed.relativePath, kind: parsed.kind };
+  } catch {
+    return null;
+  }
+}
+
+export function parseStandalonePreviewCommand(command: string): StandalonePreviewPayload | null {
+  return decodeStandalonePreviewCommand(command);
+}
+
 /** Port patterns emitted by common dev servers. Returns port number or null. */
 export function detectPortFromLine(line: string): number | null {
   const patterns = [
@@ -73,6 +118,21 @@ const KNOWN_SUBDIRS: Array<{
   { pathFragment: "packages/", id: "", label: "", type: "logs" }, // skip packages/
 ];
 
+const STANDALONE_FILE_PREVIEW_RULES: Array<{
+  ext: string;
+  kind: StandalonePreviewKind;
+  id: string;
+  label: string;
+}> = [
+  { ext: ".html", kind: "html", id: "html", label: "HTML" },
+  { ext: ".htm", kind: "html", id: "html", label: "HTML" },
+  { ext: ".md", kind: "markdown", id: "markdown", label: "Markdown" },
+  { ext: ".mdx", kind: "markdown", id: "markdown", label: "Markdown" },
+  { ext: ".tsx", kind: "tsx", id: "tsx", label: "TSX" },
+  { ext: ".jsx", kind: "tsx", id: "tsx", label: "JSX" },
+  { ext: ".docx", kind: "docx", id: "docx", label: "Docx" },
+];
+
 function devCommand(pm: PackageManager): string {
   if (pm === "bun") return "bun run dev";
   if (pm === "pnpm") return "pnpm run dev";
@@ -96,9 +156,30 @@ export function buildDetectionCandidates(
     rootFiles.push("bun.lock");
   }
   const pm = detectPackageManager(rootFiles);
+  const standaloneCandidates = new Map<string, DetectionCandidate>();
 
   for (const entry of entries) {
     const rel = entry.relativePath.replace(/\\/g, "/");
+    const basename = path.basename(rel);
+
+    const standaloneRule = STANDALONE_FILE_PREVIEW_RULES.find((rule) =>
+      basename.toLowerCase().endsWith(rule.ext),
+    );
+    if (standaloneRule) {
+      const id = standaloneRule.id;
+      if (!seenIds.has(id) && !standaloneCandidates.has(id)) {
+        standaloneCandidates.set(id, {
+          id,
+          label: standaloneRule.label,
+          command: createStandalonePreviewCommand({
+            relativePath: rel,
+            kind: standaloneRule.kind,
+          }),
+          cwd: projectRoot,
+          type: "browser",
+        });
+      }
+    }
 
     // --- manage.py → Django ---
     if (rel === "manage.py") {
@@ -206,6 +287,33 @@ export function buildDetectionCandidates(
       });
     }
   }
+
+  for (const candidate of standaloneCandidates.values()) {
+    if (!seenIds.has(candidate.id)) {
+      seenIds.add(candidate.id);
+      candidates.push(candidate);
+    }
+  }
+
+  candidates.sort((left, right) => {
+    const order: Record<string, number> = {
+      html: 0,
+      markdown: 1,
+      tsx: 2,
+      docx: 3,
+      web: 10,
+      api: 20,
+      app: 30,
+      server: 40,
+      desktop: 50,
+      mobile: 60,
+      marketing: 70,
+    };
+    const leftOrder = order[left.id] ?? 100;
+    const rightOrder = order[right.id] ?? 100;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return left.label.localeCompare(right.label);
+  });
 
   return candidates;
 }

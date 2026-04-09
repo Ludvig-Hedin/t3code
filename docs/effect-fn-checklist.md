@@ -2,6 +2,8 @@
 
 Generated from a repo scan for non-test wrapper-style candidates matching either `=> Effect.gen(function* ...)` or `return Effect.gen(function* ...)`.
 
+> Current repo note: this codebase is on `effect@4.0.0-beta.43`, where typed recovery uses `Effect.catch(...)`. Older `Effect.catchAll(...)` call sites will crash at runtime if they make it into the bundle.
+
 Refactor Method:
 
 ```ts

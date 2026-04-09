@@ -10,7 +10,7 @@ import * as nodeFs from "node:fs/promises";
 import * as os from "node:os";
 import * as nodePath from "node:path";
 import { promisify } from "node:util";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import {
   CommandId,
@@ -198,7 +198,7 @@ export const setupOptionsRouteLayer = HttpRouter.add(
  */
 export const importExecuteRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
-    const engine = yield* OrchestrationEngineService;
+    const engineOption = yield* Effect.serviceOption(OrchestrationEngineService);
 
     // Build the set of allowed history roots once so we can validate each
     // request's historyPath against it (defence-in-depth on a local server).
@@ -218,6 +218,16 @@ export const importExecuteRouteLayer = Layer.unwrap(
       "POST",
       "/api/setup/import/execute",
       Effect.gen(function* () {
+        if (Option.isNone(engineOption)) {
+          return HttpServerResponse.setHeaders(
+            HttpServerResponse.jsonUnsafe(
+              { error: "Orchestration engine unavailable" },
+              { status: 503 },
+            ),
+            SETUP_CORS_HEADERS,
+          );
+        }
+        const engine = engineOption.value;
         // Parse request body — return 400 explicitly instead of silently
         // returning an empty selection list, so callers see why their request failed.
         // Effect.result wraps the outcome in Result<A,E> (not Exit): Success uses
@@ -265,7 +275,7 @@ export const importExecuteRouteLayer = Layer.unwrap(
           };
 
           // Only increment the counter when the dispatch actually succeeded.
-          // Effect.catch is the Effect v4 name for typed error recovery (replaces v3 catchAll).
+          // Effect.catch is the typed error recovery helper used by the installed Effect v4 beta.
           const projectResult = yield* engine.dispatch(projectCommand).pipe(
             Effect.catch((err) => {
               errors.push(`Dispatch project "${selection.projectName}": ${String(err)}`);

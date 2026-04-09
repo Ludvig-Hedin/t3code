@@ -1,5 +1,7 @@
 import {
   ClientOrchestrationCommand,
+  type OrchestrationGetFullThreadDiffInput,
+  type OrchestrationGetTurnDiffInput,
   type OrchestrationReadModel,
   type ThreadId,
   TrimmedNonEmptyString,
@@ -14,6 +16,7 @@ import {
   Headers as HttpHeaders,
 } from "effect/unstable/http";
 
+import { CheckpointInvariantError } from "./checkpointing/Errors.ts";
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
 import { ServerConfig } from "./config";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer";
@@ -118,9 +121,9 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
     const config = yield* ServerConfig;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const orchestrationEngine = yield* OrchestrationEngineService;
-    const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
-    const checkpointDiffQuery = yield* CheckpointDiffQuery;
+    const orchestrationEngineOption = yield* Effect.serviceOption(OrchestrationEngineService);
+    const projectionSnapshotQueryOption = yield* Effect.serviceOption(ProjectionSnapshotQuery);
+    const checkpointDiffQueryOption = yield* Effect.serviceOption(CheckpointDiffQuery);
     const devicesRef = yield* Ref.make<ReadonlyArray<DeviceRecord>>([]);
 
     const readRegistry = Effect.gen(function* () {
@@ -192,7 +195,21 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
         }),
       );
 
-    const loadSnapshot = () => projectionSnapshotQuery.getSnapshot();
+    const loadSnapshotOption = () =>
+      Option.match(projectionSnapshotQueryOption, {
+        onNone: () => Effect.fail(new Error("Projection snapshot query unavailable.")),
+        onSome: (projectionSnapshotQuery) => projectionSnapshotQuery.getSnapshot(),
+      });
+    const checkpointDiffUnavailable = new CheckpointInvariantError({
+      operation: "CheckpointDiffQuery",
+      detail: "Checkpoint diff query unavailable.",
+    });
+    const checkpointDiffQuery = Option.getOrElse(checkpointDiffQueryOption, () => ({
+      getTurnDiff: (_input: OrchestrationGetTurnDiffInput) =>
+        Effect.fail(checkpointDiffUnavailable),
+      getFullThreadDiff: (_input: OrchestrationGetFullThreadDiffInput) =>
+        Effect.fail(checkpointDiffUnavailable),
+    }));
 
     const revokeDeviceById = (deviceId: string) =>
       replaceDevices((devices) =>
@@ -296,7 +313,7 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
         if (Option.isNone(device)) {
           return unauthorized("Unknown or revoked device token.");
         }
-        const snapshot = yield* loadSnapshot();
+        const snapshot = yield* loadSnapshotOption();
         return serializeSnapshot(snapshot, device.value);
       }),
     );
@@ -314,6 +331,13 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
         if (Option.isNone(device)) {
           return unauthorized("Unknown or revoked device token.");
         }
+        if (Option.isNone(orchestrationEngineOption)) {
+          return HttpServerResponse.jsonUnsafe(
+            { error: "Orchestration engine unavailable" },
+            { status: 503 },
+          );
+        }
+        const orchestrationEngine = orchestrationEngineOption.value;
         const command = yield* HttpServerRequest.schemaBodyJson(ClientOrchestrationCommand).pipe(
           Effect.catch(() => Effect.succeed(null)),
         );
@@ -323,7 +347,7 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
 
         const normalizedCommand = yield* normalizeDispatchCommand(command);
         const result = yield* orchestrationEngine.dispatch(normalizedCommand);
-        const snapshot = yield* loadSnapshot();
+        const snapshot = yield* loadSnapshotOption();
         return HttpServerResponse.jsonUnsafe({
           result,
           snapshot,

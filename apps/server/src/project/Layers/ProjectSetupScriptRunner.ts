@@ -1,5 +1,5 @@
 import { projectScriptRuntimeEnv, setupProjectScript } from "@t3tools/shared/projectScripts";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { TerminalManager } from "../../terminal/Services/Manager.ts";
@@ -9,11 +9,15 @@ import {
 } from "../Services/ProjectSetupScriptRunner.ts";
 
 const makeProjectSetupScriptRunner = Effect.gen(function* () {
-  const orchestrationEngine = yield* OrchestrationEngineService;
+  const orchestrationEngineOption = yield* Effect.serviceOption(OrchestrationEngineService);
   const terminalManager = yield* TerminalManager;
 
   const runForThread: ProjectSetupScriptRunnerShape["runForThread"] = (input) =>
     Effect.gen(function* () {
+      if (Option.isNone(orchestrationEngineOption)) {
+        return yield* Effect.fail(new Error("Orchestration engine unavailable."));
+      }
+      const orchestrationEngine = orchestrationEngineOption.value;
       const readModel = yield* orchestrationEngine.getReadModel();
       const project =
         (input.projectId

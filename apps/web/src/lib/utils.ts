@@ -89,12 +89,32 @@ export const resolveServerUrl = (options?: {
   return parsedUrl.toString();
 };
 
+function httpProtocolFromServerBase(): "http" | "https" {
+  try {
+    const base = resolveServerUrl({ pathname: "/" });
+    const { protocol } = new URL(base);
+    const scheme = protocol.replace(":", "").toLowerCase();
+    if (scheme === "wss" || scheme === "https") {
+      return "https";
+    }
+    if (scheme === "ws" || scheme === "http") {
+      return "http";
+    }
+  } catch {
+    /* fall through */
+  }
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    return "https";
+  }
+  return "http";
+}
+
 export const resolveApiUrl = (options: {
   pathname: string;
   searchParams?: Record<string, string>;
 }): string =>
   resolveServerUrl({
-    protocol: "http",
+    protocol: httpProtocolFromServerBase(),
     pathname: options.pathname,
     searchParams: options.searchParams,
   });

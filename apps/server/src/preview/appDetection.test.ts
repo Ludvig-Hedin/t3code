@@ -3,7 +3,8 @@ import {
   detectPortFromLine,
   buildDetectionCandidates,
   detectPackageManager,
-  type DetectionCandidate,
+  createStandalonePreviewCommand,
+  parseStandalonePreviewCommand,
 } from "./appDetection";
 
 describe("detectPortFromLine", () => {
@@ -64,6 +65,33 @@ describe("buildDetectionCandidates", () => {
     const entries = [{ relativePath: "manage.py", hasDevScript: false, hasBunLock: false }];
     const candidates = buildDetectionCandidates("/repo", entries);
     expect(candidates.some((c) => c.command.includes("manage.py"))).toBe(true);
+  });
+
+  it("detects a standalone html file", () => {
+    const entries = [{ relativePath: "index.html", hasDevScript: false, hasBunLock: false }];
+    const candidates = buildDetectionCandidates("/repo", entries);
+    const html = candidates.find((c) => c.id === "html");
+    expect(html).toMatchObject({
+      id: "html",
+      label: "HTML",
+      cwd: "/repo",
+      type: "browser",
+    });
+    expect(parseStandalonePreviewCommand(html?.command ?? "")).toEqual({
+      relativePath: "index.html",
+      kind: "html",
+    });
+  });
+
+  it("encodes standalone preview commands", () => {
+    const command = createStandalonePreviewCommand({
+      relativePath: "notes.md",
+      kind: "markdown",
+    });
+    expect(parseStandalonePreviewCommand(command)).toEqual({
+      relativePath: "notes.md",
+      kind: "markdown",
+    });
   });
 });
 
