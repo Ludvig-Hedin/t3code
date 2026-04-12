@@ -1,5 +1,18 @@
 # Changelog
 
+## [2026-04-13] [Fix] Chat turns now surface quiet/stalled execution and always expose stop
+
+- **Root cause:** The chat UI only knew whether a session was generically `running`; it did not distinguish between active visible progress, expected waiting, or silence after the provider/CLI stopped emitting events. That made long tool runs and broken streams look identical to users. The stop action also lived primarily in the composer footer, so it was not reliably visible in every layout.
+- **Fix:** Added client-side liveness classification from orchestration activity timestamps so running turns now surface as `working`, `waiting`, `quiet`, or `stalled`. The main header and popout header now show a persistent execution badge plus a stop button, keeping interruption available even when the composer controls are out of view.
+- **Files:** `apps/web/src/session-logic.ts`, `apps/web/src/session-logic.test.ts`, `apps/web/src/components/ChatView.tsx`, `apps/web/src/components/chat/ChatHeader.tsx`, `apps/web/src/components/chat/PopoutChatHeader.tsx`
+
+## [2026-04-13] [Chore] Rebuilt prod/dev brand rasters from `assets/new` logos
+
+- **Prod** (`assets/prod`): macOS/Linux1024, web favicons, Windows ICO, and `logo.svg` now derive from `assets/new/logo-dark.png` / `logo-dark.svg`.
+- **Dev** (`assets/dev`): blueprint-named rasters and `logo.svg` now derive from `assets/new/logo-light.png` / `logo-light.svg`.
+- **Desktop dev bundle:** `apps/desktop/resources/icon.icns`, `icon.png`, and `icon.iconset/` regenerated from `logo-light.png` so local Electron matches the dev asset set; release DMG still uses prod mac icon via `black-macos-1024.png`.
+- **Files:** `assets/prod/*`, `assets/dev/*`, `apps/desktop/resources/icon.icns`, `apps/desktop/resources/icon.png`, `apps/desktop/resources/icon.iconset/*`, `scripts/lib/brand-assets.ts`
+
 ## [2026-04-12] [Fix] Marketing download page: Linux AppImage links + safer macOS hero CTA
 
 - **Linux:** GitHub assets use `Bird-Code-<version>-x64.AppImage` (electron-builder `x64` arch). The `/download` page only matched `-x86_64.AppImage`, so Linux cards pointed at the generic releases URL. Matching now accepts both suffixes.

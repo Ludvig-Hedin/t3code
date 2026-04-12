@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  deriveActiveAgentStatus,
   deriveCompletionDividerBeforeEntryId,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
@@ -1157,6 +1158,97 @@ describe("deriveActiveWorkStartedAt", () => {
         "2026-02-27T21:11:00.000Z",
       ),
     ).toBe("2026-02-27T21:11:00.000Z");
+  });
+});
+
+describe("deriveActiveAgentStatus", () => {
+  it("marks active turns as waiting when approvals are pending", () => {
+    expect(
+      deriveActiveAgentStatus({
+        session: {
+          provider: "codex",
+          status: "running",
+          activeTurnId: TurnId.makeUnsafe("turn-1"),
+          createdAt: "2026-02-27T21:10:00.000Z",
+          updatedAt: "2026-02-27T21:10:03.000Z",
+          orchestrationStatus: "running",
+        },
+        activities: [],
+        nowMs: Date.parse("2026-02-27T21:10:20.000Z"),
+        pendingApprovalCount: 1,
+        pendingUserInputCount: 0,
+      }),
+    ).toEqual({
+      state: "waiting",
+      label: "Waiting for approval",
+      detail: "Work is paused until you respond.",
+      canStop: true,
+      lastActivityAt: "2026-02-27T21:10:03.000Z",
+    });
+  });
+
+  it("marks active turns as quiet when no visible progress arrives for 15s", () => {
+    expect(
+      deriveActiveAgentStatus({
+        session: {
+          provider: "codex",
+          status: "running",
+          activeTurnId: TurnId.makeUnsafe("turn-1"),
+          createdAt: "2026-02-27T21:10:00.000Z",
+          updatedAt: "2026-02-27T21:10:05.000Z",
+          orchestrationStatus: "running",
+        },
+        activities: [
+          makeActivity({
+            id: "tool-quiet",
+            createdAt: "2026-02-27T21:10:10.000Z",
+            turnId: "turn-1",
+            kind: "tool.started",
+          }),
+        ],
+        nowMs: Date.parse("2026-02-27T21:10:30.000Z"),
+        pendingApprovalCount: 0,
+        pendingUserInputCount: 0,
+      }),
+    ).toEqual({
+      state: "quiet",
+      label: "Agent is still running",
+      detail: "No visible progress for 20s yet.",
+      canStop: true,
+      lastActivityAt: "2026-02-27T21:10:10.000Z",
+    });
+  });
+
+  it("marks active turns as stalled after 45s of silence", () => {
+    expect(
+      deriveActiveAgentStatus({
+        session: {
+          provider: "codex",
+          status: "running",
+          activeTurnId: TurnId.makeUnsafe("turn-1"),
+          createdAt: "2026-02-27T21:10:00.000Z",
+          updatedAt: "2026-02-27T21:10:05.000Z",
+          orchestrationStatus: "running",
+        },
+        activities: [
+          makeActivity({
+            id: "tool-stalled",
+            createdAt: "2026-02-27T21:10:10.000Z",
+            turnId: "turn-1",
+            kind: "tool.started",
+          }),
+        ],
+        nowMs: Date.parse("2026-02-27T21:11:00.000Z"),
+        pendingApprovalCount: 0,
+        pendingUserInputCount: 0,
+      }),
+    ).toEqual({
+      state: "stalled",
+      label: "Agent may be stalled",
+      detail: "No visible progress for 50s. The CLI or event stream may be stuck.",
+      canStop: true,
+      lastActivityAt: "2026-02-27T21:10:10.000Z",
+    });
   });
 });
 

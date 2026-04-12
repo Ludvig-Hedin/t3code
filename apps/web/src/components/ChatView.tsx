@@ -56,6 +56,7 @@ import {
   derivePendingApprovals,
   derivePendingUserInputs,
   derivePhase,
+  deriveActiveAgentStatus,
   deriveTimelineEntries,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
@@ -1309,6 +1310,23 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const pendingUserInputs = useMemo(
     () => derivePendingUserInputs(threadActivities),
     [threadActivities],
+  );
+  const activeAgentStatus = useMemo(
+    () =>
+      deriveActiveAgentStatus({
+        session: activeThread?.session ?? null,
+        activities: threadActivities,
+        nowMs: nowTick,
+        pendingApprovalCount: pendingApprovals.length,
+        pendingUserInputCount: pendingUserInputs.length,
+      }),
+    [
+      activeThread?.session,
+      nowTick,
+      pendingApprovals.length,
+      pendingUserInputs.length,
+      threadActivities,
+    ],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingDraftAnswers = useMemo(
@@ -4653,6 +4671,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
             previewAvailable={previewAvailable}
             previewOpen={previewOpen}
             hasRunningPreviewApp={hasRunningPreviewApp}
+            executionStatusLabel={phase === "running" ? activeAgentStatus.label : null}
+            executionStatusDetail={phase === "running" ? activeAgentStatus.detail : null}
+            executionStatusTone={
+              activeAgentStatus.state === "stalled"
+                ? "danger"
+                : activeAgentStatus.state === "quiet" || activeAgentStatus.state === "waiting"
+                  ? "warning"
+                  : "neutral"
+            }
+            canStopExecution={phase === "running" && activeAgentStatus.canStop}
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -4662,6 +4690,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
             onToggleTerminal={toggleTerminalVisibility}
             onToggleDiff={onToggleDiff}
             onTogglePreview={onTogglePreview}
+            onStopExecution={() => {
+              void onInterrupt();
+            }}
             onClose={() => window.close()}
           />
         </header>
@@ -4698,6 +4729,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
             previewAvailable={previewAvailable}
             previewOpen={previewOpen}
             hasRunningPreviewApp={hasRunningPreviewApp}
+            executionStatusLabel={phase === "running" ? activeAgentStatus.label : null}
+            executionStatusDetail={phase === "running" ? activeAgentStatus.detail : null}
+            executionStatusTone={
+              activeAgentStatus.state === "stalled"
+                ? "danger"
+                : activeAgentStatus.state === "quiet" || activeAgentStatus.state === "waiting"
+                  ? "warning"
+                  : "neutral"
+            }
+            canStopExecution={phase === "running" && activeAgentStatus.canStop}
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -4707,6 +4748,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
             onToggleTerminal={toggleTerminalVisibility}
             onToggleDiff={onToggleDiff}
             onTogglePreview={onTogglePreview}
+            onStopExecution={() => {
+              void onInterrupt();
+            }}
             onPopout={() => openThreadPopout(activeThread.id)}
           />
         </header>

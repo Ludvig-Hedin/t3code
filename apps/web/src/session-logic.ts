@@ -89,6 +89,14 @@ export interface LatestProposedPlanState {
   implementationThreadId: ThreadId | null;
 }
 
+export interface ActiveAgentStatus {
+  state: "idle" | "working" | "waiting" | "quiet" | "stalled";
+  label: string;
+  detail: string | null;
+  canStop: boolean;
+  lastActivityAt: string | null;
+}
+
 export type TimelineEntry =
   | {
       id: string;
@@ -154,6 +162,113 @@ export function deriveActiveWorkStartedAt(
     return latestTurn?.startedAt ?? sendStartedAt;
   }
   return sendStartedAt;
+}
+
+function newestIso(left: string | null, right: string | null): string | null {
+  if (!left) return right;
+  if (!right) return left;
+  return left.localeCompare(right) >= 0 ? left : right;
+}
+
+function findLatestRelevantActivityAt(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  activeTurnId: TurnId | undefined,
+): string | null {
+  let latestAt: string | null = null;
+  for (const activity of activities) {
+    if (activeTurnId && activity.turnId !== null && activity.turnId !== activeTurnId) {
+      continue;
+    }
+    latestAt = newestIso(latestAt, activity.createdAt);
+  }
+  return latestAt;
+}
+
+export function deriveActiveAgentStatus(input: {
+  session: ThreadSession | null;
+  activities: ReadonlyArray<OrchestrationThreadActivity>;
+  nowMs: number;
+  pendingApprovalCount: number;
+  pendingUserInputCount: number;
+}): ActiveAgentStatus {
+  const { session } = input;
+  if (!session || session.status === "closed") {
+    return {
+      state: "idle",
+      label: "Idle",
+      detail: null,
+      canStop: false,
+      lastActivityAt: null,
+    };
+  }
+
+  const lastActivityAt = newestIso(
+    findLatestRelevantActivityAt(input.activities, session.activeTurnId),
+    session.updatedAt,
+  );
+
+  if (session.status !== "running") {
+    return {
+      state: "idle",
+      label: session.status === "connecting" ? "Connecting" : "Ready",
+      detail: null,
+      canStop: false,
+      lastActivityAt,
+    };
+  }
+
+  if (input.pendingApprovalCount > 0 || input.pendingUserInputCount > 0) {
+    const waitingLabel =
+      input.pendingUserInputCount > 0
+        ? "Waiting for your input"
+        : input.pendingApprovalCount > 1
+          ? "Waiting for approvals"
+          : "Waiting for approval";
+    return {
+      state: "waiting",
+      label: waitingLabel,
+      detail: "Work is paused until you respond.",
+      canStop: true,
+      lastActivityAt,
+    };
+  }
+
+  if (!lastActivityAt) {
+    return {
+      state: "working",
+      label: "Agent is working",
+      detail: "Waiting for the first runtime update.",
+      canStop: true,
+      lastActivityAt: null,
+    };
+  }
+
+  const silenceMs = Math.max(0, input.nowMs - Date.parse(lastActivityAt));
+  if (silenceMs >= 45_000) {
+    return {
+      state: "stalled",
+      label: "Agent may be stalled",
+      detail: `No visible progress for ${formatDuration(silenceMs)}. The CLI or event stream may be stuck.`,
+      canStop: true,
+      lastActivityAt,
+    };
+  }
+  if (silenceMs >= 15_000) {
+    return {
+      state: "quiet",
+      label: "Agent is still running",
+      detail: `No visible progress for ${formatDuration(silenceMs)} yet.`,
+      canStop: true,
+      lastActivityAt,
+    };
+  }
+  return {
+    state: "working",
+    label: "Agent is working",
+    detail: `Last activity ${formatDuration(silenceMs)} ago.`,
+    canStop: true,
+    lastActivityAt,
+  };
 }
 
 function requestKindFromRequestType(requestType: unknown): PendingApproval["requestKind"] | null {
