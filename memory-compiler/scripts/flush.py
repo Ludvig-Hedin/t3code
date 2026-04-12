@@ -39,6 +39,43 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+# Max attempts when the Agent SDK fails transiently (e.g. subprocess exit 1); backoff caps noise.
+_FLUSH_MAX_ATTEMPTS = 3
+_FLUSH_BACKOFF_SEC = [0, 30, 120]
+
+
+def _extract_subprocess_meta(exc: BaseException) -> dict:
+    """Best-effort stderr/stdout/returncode for CLI/SDK exceptions."""
+    out: dict = {}
+    for attr in ("stderr", "stdout", "returncode", "cmd"):
+        if hasattr(exc, attr):
+            try:
+                val = getattr(exc, attr)
+                if val is not None:
+                    if isinstance(val, bytes):
+                        out[attr] = val.decode("utf-8", errors="replace")[:8000]
+                    else:
+                        out[str(attr)] = str(val)[:8000]
+            except Exception:
+                out[str(attr)] = "<unreadable>"
+    return out
+
+
+def format_flush_error(exc: BaseException) -> str:
+    """Rich FLUSH_ERROR line for daily logs and log file (timestamp + traceback + subprocess hints)."""
+    ts = datetime.now(timezone.utc).isoformat()
+    import traceback
+
+    tb = traceback.format_exc()
+    meta = _extract_subprocess_meta(exc)
+    meta_bits = ""
+    if meta:
+        meta_bits = " | meta=" + json.dumps(meta, default=str)[:4000]
+    return (
+        f"FLUSH_ERROR ts={ts} type={type(exc).__name__} msg={exc!s}{meta_bits} "
+        f"| traceback_tail={tb[-3500:]!r}"
+    )
+
 
 def load_flush_state() -> dict:
     if STATE_FILE.exists():
@@ -117,29 +154,47 @@ respond with exactly: FLUSH_OK
 
 {context}"""
 
-    response = ""
+    last_error: str | None = None
 
-    try:
-        async for message in query(
-            prompt=prompt,
-            options=ClaudeAgentOptions(
-                cwd=str(ROOT),
-                allowed_tools=[],
-                max_turns=2,
-            ),
-        ):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        response += block.text
-            elif isinstance(message, ResultMessage):
-                pass
-    except Exception as e:
-        import traceback
-        logging.error("Agent SDK error: %s\n%s", e, traceback.format_exc())
-        response = f"FLUSH_ERROR: {type(e).__name__}: {e}"
+    for attempt in range(1, _FLUSH_MAX_ATTEMPTS + 1):
+        response = ""
+        try:
+            async for message in query(
+                prompt=prompt,
+                options=ClaudeAgentOptions(
+                    cwd=str(ROOT),
+                    allowed_tools=[],
+                    max_turns=2,
+                ),
+            ):
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            response += block.text
+                elif isinstance(message, ResultMessage):
+                    pass
+            return response
+        except Exception as e:
+            import traceback
 
-    return response
+            err_line = format_flush_error(e)
+            last_error = err_line
+            logging.error(
+                "Agent SDK error (attempt %d/%d): %s\n%s",
+                attempt,
+                _FLUSH_MAX_ATTEMPTS,
+                err_line,
+                traceback.format_exc(),
+            )
+            if attempt < _FLUSH_MAX_ATTEMPTS:
+                delay = _FLUSH_BACKOFF_SEC[
+                    min(attempt - 1, len(_FLUSH_BACKOFF_SEC) - 1)
+                ]
+                if delay:
+                    logging.info("Flush retry in %ds", delay)
+                    await asyncio.sleep(delay)
+
+    return last_error or "FLUSH_ERROR: unknown failure after retries"
 
 
 COMPILE_AFTER_HOUR = 18  # 6 PM local time

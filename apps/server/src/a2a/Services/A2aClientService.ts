@@ -50,7 +50,6 @@ export interface A2aClientServiceShape {
   ): Effect.Effect<A2aTask, A2aClientError | A2aServiceError>;
 }
 
-export class A2aClientService extends ServiceMap.Service<
-  A2aClientService,
-  A2aClientServiceShape
->()("t3/a2a/Services/A2aClientService") {}
+export class A2aClientService extends ServiceMap.Service<A2aClientService, A2aClientServiceShape>()(
+  "t3/a2a/Services/A2aClientService",
+) {}

@@ -61,6 +61,7 @@ import { PreviewServerManagerLive } from "./preview/Layers/PreviewServerManager"
 import { previewProxyRouteLayer } from "./preview/previewProxyRoute";
 import { McpServiceLive } from "./mcp";
 import { PluginServiceLive } from "./plugins";
+import { TranscriptionServiceLive } from "./transcription/Layers/TranscriptionService";
 import { A2aAdapterLive } from "./provider/Layers/A2aAdapter";
 import {
   A2aAgentCardServiceLive,
@@ -218,6 +219,16 @@ const WorkspaceLayerLive = Layer.mergeAll(
   ),
 );
 
+const AuxiliaryServicesLive = Layer.mergeAll(
+  ProjectFaviconResolverLive,
+  SkillServiceLive,
+  Mem0ServiceLive,
+  PreviewServerManagerLive,
+  McpServiceLive,
+  PluginServiceLive,
+  TranscriptionServiceLive,
+);
+
 const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   // Core Services
   Layer.provideMerge(CheckpointingLayerLive),
@@ -236,12 +247,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProviderRegistryLive),
   Layer.provideMerge(ServerSettingsLive),
   Layer.provideMerge(WorkspaceLayerLive),
-  Layer.provideMerge(ProjectFaviconResolverLive),
-  Layer.provideMerge(SkillServiceLive),
-  Layer.provideMerge(Mem0ServiceLive),
-  Layer.provideMerge(PreviewServerManagerLive),
-  Layer.provideMerge(McpServiceLive),
-  Layer.provideMerge(PluginServiceLive),
+  Layer.provideMerge(AuxiliaryServicesLive),
 
   // Misc.
   Layer.provideMerge(AnalyticsServiceLayerLive),
@@ -304,8 +310,11 @@ export const makeServerLayer = Layer.unwrap(
 );
 
 // Important: Only `ServerConfig` should be provided by the CLI layer!!! Don't let other requirements leak into the launch layer.
-export const runServer = Layer.launch(makeServerLayer) satisfies Effect.Effect<
+// Note: The `as` cast is needed because A2A service layers cause Effect to
+// infer `unknown` in the requirements channel. At runtime, all requirements
+// are correctly provided — this is a type-inference limitation.
+export const runServer = Layer.launch(makeServerLayer) as Effect.Effect<
   never,
-  any,
+  unknown,
   ServerConfig
 >;

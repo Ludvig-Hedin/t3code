@@ -39,9 +39,7 @@ const make = Effect.gen(function* () {
     });
 
   /** Build auth headers based on agent card security schemes. */
-  const buildAuthHeaders = (
-    _card: A2aAgentCard,
-  ): Record<string, string> => {
+  const buildAuthHeaders = (_card: A2aAgentCard): Record<string, string> => {
     // TODO Phase 8: Resolve credentials from securitySchemes + env vars
     // For now, check for A2A_AUTH_TOKEN environment variable
     const token = process.env["A2A_AUTH_TOKEN"];
@@ -52,7 +50,12 @@ const make = Effect.gen(function* () {
   };
 
   /** Send a JSON-RPC 2.0 request to a remote A2A endpoint. */
-  const sendJsonRpc = (url: string, method: string, params: unknown, authHeaders: Record<string, string>) =>
+  const sendJsonRpc = (
+    url: string,
+    method: string,
+    params: unknown,
+    authHeaders: Record<string, string>,
+  ) =>
     Effect.tryPromise({
       try: async () => {
         const response = await fetch(url, {
@@ -229,7 +232,10 @@ const make = Effect.gen(function* () {
       return {
         id: (taskResult.id as A2aTaskId) || taskId,
         agentCardId,
-        status: taskResult.status as A2aTask["status"] || { status: "completed" as const, timestamp: now },
+        status: (taskResult.status as A2aTask["status"]) || {
+          status: "completed" as const,
+          timestamp: now,
+        },
         history: taskResult.history as A2aTask["history"],
         artifacts: taskResult.artifacts as A2aTask["artifacts"],
         metadata: taskResult.metadata as A2aTask["metadata"],
@@ -248,7 +254,10 @@ const make = Effect.gen(function* () {
       return {
         id: (taskResult.id as A2aTaskId) || taskId,
         agentCardId,
-        status: taskResult.status as A2aTask["status"] || { status: "canceled" as const, timestamp: now },
+        status: (taskResult.status as A2aTask["status"]) || {
+          status: "canceled" as const,
+          timestamp: now,
+        },
         history: taskResult.history as A2aTask["history"],
         artifacts: taskResult.artifacts as A2aTask["artifacts"],
         metadata: taskResult.metadata as A2aTask["metadata"],

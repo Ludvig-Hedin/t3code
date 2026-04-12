@@ -16,6 +16,9 @@ import type {
 import type { Effect } from "effect";
 import { ServiceMap } from "effect";
 
+/** Service surface implemented by `A2aAgentCardServiceLive` (explicit alias for layer typing). */
+export type IA2aAgentCardService = A2aAgentCardServiceShape;
+
 export interface A2aAgentCardServiceShape {
   /** List all registered agent cards (local + remote). */
   list(): Effect.Effect<ReadonlyArray<A2aAgentCard>, A2aServiceError>;

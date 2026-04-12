@@ -64,11 +64,7 @@ export const A2aSecurityScheme = Schema.Struct({
   scheme: Schema.optional(TrimmedNonEmptyString), // e.g. "bearer"
   name: Schema.optional(TrimmedNonEmptyString), // for apiKey: header/query name
   in: Schema.optional(
-    Schema.Union([
-      Schema.Literal("header"),
-      Schema.Literal("query"),
-      Schema.Literal("cookie"),
-    ]),
+    Schema.Union([Schema.Literal("header"), Schema.Literal("query"), Schema.Literal("cookie")]),
   ),
   // OAuth2/OIDC fields stored as opaque JSON for flexibility
   flows: Schema.optional(Schema.Unknown),
@@ -84,10 +80,7 @@ export const A2aCapabilities = Schema.Struct({
 export type A2aCapabilities = typeof A2aCapabilities.Type;
 
 /** Where the agent card was sourced from. */
-export const A2aAgentCardSource = Schema.Union([
-  Schema.Literal("local"),
-  Schema.Literal("remote"),
-]);
+export const A2aAgentCardSource = Schema.Union([Schema.Literal("local"), Schema.Literal("remote")]);
 export type A2aAgentCardSource = typeof A2aAgentCardSource.Type;
 
 /** An A2A Agent Card — the discovery/metadata document for an agent. */
@@ -98,9 +91,7 @@ export const A2aAgentCard = Schema.Struct({
   url: TrimmedNonEmptyString, // service endpoint URL
   version: Schema.optional(TrimmedNonEmptyString),
   skills: Schema.Array(A2aSkill),
-  securitySchemes: Schema.optional(
-    Schema.Record(TrimmedNonEmptyString, A2aSecurityScheme),
-  ),
+  securitySchemes: Schema.optional(Schema.Record(TrimmedNonEmptyString, A2aSecurityScheme)),
   capabilities: A2aCapabilities,
   defaultInputModes: Schema.optional(Schema.Array(A2aContentMode)),
   defaultOutputModes: Schema.optional(Schema.Array(A2aContentMode)),
@@ -146,10 +137,7 @@ export type A2aMessagePart = typeof A2aMessagePart.Type;
 // ── Messages ─────────────────────────────────────────────────────────────
 
 /** Role of a message sender in the A2A protocol. */
-export const A2aMessageRole = Schema.Union([
-  Schema.Literal("user"),
-  Schema.Literal("agent"),
-]);
+export const A2aMessageRole = Schema.Union([Schema.Literal("user"), Schema.Literal("agent")]);
 export type A2aMessageRole = typeof A2aMessageRole.Type;
 
 /** An A2A protocol message: a single communication turn between client and agent. */
@@ -319,23 +307,17 @@ export type A2aCancelTaskInput = typeof A2aCancelTaskInput.Type;
 
 // ── Error Classes ────────────────────────────────────────────────────────
 
-export class A2aServiceError extends Schema.TaggedErrorClass<A2aServiceError>()(
-  "A2aServiceError",
-  {
-    message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
-  },
-) {}
+export class A2aServiceError extends Schema.TaggedErrorClass<A2aServiceError>()("A2aServiceError", {
+  message: TrimmedNonEmptyString,
+  cause: Schema.optional(Schema.Defect),
+}) {}
 
-export class A2aClientError extends Schema.TaggedErrorClass<A2aClientError>()(
-  "A2aClientError",
-  {
-    message: TrimmedNonEmptyString,
-    url: Schema.optional(TrimmedNonEmptyString),
-    statusCode: Schema.optional(Schema.Int),
-    cause: Schema.optional(Schema.Defect),
-  },
-) {}
+export class A2aClientError extends Schema.TaggedErrorClass<A2aClientError>()("A2aClientError", {
+  message: TrimmedNonEmptyString,
+  url: Schema.optional(TrimmedNonEmptyString),
+  statusCode: Schema.optional(Schema.Int),
+  cause: Schema.optional(Schema.Defect),
+}) {}
 
 // ── WS Method Keys ───────────────────────────────────────────────────────
 

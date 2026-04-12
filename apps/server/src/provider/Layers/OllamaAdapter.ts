@@ -15,6 +15,7 @@
  *
  * @module OllamaAdapterLive
  */
+import { spawn } from "node:child_process";
 import { APP_NAME } from "@t3tools/shared/branding";
 import type {
   ModelSelection,
@@ -162,6 +163,167 @@ async function readOlllamaSseStream(
   return { assistantContent, aborted };
 }
 
+// ── Ollama connectivity & auto-start helpers ─────────────────────────────────
+
+/**
+ * Quick connectivity probe — returns true if the Ollama API responds within
+ * 2 seconds. Used by ensureOllamaRunning to check reachability before and
+ * after attempting to spawn `ollama serve`.
+ */
+async function pingOllama(baseUrl: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2_000);
+  try {
+    const res = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Module-level serialisation lock for Ollama auto-start.
+ *
+ * When multiple concurrent turns all fail with a connection error at the same
+ * time, only the first caller spawns `ollama serve`; every subsequent caller
+ * piggybacks on the same in-flight promise rather than spawning additional
+ * processes. Cleared in a `finally` block after the promise settles so that a
+ * future disconnection (e.g. the user quits Ollama and sends another prompt)
+ * triggers a fresh spawn rather than waiting on an already-resolved promise.
+ */
+let ensureOllamaPromise: Promise<string | null> | null = null;
+
+/**
+ * Ensure Ollama is reachable, auto-starting it if needed.
+ *
+ * Strategy:
+ * 1. Check the configured URL and, if it uses "localhost", also check 127.0.0.1
+ *    (macOS can route localhost → ::1 (IPv6) while Ollama listens on 127.0.0.1).
+ * 2. If neither is reachable, serialise the spawn: if another caller already
+ *    holds the module-level lock promise, await that and then re-check
+ *    pingOllama so we return the reachable candidate URL (or null) ourselves.
+ * 3. Otherwise own the lock, spawn `ollama serve` in the background, poll
+ *    until one of the candidate URLs responds or timeoutMs elapses, then clear
+ *    the lock so subsequent calls can retry if needed.
+ *
+ * Returns the first URL that becomes reachable, or null if the timeout expires.
+ */
+async function ensureOllamaRunning(
+  configuredBaseUrl: string,
+  timeoutMs = 10_000,
+): Promise<string | null> {
+  // Build candidate URLs: configured + optional IPv4 fallback.
+  // macOS occasionally resolves 'localhost' → ::1 (IPv6) while Ollama listens
+  // on 127.0.0.1 (IPv4), so we always probe the IPv4 variant as a fallback.
+  const candidates = [configuredBaseUrl];
+  if (/localhost/i.test(configuredBaseUrl)) {
+    candidates.push(configuredBaseUrl.replace(/localhost/gi, "127.0.0.1"));
+  }
+
+  // Fast path: check reachability before touching the lock.
+  // If Ollama is already running (the common case) return immediately.
+  for (const url of candidates) {
+    if (await pingOllama(url)) return url;
+  }
+
+  // None reachable — serialise the spawn attempt.
+  // If another concurrent caller already holds the lock, piggyback on its
+  // promise, then re-check reachability ourselves so we return the correct URL.
+  if (ensureOllamaPromise !== null) {
+    await ensureOllamaPromise;
+    for (const url of candidates) {
+      if (await pingOllama(url)) return url;
+    }
+    return null;
+  }
+
+  // We are the first caller to discover Ollama is down — own the lock.
+  ensureOllamaPromise = (async (): Promise<string | null> => {
+    try {
+      // Spawn `ollama serve` detached so it survives beyond this process and
+      // can be reused by subsequent sessions.
+      try {
+        const proc = spawn("ollama", ["serve"], { detached: true, stdio: "ignore" });
+        proc.unref();
+      } catch {
+        // `ollama` not found in PATH — cannot auto-start
+        return null;
+      }
+
+      // Poll until one of the candidate URLs responds or the deadline is reached
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 500));
+        for (const url of candidates) {
+          if (await pingOllama(url)) return url;
+        }
+      }
+
+      return null;
+    } finally {
+      // Always clear the lock after the promise settles (success or failure) so
+      // a later disconnection can trigger a fresh spawn attempt.
+      ensureOllamaPromise = null;
+    }
+  })();
+
+  return ensureOllamaPromise;
+}
+
+/**
+ * Returns true if the httpError string is an HTTP status error (e.g. "404: …").
+ * These are intentional server responses — we should NOT retry them with auto-start.
+ * Connection errors (ECONNREFUSED, "fetch failed", etc.) return false.
+ */
+function isOllamaHttpStatusError(httpError: string): boolean {
+  return /^\d{3}:/.test(httpError.trim());
+}
+
+/**
+ * Execute one Ollama chat-completions request and stream the response.
+ * All errors are caught and returned as { httpError } so the Effect chain
+ * stays clean. Extracted so it can be called twice — first attempt then
+ * once more after auto-start with the confirmed reachable URL.
+ */
+async function fetchOllamaCompletions(
+  baseUrl: string,
+  model: string,
+  messages: OllamaMessage[],
+  signal: AbortSignal,
+): Promise<{ assistantContent: string; aborted: boolean; httpError: string | null }> {
+  try {
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages, stream: true }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      // Treat non-2xx as a failed turn — error text surfaced in turn.completed
+      return {
+        assistantContent: "",
+        aborted: false,
+        httpError: `${response.status}: ${errorText}`,
+      };
+    }
+
+    const { assistantContent, aborted } = await readOlllamaSseStream(response, signal);
+    return { assistantContent, aborted, httpError: null };
+  } catch (err) {
+    // AbortError from controller.abort() means the turn was interrupted
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    return {
+      assistantContent: "",
+      aborted: isAbort,
+      httpError: isAbort ? null : String(err),
+    };
+  }
+}
+
 // ── Layer ────────────────────────────────────────────────────────────────────
 
 export const OllamaAdapterLive = Layer.effect(
@@ -299,46 +461,51 @@ export const OllamaAdapterLive = Layer.effect(
         );
 
         // Perform the SSE fetch inside Effect.promise (no typed error channel).
-        // All errors are caught inside the async function and surfaced as a result
-        // object so they don't leak into the Effect error channel.
+        // On connection failure (Ollama not running) ensureOllamaRunning is called;
+        // it serialises the spawn attempt via a module-level promise so concurrent
+        // turns don't each launch their own `ollama serve` process.
         const streamResult = yield* Effect.promise(
           async (): Promise<{
             assistantContent: string;
             aborted: boolean;
             httpError: string | null;
           }> => {
-            try {
-              const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ model, messages: messagesSnapshot, stream: true }),
-                signal: abortController.signal,
-              });
+            // First attempt with the configured baseUrl
+            const firstResult = await fetchOllamaCompletions(
+              baseUrl,
+              model,
+              messagesSnapshot,
+              abortController.signal,
+            );
 
-              if (!response.ok) {
-                const errorText = await response.text().catch(() => "");
-                // Treat non-2xx as a failed turn — error text surfaced in turn.completed
-                return {
-                  assistantContent: "",
-                  aborted: false,
-                  httpError: `${response.status}: ${errorText}`,
-                };
-              }
-
-              const { assistantContent, aborted } = await readOlllamaSseStream(
-                response,
-                abortController.signal,
-              );
-              return { assistantContent, aborted, httpError: null };
-            } catch (err) {
-              // AbortError from controller.abort() means the turn was interrupted
-              const isAbort = err instanceof Error && err.name === "AbortError";
-              return {
-                assistantContent: "",
-                aborted: isAbort,
-                httpError: isAbort ? null : String(err),
-              };
+            // Succeeded, was intentionally aborted, or returned an HTTP status
+            // error (4xx/5xx) — no point retrying with auto-start in any of those cases.
+            if (
+              firstResult.httpError === null ||
+              firstResult.aborted ||
+              abortController.signal.aborted ||
+              isOllamaHttpStatusError(firstResult.httpError)
+            ) {
+              return firstResult;
             }
+
+            // Connection-level failure: Ollama may not be running or localhost resolves
+            // to IPv6 while Ollama is on 127.0.0.1. Ensure Ollama is reachable (auto-spawn
+            // if needed, serialised via module-level lock) and retry once with the
+            // confirmed-reachable URL so the turn succeeds without user intervention.
+            const effectiveUrl = await ensureOllamaRunning(baseUrl);
+            if (effectiveUrl === null) {
+              // Could not reach or start Ollama — surface the original error
+              return firstResult;
+            }
+
+            // Retry with the URL that Ollama is actually listening on
+            return fetchOllamaCompletions(
+              effectiveUrl,
+              model,
+              messagesSnapshot,
+              abortController.signal,
+            );
           },
         );
 

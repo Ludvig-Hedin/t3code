@@ -18,6 +18,7 @@ import {
   WS_METHODS,
   WsRpcGroup,
   EditorId,
+  TranscriptionError,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { assertFailure, assertInclude, assertTrue } from "@effect/vitest/utils";
@@ -70,6 +71,7 @@ import { Mem0Service } from "./memory/Services/Mem0Service.ts";
 import { PreviewServerManager } from "./preview/Services/PreviewServerManager.ts";
 import { McpServiceLive } from "./mcp/index.ts";
 import { PluginServiceLive } from "./plugins/index.ts";
+import { TranscriptionService } from "./transcription/TranscriptionService.ts";
 
 const defaultProjectId = ProjectId.makeUnsafe("project-default");
 const defaultThreadId = ThreadId.makeUnsafe("thread-default");
@@ -305,6 +307,17 @@ const buildAppUnderTest = (options?: {
           refreshRateLimits: () => Effect.void,
           streamEvents: Stream.empty,
           ...options?.layers?.providerService,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(TranscriptionService)({
+          transcribeAudio: () =>
+            Effect.fail(
+              new TranscriptionError({
+                code: "unavailable",
+                message: "Transcription is not configured in tests.",
+              }),
+            ),
         }),
       ),
       Layer.provide(

@@ -14,7 +14,7 @@ import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
   type ModelSelection,
-  type ProviderKind,
+  type NonA2aProviderKind,
   ServerSettings,
   ServerSettingsError,
   type ServerSettingsPatch,
@@ -91,7 +91,8 @@ export class ServerSettingsService extends ServiceMap.Service<
 
 const ServerSettingsJson = fromLenientJson(ServerSettings);
 
-const PROVIDER_ORDER: readonly ProviderKind[] = ["codex", "claudeAgent", "gemini"];
+// Only providers with explicit settings entries — "a2a" has no per-provider config.
+const PROVIDER_ORDER: readonly NonA2aProviderKind[] = ["codex", "claudeAgent", "gemini"];
 
 /**
  * Ensure the `textGenerationModelSelection` points to an enabled provider.
@@ -101,7 +102,12 @@ const PROVIDER_ORDER: readonly ProviderKind[] = ["codex", "claudeAgent", "gemini
  */
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
   const selection = settings.textGenerationModelSelection;
-  if (settings.providers[selection.provider].enabled) {
+  // "a2a" provider has no per-provider config — treat as always-enabled for text generation.
+  const providerConfig =
+    selection.provider in settings.providers
+      ? settings.providers[selection.provider as NonA2aProviderKind]
+      : undefined;
+  if (!providerConfig || providerConfig.enabled) {
     return settings;
   }
 

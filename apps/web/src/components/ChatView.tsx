@@ -26,7 +26,15 @@ import {
 import { applyClaudePromptEffortPrefix, normalizeModelSlug } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -189,6 +197,7 @@ import { getProviderSlashCommands } from "../providerSlashCommands";
 import { ComposerPendingApprovalActions } from "./chat/ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./chat/CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./chat/ComposerPrimaryActions";
+import { VoiceInputControls } from "./chat/VoiceInputControls";
 import { ComposerPendingApprovalPanel } from "./chat/ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./chat/ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./chat/ComposerPlanFollowUpBanner";
@@ -199,6 +208,7 @@ import {
 } from "./chat/composerProviderRegistry";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
+import { appendVoiceTranscript } from "./chat/voiceInput";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
@@ -766,8 +776,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
     (store) => store.threadLastVisitedAtById[threadId],
   );
   const settings = useSettings();
-  const messageQueue = useMessageQueue();
+  const messageQueue = useMessageQueue(threadId);
   const isMac = useMemo(() => isMacPlatform(navigator.platform), []);
+  const sendNowShortcutLabel = isMac ? "⌘⇧↵" : "Ctrl+Shift+Enter";
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
   );
@@ -3645,6 +3656,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
   };
 
+  const handleVoiceTranscriptReady = useCallback(
+    async (transcript: string) => {
+      const nextPrompt = appendVoiceTranscript(promptRef.current, transcript);
+      if (nextPrompt === promptRef.current) {
+        return;
+      }
+
+      promptRef.current = nextPrompt;
+      startTransition(() => {
+        setPrompt(nextPrompt);
+        setComposerCursor(collapseExpandedComposerCursor(nextPrompt, nextPrompt.length));
+        setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
+      });
+      scheduleComposerFocus();
+    },
+    [scheduleComposerFocus, setPrompt],
+  );
+
+  const handleVoiceAutoSendRequested = async () => {
+    requestAnimationFrame(() => {
+      void onSend();
+    });
+  };
+
   // Auto-send queued messages when the flag is set (deferred to after onSend is defined)
   useEffect(() => {
     if (!shouldAutoSendQueueRef.current) return;
@@ -3668,7 +3703,31 @@ export default function ChatView({ threadId }: ChatViewProps) {
       type: "thread.turn.interrupt",
       commandId: newCommandId(),
       threadId: activeThread.id,
+      ...(activeThread.session?.activeTurnId !== undefined
+        ? { turnId: activeThread.session.activeTurnId }
+        : activeThread.latestTurn?.turnId !== undefined
+          ? { turnId: activeThread.latestTurn.turnId }
+          : {}),
       createdAt: new Date().toISOString(),
+    });
+  };
+
+  const onSendQueuedNow = async () => {
+    if (!activeThread) return;
+
+    if (phase === "running") {
+      shouldAutoSendQueueRef.current = true;
+      await onInterrupt();
+      return;
+    }
+
+    const nextText = messageQueue.dequeue();
+    if (!nextText) return;
+
+    promptRef.current = nextText;
+    setPrompt(nextText);
+    requestAnimationFrame(() => {
+      void onSend();
     });
   };
 
@@ -4412,6 +4471,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return true;
     }
 
+    if (
+      key === "Enter" &&
+      event.shiftKey &&
+      !event.altKey &&
+      ((isMac && event.metaKey && !event.ctrlKey) || (!isMac && event.ctrlKey && !event.metaKey))
+    ) {
+      if (messageQueue.queue.length > 0) {
+        void onSendQueuedNow();
+        return true;
+      }
+      return false;
+    }
+
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive = composerMenuOpenRef.current || trigger !== null;
 
@@ -4782,7 +4854,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 queue={messageQueue.queue}
                 onEdit={messageQueue.edit}
                 onRemove={messageQueue.remove}
-                onReorder={messageQueue.reorder}
+                onMove={messageQueue.move}
+                onSendNow={onSendQueuedNow}
+                sendNowShortcutLabel={sendNowShortcutLabel}
               />
             </div>
           )}
@@ -5194,6 +5268,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             Preparing worktree...
                           </span>
                         ) : null}
+                        <VoiceInputControls
+                          disabled={Boolean(
+                            isComposerApprovalState ||
+                            isConnecting ||
+                            isSendBusy ||
+                            isPreparingWorktree,
+                          )}
+                          autoSendVoiceTranscripts={settings.autoSendVoiceTranscripts}
+                          onTranscriptReady={handleVoiceTranscriptReady}
+                          onAutoSendRequested={handleVoiceAutoSendRequested}
+                        />
                         <ComposerPrimaryActions
                           compact={isComposerPrimaryActionsCompact}
                           pendingAction={

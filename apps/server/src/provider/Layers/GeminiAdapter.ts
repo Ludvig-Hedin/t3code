@@ -37,6 +37,7 @@ interface GeminiSessionState {
 }
 
 const PROVIDER = "gemini" as const satisfies ProviderKind;
+const GEMINI_AUTO_ACCEPT_PROMPT_INPUT = `${"y\n".repeat(32)}`;
 
 /**
  * SIGTERM a child process handle, silently ignoring errors in case it has
@@ -99,6 +100,15 @@ function promptFromSession(
   }
   parts.push("Respond helpfully and keep the answer focused on the user's request.");
   return parts.join("\n");
+}
+
+/**
+ * Gemini CLI can surface interactive confirmation prompts for skills or other
+ * workspace actions even in headless mode. Feed a stream of affirmative
+ * responses so those prompts do not stall the turn.
+ */
+export function buildGeminiAutoAcceptStdin(): string {
+  return GEMINI_AUTO_ACCEPT_PROMPT_INPUT;
 }
 
 /**
@@ -264,6 +274,7 @@ export const GeminiAdapterLive = Layer.effect(
             {
               cwd: sessionState.session.cwd,
               env: process.env,
+              stdin: buildGeminiAutoAcceptStdin(),
               timeoutMs: 10 * 60_000,
               allowNonZeroExit: true,
               outputMode: "truncate",

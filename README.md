@@ -16,6 +16,7 @@ It also includes an iOS-first companion app that mirrors the desktop UI and lets
 - **Skills & memory**: Persistent skill definitions and memory that survive across sessions.
 - **Automations**: Define automation rules that trigger on agent events.
 - **Plugins**: Extend Bird Code with plugins.
+- **Voice transcription**: Record from the chat composer, auto-download a small local Whisper model on first use, and fall back to browser speech recognition if the model or server path is unavailable.
 - **Onboarding**: 5-step onboarding sheet to get started quickly.
 - **Remote access**: Expose the server over your LAN or via Cloudflare Named Tunnel for access from any device.
 - **iOS companion app**: Native SwiftUI app that pairs with the desktop session for chat, diffs, and approvals on the go.
@@ -46,6 +47,8 @@ bun run dev
 
 If you only want the web app, use `bun run dev:web`. For the desktop app, use `bun run dev:desktop`.
 
+Optional transcription overrides live in [`.env.example`](./.env.example). You do not need to set them for the browser-local model path, but you can point the server fallback at a local Whisper-compatible HTTP endpoint if you want to override the default behavior.
+
 ### Run without installing
 
 ```bash
@@ -54,13 +57,15 @@ npx t3
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
+Install the latest version of the desktop app from [GitHub Releases](https://github.com/Ludvig-Hedin/t3code/releases) (or the marketing site’s [/download](https://marketing-nu-six.vercel.app/download) page, which tracks the same latest build), or from your favorite package registry:
 
 #### Windows (`winget`)
 
 ```bash
 winget install T3Tools.T3Code
 ```
+
+(The published **winget** package id is still `T3Tools.T3Code`; the installed desktop app is **Bird Code** — same as GitHub Releases builds.)
 
 #### macOS (Homebrew)
 

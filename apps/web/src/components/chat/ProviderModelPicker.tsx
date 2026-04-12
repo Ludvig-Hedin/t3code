@@ -148,8 +148,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     activeProvider,
   );
   const requestedModel = normalizeModelSlug(props.model, activeProvider) ?? props.model;
+  // manifest always uses the bare "auto" slug which has no registered model name.
+  // Show the human-readable "Auto" label instead of falling back to the raw slug.
   const selectedModelLabel =
-    selectedProviderOptions.find((option) => option.slug === requestedModel)?.name ?? props.model;
+    activeProvider === "manifest"
+      ? "Auto"
+      : (selectedProviderOptions.find((option) => option.slug === requestedModel)?.name ??
+        props.model);
   const runtimeModel = normalizeModelSlug(props.runtimeModel, activeProvider);
   const runtimeModelLabel =
     runtimeModel !== null
@@ -173,6 +178,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const handleModelChange = (provider: ProviderKind, value: string) => {
     if (props.disabled) return;
     if (!value) return;
+    // manifest always routes to "auto" — its options list is always empty so
+    // resolveSelectableModel returns null and the selection would be silently dropped.
+    // Bypass resolution entirely and pass "auto" directly.
+    if (provider === "manifest") {
+      props.onProviderModelChange("manifest", "auto");
+      setIsMenuOpen(false);
+      return;
+    }
     const resolvedModel = resolveSelectableModel(
       provider,
       value,
@@ -289,6 +302,28 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 <>
                   <MenuDivider />
                   <MenuItem onSelect={openCustomModelDialog}>Custom model...</MenuItem>
+                </>
+              ) : null}
+              {props.lockedProvider !== "manifest" ? (
+                <>
+                  <MenuDivider />
+                  <MenuItem key="manifest" onSelect={() => handleModelChange("manifest", "auto")}>
+                    <AutoIcon
+                      aria-hidden="true"
+                      className={cn(
+                        "size-4 shrink-0",
+                        props.provider === "manifest"
+                          ? "text-foreground/80"
+                          : "text-muted-foreground/85",
+                      )}
+                    />
+                    <span className={cn(props.provider === "manifest" ? "font-medium" : undefined)}>
+                      Auto
+                    </span>
+                    {props.provider === "manifest" && (
+                      <CheckIcon aria-hidden="true" className="ms-auto size-3.5 shrink-0" />
+                    )}
+                  </MenuItem>
                 </>
               ) : null}
             </MenuGroup>

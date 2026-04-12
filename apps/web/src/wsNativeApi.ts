@@ -82,6 +82,7 @@ export function createWsNativeApi(): NativeApi {
       resolvePullRequest: rpcClient.git.resolvePullRequest,
       preparePullRequestThread: rpcClient.git.preparePullRequestThread,
       prepareReviewContext: rpcClient.git.prepareReviewContext,
+      getWorkingDiff: rpcClient.git.getWorkingDiff,
     },
     contextMenu: {
       show: async <T extends string>(
@@ -100,6 +101,7 @@ export function createWsNativeApi(): NativeApi {
       upsertKeybinding: rpcClient.server.upsertKeybinding,
       getSettings: rpcClient.server.getSettings,
       updateSettings: rpcClient.server.updateSettings,
+      transcribeAudio: rpcClient.server.transcribeAudio,
     },
     orchestration: {
       getSnapshot: rpcClient.orchestration.getSnapshot,

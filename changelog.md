@@ -1,5 +1,18 @@
 # Changelog
 
+## [2026-04-12] [Fix] Marketing download page: Linux AppImage links + safer macOS hero CTA
+
+- **Linux:** GitHub assets use `Bird-Code-<version>-x64.AppImage` (electron-builder `x64` arch). The `/download` page only matched `-x86_64.AppImage`, so Linux cards pointed at the generic releases URL. Matching now accepts both suffixes.
+- **macOS (hero):** Primary download button uses Client Hints `architecture` when available (Chromium reports "Intel" in `userAgent` on Apple Silicon). If hints are unavailable, the button links to `/download` instead of guessing the wrong DMG.
+- **Docs:** README GitHub Releases + optional marketing `/download` URL aligned with `Ludvig-Hedin/t3code`; npm `repository.url` in `apps/server/package.json` matches the same remote; README clarifies winget id `T3Tools.T3Code` vs installed **Bird Code** app name.
+- **Files:** `apps/marketing/src/components/marketing/download-page.tsx`, `apps/marketing/src/components/marketing/hero-download-button.tsx`, `README.md`, `apps/server/package.json`
+
+## [2026-04-12] [Fix] Chat stop button now targets the active turn reliably
+
+- **Root cause:** The chat stop action often dispatched `thread.turn.interrupt` without a concrete `turnId`. The web store ignored interrupt-requested events without `turnId`, leaving the UI stuck in a running state, and the server-side command reactor dropped the turn identity before calling the provider interrupt path. That made Codex interrupts race-prone and sometimes a no-op.
+- **Fix:** ChatView now includes the active turn id when available, the provider command reactor forwards that turn id into `ProviderService.interruptTurn`, and the web store now falls back to the active/latest turn when an interrupt request arrives without an explicit turn id. Added regression coverage for both the server forwarding path and the web optimistic-state update.
+- **Files:** `apps/web/src/components/ChatView.tsx`, `apps/web/src/store.ts`, `apps/web/src/store.test.ts`, `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts`, `apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts`
+
 ## [2026-04-12] [Fix] Chat composer `Auto` model selection now sticks on started threads
 
 - **Root cause:** The picker allowed selecting `manifest/auto` while a thread was already started, but ChatView still derived the active provider from the locked session provider. That immediately overwrote the draft selection, so the visible model never changed and the next turn would keep using the old provider.
@@ -179,3 +192,12 @@
 - Groups show max 10 threads with "View more" / "Show less" expand controls.
 - `SidebarOrganizeMode` and `SidebarFilterState` types defined at module level.
 - Files: `apps/web/src/components/Sidebar.tsx`
+
+## [2026-04-13] [Feature] Voice input & transcription
+
+- **Web:** Added a voice-input control to the chat composer with mic recording, live waveform feedback, discard confirmation for longer clips, transcription loading state, and transcript injection back into the prompt.
+- **Server/Web:** Added a typed local transcription RPC path for Whisper-compatible endpoints plus browser speech-recognition fallback when local STT is unavailable.
+
+## [2026-04-13] [Improvement] Memory compiler flush diagnostics
+
+- **memory-compiler:** `flush.py` now logs rich `FLUSH_ERROR` lines (UTC timestamp, subprocess meta when present, traceback tail) and retries the Agent SDK call up to 3 times with backoff (0s / 30s / 120s) before giving up.

@@ -105,8 +105,22 @@ Docs:
 | `AutomationsManager.tsx`   | Automation rules UI                     |
 | `SkillsManager.tsx`        | Skills management UI                    |
 | `ComposerPromptEditor.tsx` | Prompt composer with mentions           |
+| `VoiceInputControls.tsx`   | Voice recording + transcription control |
 | `ThreadTerminalDrawer.tsx` | Embedded terminal drawer                |
 | `CodeReviewControl.tsx`    | PR/code review actions                  |
+
+## Voice Transcription
+
+- The web composer supports a voice-input control that records in-browser audio, renders a lightweight live waveform, and injects the transcript back into the prompt without auto-sending by default.
+- Transcription prefers a browser-local Whisper model that auto-downloads on first use, so the feature works without manual env setup.
+- If a Whisper-compatible HTTP endpoint is configured, the client can fall back to it through websocket RPC.
+- Browser speech recognition runs as the final fallback when the model or server path is unavailable.
+- The client setting `autoSendVoiceTranscripts` exists for future settings UI wiring and currently defaults to `false`.
+- Optional server override env vars live in [`.env.example`](./.env.example):
+  - `T3_TRANSCRIPTION_WHISPER_URL`
+  - `T3_TRANSCRIPTION_WHISPER_MODEL`
+  - `T3_TRANSCRIPTION_WHISPER_AUTH_HEADER`
+  - `T3_TRANSCRIPTION_WHISPER_AUTH_TOKEN`
 
 ## Remote Access
 

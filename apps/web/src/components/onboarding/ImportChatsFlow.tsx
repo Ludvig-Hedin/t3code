@@ -212,7 +212,7 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
           </div>
 
           {/* Project list */}
-          <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+          <div className="space-y-1.5 pr-1">
             {projects.map((project) => {
               const key = projectKey(project);
               const isSelected = selected.has(key);

@@ -138,10 +138,8 @@ export const a2aJsonRpcRoute = HttpRouter.add(
 
     const taskServiceOption = yield* Effect.serviceOption(A2aTaskService);
     const cardServiceOption = yield* Effect.serviceOption(A2aAgentCardService);
-    const taskService =
-      taskServiceOption._tag === "Some" ? taskServiceOption.value : undefined;
-    const cardService =
-      cardServiceOption._tag === "Some" ? cardServiceOption.value : undefined;
+    const taskService = taskServiceOption._tag === "Some" ? taskServiceOption.value : undefined;
+    const cardService = cardServiceOption._tag === "Some" ? cardServiceOption.value : undefined;
     if (!taskService || !cardService) {
       return HttpServerResponse.json(
         {

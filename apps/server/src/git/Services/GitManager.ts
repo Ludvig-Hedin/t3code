@@ -8,6 +8,8 @@
  */
 import {
   GitActionProgressEvent,
+  GitGetWorkingDiffInput,
+  GitGetWorkingDiffResult,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
   GitPrepareReviewContextInput,
@@ -73,6 +75,14 @@ export interface GitManagerShape {
   readonly prepareReviewContext: (
     input: GitPrepareReviewContextInput,
   ) => Effect.Effect<GitPrepareReviewContextResult, GitManagerServiceError>;
+
+  /**
+   * Fetch the raw working-tree diff patch (staged + unstaged vs HEAD).
+   * Matches the insertion/deletion counts shown in the diff button.
+   */
+  readonly getWorkingDiff: (
+    input: GitGetWorkingDiffInput,
+  ) => Effect.Effect<GitGetWorkingDiffResult, GitManagerServiceError>;
 }
 
 /**

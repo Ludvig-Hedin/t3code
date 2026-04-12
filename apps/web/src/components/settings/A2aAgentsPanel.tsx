@@ -113,9 +113,7 @@ function AddAgentForm({ onDone }: { onDone: () => void }) {
       {/* Discovery result preview */}
       {discoveredCard && (
         <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
-          <p className="text-xs font-medium text-foreground">
-            Discovered: {discoveredCard.name}
-          </p>
+          <p className="text-xs font-medium text-foreground">Discovered: {discoveredCard.name}</p>
           {discoveredCard.description && (
             <p className="text-xs text-muted-foreground">{discoveredCard.description}</p>
           )}
@@ -127,7 +125,12 @@ function AddAgentForm({ onDone }: { onDone: () => void }) {
       )}
 
       <div className="flex items-center gap-2">
-        <Button size="xs" variant="outline" onClick={() => void handleDiscover()} disabled={discovering}>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() => void handleDiscover()}
+          disabled={discovering}
+        >
           {discovering ? (
             <LoaderIcon className="size-3.5 animate-spin" />
           ) : (
@@ -135,7 +138,12 @@ function AddAgentForm({ onDone }: { onDone: () => void }) {
           )}
           Discover
         </Button>
-        <Button size="xs" variant="default" onClick={() => void handleRegister()} disabled={discovering}>
+        <Button
+          size="xs"
+          variant="default"
+          onClick={() => void handleRegister()}
+          disabled={discovering}
+        >
           <PlusIcon className="size-3.5" />
           Register
         </Button>

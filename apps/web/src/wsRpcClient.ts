@@ -22,6 +22,8 @@ import {
   type ProjectId,
   type ProviderKind,
   type ServerSettingsPatch,
+  type ServerTranscribeAudioInput,
+  type ServerTranscribeAudioResult,
   WS_METHODS,
 } from "@t3tools/contracts";
 import { Effect, Stream } from "effect";
@@ -92,6 +94,7 @@ export interface WsRpcClient {
       typeof WS_METHODS.gitPreparePullRequestThread
     >;
     readonly prepareReviewContext: RpcUnaryMethod<typeof WS_METHODS.gitPrepareReviewContext>;
+    readonly getWorkingDiff: RpcUnaryMethod<typeof WS_METHODS.gitGetWorkingDiff>;
   };
   readonly server: {
     readonly getConfig: RpcUnaryNoArgMethod<typeof WS_METHODS.serverGetConfig>;
@@ -101,6 +104,9 @@ export interface WsRpcClient {
     readonly updateSettings: (
       patch: ServerSettingsPatch,
     ) => ReturnType<RpcUnaryMethod<typeof WS_METHODS.serverUpdateSettings>>;
+    readonly transcribeAudio: (
+      input: ServerTranscribeAudioInput,
+    ) => Promise<ServerTranscribeAudioResult>;
     readonly subscribeConfig: RpcStreamMethod<typeof WS_METHODS.subscribeServerConfig>;
     readonly subscribeLifecycle: RpcStreamMethod<typeof WS_METHODS.subscribeServerLifecycle>;
   };
@@ -248,6 +254,8 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport.request((client) => client[WS_METHODS.gitPreparePullRequestThread](input)),
       prepareReviewContext: (input) =>
         transport.request((client) => client[WS_METHODS.gitPrepareReviewContext](input)),
+      getWorkingDiff: (input) =>
+        transport.request((client) => client[WS_METHODS.gitGetWorkingDiff](input)),
     },
     server: {
       getConfig: () => transport.request((client) => client[WS_METHODS.serverGetConfig]({})),
@@ -258,6 +266,8 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
       getSettings: () => transport.request((client) => client[WS_METHODS.serverGetSettings]({})),
       updateSettings: (patch) =>
         transport.request((client) => client[WS_METHODS.serverUpdateSettings]({ patch })),
+      transcribeAudio: (input) =>
+        transport.request((client) => client[WS_METHODS.serverTranscribeAudio](input)),
       subscribeConfig: (listener) =>
         transport.subscribe((client) => client[WS_METHODS.subscribeServerConfig]({}), listener),
       subscribeLifecycle: (listener) =>
@@ -365,14 +375,12 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport.request((client) => client[WS_METHODS.a2aDiscoverAgent](input)),
       sendMessage: (input) =>
         transport.request((client) => client[WS_METHODS.a2aSendMessage](input)),
-      getTask: (input) =>
-        transport.request((client) => client[WS_METHODS.a2aGetTask](input)),
+      getTask: (input) => transport.request((client) => client[WS_METHODS.a2aGetTask](input)),
       listTasks: () =>
         transport
           .request((client) => client[WS_METHODS.a2aListTasks]({}))
           .then((tasks) => [...tasks]),
-      cancelTask: (input) =>
-        transport.request((client) => client[WS_METHODS.a2aCancelTask](input)),
+      cancelTask: (input) => transport.request((client) => client[WS_METHODS.a2aCancelTask](input)),
     },
   };
 }

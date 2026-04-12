@@ -148,7 +148,7 @@ function TabItem({
   );
 }
 
-/** Auto-scrolling log view. */
+/** Auto-scrolling log view — used for non-browser (logs-type) apps. */
 function LogView({ lines }: { lines: string[] }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -169,6 +169,75 @@ function LogView({ lines }: { lines: string[] }) {
         ))
       )}
       <div ref={bottomRef} />
+    </div>
+  );
+}
+
+/**
+ * Startup log view — shown while a browser-type app is in "starting" state.
+ *
+ * Maps raw dev-server output to human-readable step milestones so the user
+ * sees "Installing dependencies…" or "Compiling…" rather than a static spinner.
+ * Lines that don't match a known milestone are shown as-is in a terminal font.
+ */
+function StartupLogView({ lines, appLabel }: { lines: string[]; appLabel: string }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lines]);
+
+  /**
+   * Map a raw log line to a friendly step label.
+   * Returns null to pass the line through verbatim.
+   */
+  function toStepLabel(raw: string): string | null {
+    const l = raw.toLowerCase();
+    if (/npm install|bun install|pnpm install|yarn install|installing packages?/.test(l))
+      return "Installing dependencies…";
+    if (/npm run dev|bun run dev|pnpm dev|yarn dev/.test(l)) return `Starting ${appLabel}…`;
+    if (/vite v\d|webpack|compiled successfully|ready in \d/.test(l)) return "Compiling…";
+    if (/local:\s+http|localhost:\d|127\.0\.0\.1:\d|started server on/.test(l))
+      return "Dev server ready — waiting for port…";
+    return null;
+  }
+
+  // Only show non-empty lines to avoid visual clutter from blank log lines.
+  const visibleLines = lines.filter((l) => l.trim().length > 0);
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Sticky header: spinner + step label */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card/60 px-4 py-2">
+        <Loader2Icon className="size-3.5 shrink-0 animate-spin text-amber-500" />
+        <span className="text-xs font-medium text-foreground">Starting {appLabel}…</span>
+      </div>
+
+      {/* Scrollable output */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-[1.6]">
+        {visibleLines.length === 0 ? (
+          <p className="text-muted-foreground/60">Waiting for output…</p>
+        ) : (
+          visibleLines.map((line, i) => {
+            const step = toStepLabel(line);
+            return step ? (
+              // Milestone step — styled with amber dot for visual emphasis
+              // eslint-disable-next-line react/no-array-index-key
+              <div key={i} className="flex items-center gap-1.5 py-0.5 text-muted-foreground">
+                <span className="size-1.5 shrink-0 rounded-full bg-amber-500/70" />
+                <span>{step}</span>
+              </div>
+            ) : (
+              // Raw log line — shown at reduced opacity to de-emphasise noise
+              // eslint-disable-next-line react/no-array-index-key
+              <div key={i} className="whitespace-pre-wrap break-all text-muted-foreground/60">
+                {line}
+              </div>
+            );
+          })
+        )}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 }
@@ -405,15 +474,20 @@ function PreviewPanelInner({ projectId, onDetach }: PreviewPanelProps) {
               className="size-full border-none"
               src={previewUrl}
               title={`Preview: ${activeApp.label}`}
-              // allow-same-origin intentionally omitted: combining it with
-              // allow-scripts lets the iframe escape its own sandbox.
+              // allow-same-origin is intentionally omitted: combining it with
+              // allow-scripts lets the iframe escape its own sandbox (the iframe
+              // can access window.parent and reach the Bird Code shell).
+              // Instead, the preview proxy (previewProxyRoute.ts) sets
+              // Access-Control-Allow-Origin: * on every response so that the
+              // opaque null origin produced by the sandbox can still load all
+              // proxied resources (scripts, stylesheets, fonts, etc.).
               sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
             />
           ) : activeSession?.status === "starting" ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-              <Loader2Icon className="size-8 animate-spin" />
-              <p className="text-sm">Starting {activeApp.label}&hellip;</p>
-            </div>
+            // Show a live startup log so the user can see what's happening
+            // (installing deps, compiling, waiting for port, etc.) rather than
+            // a static spinner with no information.
+            <StartupLogView lines={activeLogs} appLabel={activeApp.label} />
           ) : activeSession?.status === "error" ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
               <p className="text-sm font-medium text-destructive">

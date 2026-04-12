@@ -132,11 +132,15 @@ export interface SidebarThreadSummary {
 }
 
 export interface ThreadSession {
+  /** Present when session was synced from orchestration `thread.session-set` */
+  threadId?: ThreadId | undefined;
+  providerName?: string | null | undefined;
+  runtimeMode?: RuntimeMode | undefined;
   provider: ProviderKind;
   status: SessionPhase | "error" | "closed";
   activeTurnId?: TurnId | undefined;
   createdAt: string;
   updatedAt: string;
-  lastError?: string;
+  lastError?: string | null | undefined;
   orchestrationStatus: OrchestrationSessionStatus;
 }

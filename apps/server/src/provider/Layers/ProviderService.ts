@@ -357,7 +357,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             ),
           ),
         );
-        if (!settings.providers[input.provider].enabled) {
+        // "a2a" has no per-provider settings — treat as always-enabled.
+        const providerSettings =
+          input.provider in settings.providers
+            ? (settings.providers as Record<string, { enabled: boolean }>)[input.provider]
+            : undefined;
+        if (providerSettings && !providerSettings.enabled) {
           return yield* toValidationError(
             "ProviderService.startSession",
             `Provider '${input.provider}' is disabled in ${APP_NAME} settings.`,

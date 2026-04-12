@@ -1,6 +1,8 @@
 import type {
   GitCheckoutInput,
   GitCreateBranchInput,
+  GitGetWorkingDiffInput,
+  GitGetWorkingDiffResult,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
   GitPrepareReviewContextInput,
@@ -53,6 +55,7 @@ import type {
 } from "./orchestration";
 import { EditorId } from "./editor";
 import { ServerSettings, ServerSettingsPatch } from "./settings";
+import { ServerTranscribeAudioInput, ServerTranscribeAudioResult } from "./transcription";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -204,6 +207,8 @@ export interface NativeApi {
     prepareReviewContext: (
       input: GitPrepareReviewContextInput,
     ) => Promise<GitPrepareReviewContextResult>;
+    /** Fetch the raw unified-diff patch for all working-tree changes (staged + unstaged vs HEAD). */
+    getWorkingDiff: (input: GitGetWorkingDiffInput) => Promise<GitGetWorkingDiffResult>;
     // Stacked action API
     pull: (input: GitPullInput) => Promise<GitPullResult>;
     status: (input: GitStatusInput) => Promise<GitStatusResult>;
@@ -220,6 +225,7 @@ export interface NativeApi {
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
+    transcribeAudio: (input: ServerTranscribeAudioInput) => Promise<ServerTranscribeAudioResult>;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

@@ -22,10 +22,7 @@ import type {
 } from "@t3tools/contracts";
 import { Effect, Layer, PubSub, Ref, Stream } from "effect";
 
-import {
-  ProviderAdapterRequestError,
-  ProviderAdapterSessionNotFoundError,
-} from "../Errors.ts";
+import { ProviderAdapterRequestError, ProviderAdapterSessionNotFoundError } from "../Errors.ts";
 import { A2aAdapter, type A2aAdapterShape } from "../Services/A2aAdapter.ts";
 import type { ProviderThreadSnapshot } from "../Services/ProviderAdapter.ts";
 import { A2aClientService } from "../../a2a/Services/A2aClientService.ts";
@@ -92,9 +89,7 @@ export const A2aAdapterLive = Layer.effect(
           | undefined;
         const agentCardId = modelSel?.agentCardId;
         if (!agentCardId) {
-          return yield* Effect.die(
-            new Error("A2A adapter requires agentCardId in modelSelection"),
-          );
+          return yield* Effect.die(new Error("A2A adapter requires agentCardId in modelSelection"));
         }
 
         const session: ProviderSession = {
@@ -231,9 +226,7 @@ export const A2aAdapterLive = Layer.effect(
         });
 
         // Emit turn completed
-        yield* emitEvent(
-          makeThreadEvent("turn.completed", input.threadId, { turnId }, turnId),
-        );
+        yield* emitEvent(makeThreadEvent("turn.completed", input.threadId, { turnId }, turnId));
 
         return { turnId } as ProviderTurnStartResult;
       });
@@ -256,11 +249,17 @@ export const A2aAdapterLive = Layer.effect(
         }
       });
 
-    const respondToRequest: A2aAdapterShape["respondToRequest"] = (_threadId, _requestId, _decision) =>
-      Effect.void;
+    const respondToRequest: A2aAdapterShape["respondToRequest"] = (
+      _threadId,
+      _requestId,
+      _decision,
+    ) => Effect.void;
 
-    const respondToUserInput: A2aAdapterShape["respondToUserInput"] = (_threadId, _requestId, _answers) =>
-      Effect.void;
+    const respondToUserInput: A2aAdapterShape["respondToUserInput"] = (
+      _threadId,
+      _requestId,
+      _answers,
+    ) => Effect.void;
 
     const stopSession: A2aAdapterShape["stopSession"] = (threadId) =>
       Effect.gen(function* () {
@@ -325,8 +324,7 @@ export const A2aAdapterLive = Layer.effect(
         } satisfies ProviderThreadSnapshot;
       });
 
-    const stopAll: A2aAdapterShape["stopAll"] = () =>
-      Ref.set(sessionsRef, new Map());
+    const stopAll: A2aAdapterShape["stopAll"] = () => Ref.set(sessionsRef, new Map());
 
     const refreshRateLimits: A2aAdapterShape["refreshRateLimits"] = () => Effect.void;
 

@@ -56,7 +56,8 @@ export function ThreadTokenUsage({ usage }: { usage: ContextWindowSnapshot }) {
             </span>
           </div>
           {/* Show last-turn breakdown if available */}
-          {((usage.lastInputTokens ?? null) !== null || (usage.lastOutputTokens ?? null) !== null) && (
+          {((usage.lastInputTokens ?? null) !== null ||
+            (usage.lastOutputTokens ?? null) !== null) && (
             <>
               <div className="border-t border-border/60 pt-1.5 mt-1">
                 <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground mb-1">

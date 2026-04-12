@@ -370,6 +370,30 @@ export function isTerminalClearShortcut(
   );
 }
 
+/**
+ * Matches the Cmd+K shortcut on Mac for opening the AI command bar in the terminal.
+ * This is intercepted BEFORE isTerminalClearShortcut in the terminal key handler,
+ * so Cmd+K opens the AI bar while Ctrl+L still clears the terminal.
+ */
+export function isTerminalAiCommandShortcut(
+  event: ShortcutEventLike,
+  platform = navigator.platform,
+): boolean {
+  if (event.type !== undefined && event.type !== "keydown") {
+    return false;
+  }
+
+  const key = event.key.toLowerCase();
+  return (
+    isMacPlatform(platform) &&
+    key === "k" &&
+    event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.shiftKey
+  );
+}
+
 export function terminalNavigationShortcutData(
   event: ShortcutEventLike,
   platform = navigator.platform,

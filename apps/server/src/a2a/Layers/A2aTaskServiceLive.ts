@@ -100,8 +100,7 @@ const make = Effect.gen(function* () {
 
       if (input.taskId) {
         // Continue existing task — append message and update status
-        const rows =
-          yield* sql`SELECT * FROM a2a_tasks WHERE id = ${input.taskId}`;
+        const rows = yield* sql`SELECT * FROM a2a_tasks WHERE id = ${input.taskId}`;
         if (rows.length === 0) {
           return yield* Effect.fail(
             new A2aServiceError({ message: `Task not found: ${input.taskId}` }),
@@ -177,17 +176,13 @@ const make = Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql`SELECT * FROM a2a_tasks WHERE id = ${taskId}`;
       if (rows.length === 0) {
-        return yield* Effect.fail(
-          new A2aServiceError({ message: `Task not found: ${taskId}` }),
-        );
+        return yield* Effect.fail(new A2aServiceError({ message: `Task not found: ${taskId}` }));
       }
       return taskFromRow(rows[0]!);
     }).pipe(
       Effect.catch((cause) => {
         if (cause instanceof A2aServiceError) return Effect.fail(cause);
-        return Effect.fail(
-          new A2aServiceError({ message: `Failed to get task: ${cause}` }),
-        );
+        return Effect.fail(new A2aServiceError({ message: `Failed to get task: ${cause}` }));
       }),
     );
 
@@ -210,9 +205,7 @@ const make = Effect.gen(function* () {
       const now = nowIso();
       const rows = yield* sql`SELECT * FROM a2a_tasks WHERE id = ${taskId}`;
       if (rows.length === 0) {
-        return yield* Effect.fail(
-          new A2aServiceError({ message: `Task not found: ${taskId}` }),
-        );
+        return yield* Effect.fail(new A2aServiceError({ message: `Task not found: ${taskId}` }));
       }
 
       yield* sql`
@@ -238,14 +231,11 @@ const make = Effect.gen(function* () {
     }).pipe(
       Effect.catch((cause) => {
         if (cause instanceof A2aServiceError) return Effect.fail(cause);
-        return Effect.fail(
-          new A2aServiceError({ message: `Failed to cancel task: ${cause}` }),
-        );
+        return Effect.fail(new A2aServiceError({ message: `Failed to cancel task: ${cause}` }));
       }),
     );
 
-  const streamEvents: A2aTaskServiceShape["streamEvents"] =
-    Stream.fromPubSub(eventPubSub);
+  const streamEvents: A2aTaskServiceShape["streamEvents"] = Stream.fromPubSub(eventPubSub);
 
   return {
     handleInboundMessage,

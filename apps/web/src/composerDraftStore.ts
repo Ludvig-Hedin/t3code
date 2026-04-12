@@ -439,7 +439,9 @@ function normalizeProviderKind(value: unknown): ProviderKind | null {
     value === "claudeAgent" ||
     value === "gemini" ||
     value === "opencode" ||
-    value === "ollama"
+    value === "ollama" ||
+    value === "manifest" ||
+    value === "a2a"
     ? value
     : null;
 }
@@ -562,8 +564,8 @@ function normalizeModelSelection(
     provider,
     provider === "codex" ? legacy?.legacyCodex : undefined,
   );
-  // Resolve provider-specific options; gemini/opencode/ollama have empty option structs
-  // so these resolve to undefined, which is the correct behaviour.
+  // Resolve provider-specific options; gemini/opencode/ollama/manifest/a2a have empty option
+  // structs so these resolve to undefined, which is the correct behaviour.
   const options =
     provider === "codex"
       ? modelOptions?.codex
@@ -573,9 +575,12 @@ function normalizeModelSelection(
           ? modelOptions?.opencode
           : provider === "ollama"
             ? modelOptions?.ollama
-            : modelOptions?.gemini;
+            : provider === "manifest"
+              ? modelOptions?.manifest
+              : provider === "a2a"
+                ? modelOptions?.a2a
+                : modelOptions?.gemini;
   // A2A model selections require agentCardId and are not constructed through this generic path.
-  // Type assertion is safe because normalizeProviderKind won't produce "a2a" from legacy data.
   return {
     provider,
     model,

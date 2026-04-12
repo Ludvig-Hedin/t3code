@@ -1,10 +1,14 @@
 /**
  * Message queue hook for queuing user messages while the AI is working.
  *
- * Uses useReducer for predictable state transitions. Queued messages can be
- * edited, deleted, and reordered before they are auto-sent.
+ * Queues are scoped per thread and persisted in local storage so they stay
+ * attached to the chat they were created in, even if the route stays mounted
+ * while thread params change.
  */
-import { useCallback, useReducer } from "react";
+import * as Schema from "effect/Schema";
+import { useCallback, useRef } from "react";
+import { type ThreadId } from "@t3tools/contracts";
+import { useLocalStorage } from "./useLocalStorage";
 
 export interface QueuedMessage {
   readonly id: string;
@@ -12,52 +16,80 @@ export interface QueuedMessage {
   readonly createdAt: number;
 }
 
-type QueueAction =
-  | { type: "enqueue"; text: string }
-  | { type: "dequeue" }
-  | { type: "edit"; id: string; text: string }
-  | { type: "remove"; id: string }
-  | { type: "reorder"; id: string; direction: "up" | "down" }
-  | { type: "clear" };
+export const QueuedMessageSchema = Schema.Struct({
+  createdAt: Schema.Number,
+  id: Schema.String,
+  text: Schema.String,
+});
 
-function queueReducer(state: QueuedMessage[], action: QueueAction): QueuedMessage[] {
-  switch (action.type) {
-    case "enqueue":
-      return [
-        ...state,
-        {
-          id: crypto.randomUUID(),
-          text: action.text,
-          createdAt: Date.now(),
-        },
-      ];
+export const QueuedMessageListSchema = Schema.Array(QueuedMessageSchema);
 
-    case "dequeue":
-      return state.slice(1);
+const MESSAGE_QUEUE_STORAGE_PREFIX = "t3code:message-queue:v1";
 
-    case "edit":
-      return state.map((msg) => (msg.id === action.id ? { ...msg, text: action.text } : msg));
+export function getMessageQueueStorageKey(threadId: ThreadId): string {
+  return `${MESSAGE_QUEUE_STORAGE_PREFIX}:${threadId}`;
+}
 
-    case "remove":
-      return state.filter((msg) => msg.id !== action.id);
+export function enqueueQueuedMessage(
+  queue: readonly QueuedMessage[],
+  text: string,
+): QueuedMessage[] {
+  return [
+    ...queue,
+    {
+      id: crypto.randomUUID(),
+      text,
+      createdAt: Date.now(),
+    },
+  ];
+}
 
-    case "reorder": {
-      const idx = state.findIndex((msg) => msg.id === action.id);
-      if (idx === -1) return state;
-      const targetIdx = action.direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= state.length) return state;
-      const next = [...state];
-      // Swap adjacent items
-      [next[idx], next[targetIdx]] = [next[targetIdx]!, next[idx]!];
-      return next;
-    }
-
-    case "clear":
-      return [];
-
-    default:
-      return state;
+export function dequeueQueuedMessage(queue: readonly QueuedMessage[]): {
+  readonly nextQueue: QueuedMessage[];
+  readonly text: string | null;
+} {
+  if (queue.length === 0) {
+    return { nextQueue: [], text: null };
   }
+
+  return {
+    nextQueue: queue.slice(1),
+    text: queue[0]!.text,
+  };
+}
+
+export function editQueuedMessage(
+  queue: readonly QueuedMessage[],
+  id: string,
+  text: string,
+): QueuedMessage[] {
+  return queue.map((msg) => (msg.id === id ? { ...msg, text } : msg));
+}
+
+export function removeQueuedMessage(queue: readonly QueuedMessage[], id: string): QueuedMessage[] {
+  return queue.filter((msg) => msg.id !== id);
+}
+
+export function moveQueuedMessage(
+  queue: readonly QueuedMessage[],
+  id: string,
+  toIndex: number,
+): QueuedMessage[] {
+  const fromIndex = queue.findIndex((msg) => msg.id === id);
+  if (fromIndex === -1) return [...queue];
+
+  const clampedToIndex = Math.max(0, Math.min(toIndex, queue.length - 1));
+  if (fromIndex === clampedToIndex) return [...queue];
+
+  const next = [...queue];
+  const [item] = next.splice(fromIndex, 1);
+  if (!item) return [...queue];
+  next.splice(clampedToIndex, 0, item);
+  return next;
+}
+
+export function clearQueuedMessages(): QueuedMessage[] {
+  return [];
 }
 
 export interface MessageQueueApi {
@@ -71,41 +103,62 @@ export interface MessageQueueApi {
   edit: (id: string, text: string) => void;
   /** Remove a queued message by id */
   remove: (id: string) => void;
-  /** Move a queued message up or down */
-  reorder: (id: string, direction: "up" | "down") => void;
+  /** Move a queued message to a new index */
+  move: (id: string, toIndex: number) => void;
   /** Clear all queued messages */
   clear: () => void;
 }
 
-export function useMessageQueue(): MessageQueueApi {
-  const [queue, dispatch] = useReducer(queueReducer, []);
+export function useMessageQueue(threadId: ThreadId): MessageQueueApi {
+  const [queue, setQueue] = useLocalStorage(
+    getMessageQueueStorageKey(threadId),
+    [] as QueuedMessage[],
+    QueuedMessageListSchema,
+  );
 
-  const enqueue = useCallback((text: string) => {
-    dispatch({ type: "enqueue", text });
-  }, []);
+  const lastDequeuedTextRef = useRef<string | null>(null);
+
+  const enqueue = useCallback(
+    (text: string) => {
+      setQueue((current) => enqueueQueuedMessage(current, text));
+    },
+    [setQueue],
+  );
 
   const dequeue = useCallback((): string | null => {
-    if (queue.length === 0) return null;
-    const first = queue[0]!;
-    dispatch({ type: "dequeue" });
-    return first.text;
-  }, [queue]);
+    lastDequeuedTextRef.current = null;
+    setQueue((current) => {
+      const { nextQueue, text } = dequeueQueuedMessage(current);
+      lastDequeuedTextRef.current = text;
+      return nextQueue;
+    });
+    return lastDequeuedTextRef.current;
+  }, [setQueue]);
 
-  const edit = useCallback((id: string, text: string) => {
-    dispatch({ type: "edit", id, text });
-  }, []);
+  const edit = useCallback(
+    (id: string, text: string) => {
+      setQueue((current) => editQueuedMessage(current, id, text));
+    },
+    [setQueue],
+  );
 
-  const remove = useCallback((id: string) => {
-    dispatch({ type: "remove", id });
-  }, []);
+  const remove = useCallback(
+    (id: string) => {
+      setQueue((current) => removeQueuedMessage(current, id));
+    },
+    [setQueue],
+  );
 
-  const reorder = useCallback((id: string, direction: "up" | "down") => {
-    dispatch({ type: "reorder", id, direction });
-  }, []);
+  const move = useCallback(
+    (id: string, toIndex: number) => {
+      setQueue((current) => moveQueuedMessage(current, id, toIndex));
+    },
+    [setQueue],
+  );
 
   const clear = useCallback(() => {
-    dispatch({ type: "clear" });
-  }, []);
+    setQueue(clearQueuedMessages());
+  }, [setQueue]);
 
-  return { queue, enqueue, dequeue, edit, remove, reorder, clear };
+  return { queue, enqueue, dequeue, edit, remove, move, clear };
 }

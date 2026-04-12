@@ -59,6 +59,7 @@ import { PreviewServerManager } from "./preview/Services/PreviewServerManager";
 import { McpService } from "./mcp";
 import { PluginService } from "./plugins";
 import { A2aAgentCardService, A2aTaskService, A2aClientService } from "./a2a";
+import { TranscriptionService } from "./transcription/TranscriptionService";
 
 // ---------------------------------------------------------------------------
 // Memory helpers — used in the dispatchCommand handler to enrich user messages
@@ -177,6 +178,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const previewManager = yield* PreviewServerManager;
     const mcpService = yield* McpService;
     const pluginService = yield* PluginService;
+    const transcriptionService = yield* TranscriptionService;
     const a2aAgentCardService = yield* A2aAgentCardService;
     const a2aTaskService = yield* A2aTaskService;
     const a2aClientService = yield* A2aClientService;
@@ -724,6 +726,14 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         observeRpcEffect(WS_METHODS.serverUpdateSettings, serverSettings.updateSettings(patch), {
           "rpc.aggregate": "server",
         }),
+      [WS_METHODS.serverTranscribeAudio]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.serverTranscribeAudio,
+          transcriptionService.transcribeAudio(input),
+          {
+            "rpc.aggregate": "server",
+          },
+        ),
       [WS_METHODS.projectsSearchEntries]: (input) =>
         observeRpcEffect(
           WS_METHODS.projectsSearchEntries,
@@ -826,6 +836,10 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           gitManager.prepareReviewContext(input),
           { "rpc.aggregate": "git" },
         ),
+      [WS_METHODS.gitGetWorkingDiff]: (input) =>
+        observeRpcEffect(WS_METHODS.gitGetWorkingDiff, gitManager.getWorkingDiff(input), {
+          "rpc.aggregate": "git",
+        }),
       [WS_METHODS.gitListBranches]: (input) =>
         observeRpcEffect(WS_METHODS.gitListBranches, git.listBranches(input), {
           "rpc.aggregate": "git",
@@ -1123,9 +1137,13 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           "rpc.aggregate": "a2a",
         }),
       [WS_METHODS.a2aRegisterAgent]: ({ url, name }) =>
-        observeRpcEffect(WS_METHODS.a2aRegisterAgent, a2aAgentCardService.register({ url, ...(name != null ? { name } : {}) }), {
-          "rpc.aggregate": "a2a",
-        }),
+        observeRpcEffect(
+          WS_METHODS.a2aRegisterAgent,
+          a2aAgentCardService.register({ url, ...(name != null ? { name } : {}) }),
+          {
+            "rpc.aggregate": "a2a",
+          },
+        ),
       [WS_METHODS.a2aRemoveAgent]: ({ agentCardId }) =>
         observeRpcEffect(WS_METHODS.a2aRemoveAgent, a2aAgentCardService.remove(agentCardId), {
           "rpc.aggregate": "a2a",
@@ -1137,13 +1155,13 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       [WS_METHODS.a2aSendMessage]: ({ agentCardId, message, taskId }) =>
         observeRpcEffect(
           WS_METHODS.a2aSendMessage,
-          a2aClientService.sendMessage({
-            agentCardId,
-            message,
-            ...(taskId != null ? { taskId } : {}),
-          }).pipe(
-            Effect.map((task) => ({ task })),
-          ),
+          a2aClientService
+            .sendMessage({
+              agentCardId,
+              message,
+              ...(taskId != null ? { taskId } : {}),
+            })
+            .pipe(Effect.map((task) => ({ task }))),
           { "rpc.aggregate": "a2a" },
         ),
       [WS_METHODS.a2aGetTask]: ({ taskId }) =>
@@ -1159,11 +1177,9 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           "rpc.aggregate": "a2a",
         }),
       [WS_METHODS.subscribeA2aEvents]: () =>
-        observeRpcStream(
-          WS_METHODS.subscribeA2aEvents,
-          a2aTaskService.streamEvents,
-          { "rpc.aggregate": "a2a" },
-        ),
+        observeRpcStream(WS_METHODS.subscribeA2aEvents, a2aTaskService.streamEvents, {
+          "rpc.aggregate": "a2a",
+        }),
     });
   }),
 );

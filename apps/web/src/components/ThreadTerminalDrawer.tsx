@@ -31,7 +31,12 @@ import {
   isTerminalLinkActivation,
   resolvePathLinkTarget,
 } from "../terminal-links";
-import { isTerminalClearShortcut, terminalNavigationShortcutData } from "../keybindings";
+import {
+  isTerminalAiCommandShortcut,
+  isTerminalClearShortcut,
+  terminalNavigationShortcutData,
+} from "../keybindings";
+import { TerminalCommandBar } from "./TerminalCommandBar";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   DEFAULT_THREAD_TERMINAL_ID,
@@ -266,6 +271,24 @@ function TerminalViewport({
   });
   const readTerminalLabel = useEffectEvent(() => terminalLabel);
 
+  // ── AI Command Bar state (Cmd+K) ─────────────────────────────────────────
+  // Toggle-open from the xterm keyboard handler (runs inside a useEffect
+  // closure, so we bridge via useEffectEvent which is always fresh).
+  const [cmdKOpen, setCmdKOpen] = useState(false);
+  const handleOpenCmdK = useEffectEvent(() => setCmdKOpen((prev) => !prev));
+  const handleCloseCmdK = useEffectEvent(() => {
+    setCmdKOpen(false);
+    // Re-focus the terminal so the user can immediately interact with the command
+    terminalRef.current?.focus();
+  });
+  const handleCommandGenerated = useEffectEvent((command: string) => {
+    // Writes the command text to the PTY without a trailing newline — the user
+    // reviews what was typed and presses Enter themselves.
+    const api = readNativeApi();
+    if (!api) return;
+    void api.terminal.write({ threadId, terminalId, data: command }).catch(() => undefined);
+  });
+
   useEffect(() => {
     const mount = containerRef.current;
     if (!mount) return;
@@ -390,6 +413,15 @@ function TerminalViewport({
         event.preventDefault();
         event.stopPropagation();
         void sendTerminalInput("\\\n", "Failed to send line continuation");
+        return false;
+      }
+
+      // Cmd+K on Mac → open/toggle the AI command bar instead of clearing the terminal.
+      // Intercepted BEFORE isTerminalClearShortcut so Ctrl+L still clears normally.
+      if (isTerminalAiCommandShortcut(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        handleOpenCmdK();
         return false;
       }
 
@@ -832,7 +864,15 @@ function TerminalViewport({
     };
   }, [drawerHeight, resizeEpoch, terminalId, threadId]);
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-[4px]" />
+    // Outer wrapper provides the `relative` positioning context for the
+    // absolutely-positioned TerminalCommandBar overlay.
+    <div className="relative h-full w-full overflow-hidden rounded-[4px]">
+      {/* Inner div is where xterm.js mounts its canvas — must fill the container */}
+      <div ref={containerRef} className="h-full w-full" />
+      {cmdKOpen && (
+        <TerminalCommandBar onClose={handleCloseCmdK} onCommandGenerated={handleCommandGenerated} />
+      )}
+    </div>
   );
 }
 

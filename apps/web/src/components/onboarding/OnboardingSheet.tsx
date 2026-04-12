@@ -120,12 +120,12 @@ export function OnboardingSheet() {
           <StepContent step={currentStep} onImportDone={nextStep} />
         </SheetPanel>
 
-        {/* ── Footer — hidden on import step (it has its own import CTA) ─── */}
-        {!isImportStep && (
-          <SheetFooter
-            variant="bare"
-            className="flex-row items-center justify-between gap-2 shrink-0"
-          >
+        {/* ── Footer ──────────────────────────────────────────────────────── */}
+        <SheetFooter
+          variant="bare"
+          className="flex-row items-center justify-between gap-2 shrink-0"
+        >
+          {!isImportStep && (
             <button
               type="button"
               onClick={skipStep}
@@ -133,29 +133,34 @@ export function OnboardingSheet() {
             >
               Skip this step
             </button>
-            <div className="flex items-center gap-2">
-              {currentStep > 1 && (
-                <Button size="sm" variant="outline" onClick={prevStep}>
-                  <ArrowLeftIcon className="size-3.5 mr-1" />
-                  Back
-                </Button>
-              )}
-              <Button size="sm" onClick={isLastStep ? completeOnboarding : nextStep}>
-                {isLastStep ? (
-                  <>
-                    <CheckIcon className="size-3.5 mr-1" />
-                    Done
-                  </>
-                ) : (
-                  <>
-                    Next
-                    <ArrowRightIcon className="size-3.5 ml-1" />
-                  </>
-                )}
+          )}
+          <div
+            className={cn(
+              "flex items-center gap-2",
+              isImportStep && "ml-auto",
+            )}
+          >
+            {currentStep > 1 && (
+              <Button size="sm" variant="outline" onClick={prevStep}>
+                <ArrowLeftIcon className="size-3.5 mr-1" />
+                Back
               </Button>
-            </div>
-          </SheetFooter>
-        )}
+            )}
+            <Button size="sm" onClick={isLastStep ? completeOnboarding : nextStep}>
+              {isLastStep ? (
+                <>
+                  <CheckIcon className="size-3.5 mr-1" />
+                  Done
+                </>
+              ) : (
+                <>
+                  Next
+                  <ArrowRightIcon className="size-3.5 ml-1" />
+                </>
+              )}
+            </Button>
+          </div>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

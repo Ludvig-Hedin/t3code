@@ -54,7 +54,12 @@ import {
   MenuTrigger,
 } from "~/components/ui/menu";
 import { cn } from "~/lib/utils";
-import { DEFAULT_RUNTIME_MODE, type ModelSelection, type ProviderKind, type ServerProvider } from "@t3tools/contracts";
+import {
+  DEFAULT_RUNTIME_MODE,
+  type ModelSelection,
+  type ProviderKind,
+  type ServerProvider,
+} from "@t3tools/contracts";
 import { buildAutomationRunTitle, resolveAutomationProject } from "~/automationsRunner";
 import {
   type AutomItem,

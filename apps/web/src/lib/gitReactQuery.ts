@@ -21,6 +21,7 @@ const GIT_BRANCHES_PAGE_SIZE = 100;
 export const gitQueryKeys = {
   all: ["git"] as const,
   status: (cwd: string | null) => ["git", "status", cwd] as const,
+  workingDiff: (cwd: string | null) => ["git", "workingDiff", cwd] as const,
   branches: (cwd: string | null) => ["git", "branches", cwd] as const,
   branchSearch: (cwd: string | null, query: string) =>
     ["git", "branches", cwd, "search", query] as const,
@@ -68,6 +69,30 @@ export function gitStatusQueryOptions(cwd: string | null) {
     refetchOnWindowFocus: "always",
     refetchOnReconnect: "always",
     refetchInterval: GIT_STATUS_REFETCH_INTERVAL_MS,
+  });
+}
+
+/** Fetch the raw unified-diff patch for all working-tree changes (staged + unstaged vs HEAD).
+ *  Disabled when cwd is null or when there are no working-tree changes. */
+export function gitWorkingDiffQueryOptions(input: {
+  cwd: string | null;
+  /** Pass `false` to skip the query when there are no working-tree changes. */
+  enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: gitQueryKeys.workingDiff(input.cwd),
+    queryFn: async () => {
+      const api = ensureNativeApi();
+      if (!input.cwd) throw new Error("Git working diff is unavailable.");
+      return api.git.getWorkingDiff({ cwd: input.cwd });
+    },
+    enabled: input.cwd !== null && (input.enabled ?? true),
+    // Working-tree diff can change at any moment — use a short stale time
+    // so it stays roughly in sync while the panel is open.
+    staleTime: 5_000,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    refetchInterval: 15_000,
   });
 }
 

@@ -10,6 +10,8 @@ import {
   GitCreateBranchInput,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
+  GitGetWorkingDiffInput,
+  GitGetWorkingDiffResult,
   GitInitInput,
   GitListBranchesInput,
   GitListBranchesResult,
@@ -101,6 +103,11 @@ import {
   SkillInfo,
 } from "./skills";
 import {
+  ServerTranscribeAudioInput,
+  ServerTranscribeAudioResult,
+  TranscriptionError,
+} from "./transcription";
+import {
   PreviewApp,
   PreviewDetectAppsInput,
   PreviewError,
@@ -138,6 +145,7 @@ export const WS_METHODS = {
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
   gitPrepareReviewContext: "git.prepareReviewContext",
+  gitGetWorkingDiff: "git.getWorkingDiff",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -153,6 +161,7 @@ export const WS_METHODS = {
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverTranscribeAudio: "server.transcribeAudio",
 
   // Skills methods
   skillsList: "skills.list",
@@ -231,6 +240,12 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   error: ServerSettingsError,
 });
 
+export const WsServerTranscribeAudioRpc = Rpc.make(WS_METHODS.serverTranscribeAudio, {
+  payload: ServerTranscribeAudioInput,
+  success: ServerTranscribeAudioResult,
+  error: TranscriptionError,
+});
+
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
@@ -288,6 +303,12 @@ export const WsGitPreparePullRequestThreadRpc = Rpc.make(WS_METHODS.gitPreparePu
 export const WsGitPrepareReviewContextRpc = Rpc.make(WS_METHODS.gitPrepareReviewContext, {
   payload: GitPrepareReviewContextInput,
   success: GitPrepareReviewContextResult,
+  error: GitManagerServiceError,
+});
+
+export const WsGitGetWorkingDiffRpc = Rpc.make(WS_METHODS.gitGetWorkingDiff, {
+  payload: GitGetWorkingDiffInput,
+  success: GitGetWorkingDiffResult,
   error: GitManagerServiceError,
 });
 
@@ -608,6 +629,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpsertKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerTranscribeAudioRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsWriteFileRpc,
@@ -618,6 +640,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,
   WsGitPrepareReviewContextRpc,
+  WsGitGetWorkingDiffRpc,
   WsGitListBranchesRpc,
   WsGitCreateWorktreeRpc,
   WsGitRemoveWorktreeRpc,

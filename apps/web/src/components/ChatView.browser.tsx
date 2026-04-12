@@ -2425,9 +2425,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       const newThreadButton = page.getByTestId("new-thread-button");
       await expect.element(newThreadButton).toBeInTheDocument();
 
-      await newThreadButton.evaluate((element) => {
-        (element as HTMLButtonElement).click();
-      });
+      await newThreadButton.click();
 
       // The route should change to a new draft thread ID.
       const newThreadPath = await waitForURL(

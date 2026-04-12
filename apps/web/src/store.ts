@@ -96,6 +96,9 @@ function mapProjectScripts(scripts: ReadonlyArray<Project["scripts"][number]>): 
 
 function mapSession(session: OrchestrationSession): Thread["session"] {
   return {
+    threadId: session.threadId,
+    providerName: session.providerName,
+    runtimeMode: session.runtimeMode,
     provider: toLegacyProvider(session.providerName),
     status: toLegacySessionStatus(session.status),
     orchestrationStatus: session.status,
@@ -807,19 +810,21 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
     }
 
     case "thread.turn-interrupt-requested": {
-      if (event.payload.turnId === undefined) {
-        return state;
-      }
       return updateThreadState(state, event.payload.threadId, (thread) => {
+        const targetTurnId =
+          event.payload.turnId ?? thread.session?.activeTurnId ?? thread.latestTurn?.turnId;
+        if (targetTurnId === undefined) {
+          return thread;
+        }
         const latestTurn = thread.latestTurn;
-        if (latestTurn === null || latestTurn.turnId !== event.payload.turnId) {
+        if (latestTurn === null || latestTurn.turnId !== targetTurnId) {
           return thread;
         }
         return {
           ...thread,
           latestTurn: buildLatestTurn({
             previous: latestTurn,
-            turnId: event.payload.turnId,
+            turnId: targetTurnId,
             state: "interrupted",
             requestedAt: latestTurn.requestedAt,
             startedAt: latestTurn.startedAt ?? event.payload.createdAt,

@@ -46,6 +46,7 @@ export const ClientSettingsSchema = Schema.Struct({
 
   // Thread token usage — show input/output token counts per thread in the composer area
   showThreadTokenUsage: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  autoSendVoiceTranscripts: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
 
   // Appearance
   // Enabled by default — pointer cursors are generally preferred UX
@@ -74,6 +75,12 @@ export const ClientSettingsSchema = Schema.Struct({
   // Default provider for new chats
   defaultProvider: Schema.Literals(["use-latest", "codex", "claudeAgent", "gemini"]).pipe(
     Schema.withDecodingDefault(() => "use-latest" as const),
+  ),
+
+  // Per-provider default model slugs — used in settings and as a preference for each provider.
+  // Keys are ProviderKind strings; values are model slugs.
+  defaultModelByProvider: Schema.Record(Schema.String, Schema.String).pipe(
+    Schema.withDecodingDefault(() => ({})),
   ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;

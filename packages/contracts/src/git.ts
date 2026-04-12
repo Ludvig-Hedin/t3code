@@ -104,6 +104,12 @@ export const GitStatusInput = Schema.Struct({
 });
 export type GitStatusInput = typeof GitStatusInput.Type;
 
+/** Input for fetching the raw working-tree diff (staged + unstaged vs last commit). */
+export const GitGetWorkingDiffInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+});
+export type GitGetWorkingDiffInput = typeof GitGetWorkingDiffInput.Type;
+
 export const GitPullInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
 });
@@ -211,6 +217,12 @@ export const GitStatusResult = Schema.Struct({
   pr: Schema.NullOr(GitStatusPr),
 });
 export type GitStatusResult = typeof GitStatusResult.Type;
+
+/** Raw unified-diff patch of all working-tree changes (staged + unstaged vs HEAD). */
+export const GitGetWorkingDiffResult = Schema.Struct({
+  patch: Schema.String,
+});
+export type GitGetWorkingDiffResult = typeof GitGetWorkingDiffResult.Type;
 
 export const GitListBranchesResult = Schema.Struct({
   branches: Schema.Array(GitBranch),

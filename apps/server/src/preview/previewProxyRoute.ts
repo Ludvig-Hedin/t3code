@@ -6,6 +6,31 @@
  * This allows iOS and desktop clients to access locally running dev servers
  * through the Bird Code server's existing connection, without needing direct
  * access to localhost ports.
+ *
+ * CORS / sandbox strategy
+ * -----------------------
+ * The preview iframe uses a `sandbox` attribute WITHOUT `allow-same-origin`,
+ * so its origin is the opaque value "null". To allow the iframe to still load
+ * proxied resources (scripts, stylesheets, etc.) we:
+ *
+ *   1. Strip `Accept-Encoding` before forwarding so upstream servers always
+ *      respond with plain text we can inspect and rewrite.
+ *   2. Override `Access-Control-Allow-Origin: *` on every proxy response so
+ *      the null-origin iframe is permitted to fetch those resources.
+ *   3. Rewrite `http://localhost:{port}/…` / `http://127.0.0.1:{port}/…`
+ *      occurrences in HTML and JS response bodies to the Bird Code proxy base
+ *      path so all resource fetches stay inside the Bird Code server (which
+ *      adds the CORS headers) rather than hitting the upstream dev server
+ *      directly and getting rejected.
+ *
+ * Route pattern note
+ * ------------------
+ * We use "/preview/*" (not "/preview/:projectId/:appId/*") so the wildcard
+ * matches the trailing-slash-only case that the browser sends on the first
+ * iframe navigation (/preview/pid/aid/).  A named-param wildcard like
+ * "/:appId/*" may require at least one character after the final slash and
+ * would therefore NOT match the trailing "/" — causing the request to fall
+ * through to the SPA catch-all and load Bird Code inside the iframe.
  */
 import * as nodeHttp from "node:http";
 import { Data, Effect, Layer, Option } from "effect";
@@ -98,6 +123,11 @@ const previewProxyHandler = Effect.gen(function* () {
         // Override host to point to the upstream dev server
         forwardHeaders["host"] = `127.0.0.1:${port}`;
 
+        // Disable compression: we need to inspect and rewrite HTML/JS response
+        // bodies. Local proxying has negligible transfer overhead, so stripping
+        // Accept-Encoding costs nothing and lets us safely read plain text.
+        delete forwardHeaders["accept-encoding"];
+
         const proxyReq = nodeHttp.request(
           {
             hostname: "127.0.0.1",
@@ -158,17 +188,80 @@ const previewProxyHandler = Effect.gen(function* () {
     ),
   );
 
-  return HttpServerResponse.uint8Array(new Uint8Array(result.body), {
+  // -------------------------------------------------------------------------
+  // Post-processing: CORS override + absolute-URL rewriting
+  // -------------------------------------------------------------------------
+  // Build mutable copies so we can patch headers and body without mutating the
+  // resolved value (which is still referenced in the Effect pipeline).
+  const proxyBase = `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(appId)}`;
+  const responseHeaders: Record<string, string> = { ...result.headers };
+  let responseBody = result.body;
+
+  // Override CORS: Vite's dev server emits Access-Control-Allow-Origin set to
+  // its own origin (e.g. http://localhost:5733). Sandboxed iframes have the
+  // opaque origin "null", which Vite and most dev servers reject.  Setting "*"
+  // lets the null-origin iframe fetch all proxied assets.
+  responseHeaders["access-control-allow-origin"] = "*";
+  // credentials flags are incompatible with a wildcard allow-origin.
+  delete responseHeaders["access-control-allow-credentials"];
+
+  // Rewrite absolute dev-server URLs in HTML and JavaScript response bodies.
+  // Vite embeds http://localhost:{port}/… references for @vite/client, HMR
+  // overlay, and other internal endpoints.  Replacing them with proxy paths
+  // keeps every resource fetch routed through Bird Code's server (which adds
+  // the CORS * header) rather than hitting the upstream directly and being
+  // blocked by the null-origin CORS check.
+  const contentType = responseHeaders["content-type"] ?? "";
+  const isRewritable =
+    contentType.includes("text/html") ||
+    contentType.includes("text/javascript") ||
+    contentType.includes("application/javascript");
+
+  if (isRewritable) {
+    const bodyStr = responseBody.toString("utf8");
+    const devServerPattern = new RegExp(`http://(?:localhost|127\\.0\\.0\\.1):${port}`, "g");
+    const rewritten = bodyStr.replace(devServerPattern, proxyBase);
+    if (rewritten !== bodyStr) {
+      responseBody = Buffer.from(rewritten, "utf8");
+      // content-length must match the new byte length after rewriting.
+      if (responseHeaders["content-length"]) {
+        responseHeaders["content-length"] = String(responseBody.byteLength);
+      }
+    }
+  }
+
+  return HttpServerResponse.uint8Array(new Uint8Array(responseBody), {
     status: result.status,
-    headers: result.headers,
+    headers: responseHeaders,
   });
 });
 
-// Export three separate route layers covering GET, POST, and PUT.
-// GET covers normal browser page loads and HMR polling.
-// POST/PUT are needed for Vite HMR WebSocket upgrade negotiation and form submissions.
+// CORS preflight handler — browsers send OPTIONS before cross-origin requests
+// that carry custom headers. Returning 204 with permissive CORS headers lets
+// the browser proceed without the upstream dev server needing to handle it.
+const previewOptionsHandler = Effect.gen(function* () {
+  return HttpServerResponse.uint8Array(new Uint8Array(0), {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, POST, PUT, PATCH, OPTIONS",
+      "access-control-allow-headers": "*",
+      "access-control-max-age": "86400",
+    },
+  });
+});
+
+// Export route layers covering all HTTP verbs the preview proxy needs to handle.
+// GET     — normal browser page loads, HMR polling, asset fetches.
+// POST/PUT/PATCH — form submissions and REST calls from the previewed app.
+// OPTIONS — CORS preflight from sandboxed iframes.
+//
+// Pattern "/preview/*" is used (not "/preview/:projectId/:appId/*") so that the
+// wildcard matches the trailing-slash-only first navigation from the iframe.
 export const previewProxyRouteLayer = Layer.mergeAll(
-  HttpRouter.add("GET", "/preview/:projectId/:appId/*", previewProxyHandler),
-  HttpRouter.add("POST", "/preview/:projectId/:appId/*", previewProxyHandler),
-  HttpRouter.add("PUT", "/preview/:projectId/:appId/*", previewProxyHandler),
+  HttpRouter.add("GET", "/preview/*", previewProxyHandler),
+  HttpRouter.add("POST", "/preview/*", previewProxyHandler),
+  HttpRouter.add("PUT", "/preview/*", previewProxyHandler),
+  HttpRouter.add("PATCH", "/preview/*", previewProxyHandler),
+  HttpRouter.add("OPTIONS", "/preview/*", previewOptionsHandler),
 );

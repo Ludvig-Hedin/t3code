@@ -13,14 +13,15 @@ function resolveAssetHrefs(release: {
   assets?: { name: string; browser_download_url: string }[];
 }): Record<string, string> {
   const next: Record<string, string> = {};
-  const pairs: [string, string][] = [
-    ["arm64.dmg", "arm64.dmg"],
-    ["x64.dmg", "x64.dmg"],
-    ["x64.exe", "x64.exe"],
-    ["x86_64.AppImage", "x86_64.AppImage"],
+  // electron-builder artifactName is `Bird-Code-${version}-${arch}.${ext}`; Linux x64 uses `x64`, not `x86_64`.
+  const pairs: [string, string[]][] = [
+    ["arm64.dmg", ["arm64.dmg"]],
+    ["x64.dmg", ["x64.dmg"]],
+    ["x64.exe", ["x64.exe"]],
+    ["x86_64.AppImage", ["x64.AppImage", "x86_64.AppImage"]],
   ];
-  for (const [key, suffix] of pairs) {
-    const match = (release.assets ?? []).find((a) => a.name.endsWith(`-${suffix}`));
+  for (const [key, suffixes] of pairs) {
+    const match = (release.assets ?? []).find((a) => suffixes.some((s) => a.name.endsWith(`-${s}`)));
     next[key] = match?.browser_download_url ?? RELEASES_URL;
   }
   return next;

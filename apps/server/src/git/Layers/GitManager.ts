@@ -6,6 +6,8 @@ import {
   GitActionProgressEvent,
   GitActionProgressPhase,
   GitCommandError,
+  GitGetWorkingDiffInput,
+  GitGetWorkingDiffResult,
   GitPrepareReviewContextInput,
   GitPrepareReviewContextResult,
   GitRunStackedActionResult,
@@ -1768,12 +1770,33 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
     } satisfies GitPrepareReviewContextResult;
   });
 
+  /**
+   * Fetch the raw working-tree diff patch (staged + unstaged vs HEAD).
+   * Errors when the cwd is not a git repository.
+   */
+  const getWorkingDiff = Effect.fn("getWorkingDiff")(function* (input: GitGetWorkingDiffInput) {
+    const details = yield* gitCore
+      .statusDetails(input.cwd)
+      .pipe(Effect.mapError((cause) => gitManagerError("getWorkingDiff", cause.message, cause)));
+
+    if (!details.isRepo) {
+      return yield* gitManagerError("getWorkingDiff", "Not a git repository.");
+    }
+
+    const patch = yield* gitCore
+      .readWorkingDiff(input.cwd)
+      .pipe(Effect.mapError((cause) => gitManagerError("getWorkingDiff", cause.message, cause)));
+
+    return { patch } satisfies GitGetWorkingDiffResult;
+  });
+
   return {
     status,
     resolvePullRequest,
     preparePullRequestThread,
     runStackedAction,
     prepareReviewContext,
+    getWorkingDiff,
   } satisfies GitManagerShape;
 });
 

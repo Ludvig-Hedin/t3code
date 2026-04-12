@@ -1593,6 +1593,19 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     },
   );
 
+  // `git diff HEAD` covers both staged and unstaged changes vs the last commit,
+  // matching the working-tree insertion/deletion counts shown on the diff button.
+  const readWorkingDiff: GitCoreShape["readWorkingDiff"] = (cwd) =>
+    runGitStdoutWithOptions(
+      "GitCore.readWorkingDiff",
+      cwd,
+      ["diff", "HEAD", "--patch", "--minimal"],
+      {
+        maxOutputBytes: RANGE_DIFF_PATCH_MAX_OUTPUT_BYTES,
+        truncateOutputAtMaxBytes: true,
+      },
+    );
+
   const readConfigValue: GitCoreShape["readConfigValue"] = (cwd, key) =>
     runGitStdout("GitCore.readConfigValue", cwd, ["config", "--get", key], true).pipe(
       Effect.map((stdout) => stdout.trim()),
@@ -2132,6 +2145,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     pushCurrentBranch,
     pullCurrentBranch,
     readRangeContext,
+    readWorkingDiff,
     readConfigValue,
     isInsideWorkTree,
     listWorkspaceFiles,

@@ -20,7 +20,7 @@ import {
 } from "react";
 import { openInPreferredEditor } from "../editorPreferences";
 import { useComposerDraftStore } from "../composerDraftStore";
-import { gitStatusQueryOptions } from "~/lib/gitReactQuery";
+import { gitStatusQueryOptions, gitWorkingDiffQueryOptions } from "~/lib/gitReactQuery";
 import { checkpointDiffQueryOptions } from "~/lib/providerReactQuery";
 import { cn } from "~/lib/utils";
 import { readNativeApi } from "../nativeApi";
@@ -204,6 +204,15 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const activeCwd = activeThread?.worktreePath ?? activeProject?.cwd;
   const gitStatusQuery = useQuery(gitStatusQueryOptions(activeCwd ?? null));
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
+  const hasWorkingTreeChanges = gitStatusQuery.data?.hasWorkingTreeChanges ?? false;
+  // Only fetch the working-tree diff when the panel is showing the project overview
+  // (no active thread selected) and there are uncommitted changes to display.
+  const workingDiffQuery = useQuery(
+    gitWorkingDiffQueryOptions({
+      cwd: !activeThread && activeProjectId && isGitRepo ? (activeCwd ?? null) : null,
+      enabled: !activeThread && hasWorkingTreeChanges && isGitRepo,
+    }),
+  );
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
   const orderedTurnDiffSummaries = useMemo(
@@ -442,6 +451,26 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
       });
   }, [activeProjectThreads]);
 
+  // When no thread is selected and there are no thread diffs, fall back to showing
+  // the working-tree diff so the panel is useful even on a fresh/empty project.
+  const workingDiffPatch = workingDiffQuery.data?.patch ?? null;
+  const workingDiffRenderablePatch = useMemo(
+    () =>
+      projectThreadDiffs.length === 0
+        ? getRenderablePatch(workingDiffPatch ?? undefined, `working-diff:${resolvedTheme}`)
+        : null,
+    [projectThreadDiffs.length, resolvedTheme, workingDiffPatch],
+  );
+  const workingDiffRenderableFiles = useMemo(() => {
+    if (!workingDiffRenderablePatch || workingDiffRenderablePatch.kind !== "files") return [];
+    return workingDiffRenderablePatch.files.toSorted((left, right) =>
+      resolveFileDiffPath(left).localeCompare(resolveFileDiffPath(right), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
+  }, [workingDiffRenderablePatch]);
+
   const navigateToThreadDiff = useCallback(
     (threadId: Thread["id"], turnId: TurnId, filePath?: string) => {
       void navigate({
@@ -602,15 +631,17 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         <div className="flex min-w-0 items-center gap-2 px-2">
           <div className="min-w-0">
             <div className="text-[10px] leading-tight font-medium uppercase tracking-wide text-muted-foreground/70">
-              Project diffs
+              {projectThreadDiffs.length === 0 ? "Working tree" : "Project diffs"}
             </div>
             <div className="truncate text-sm font-medium text-foreground">
               {activeProject?.name ?? "This project"}
             </div>
           </div>
-          <div className="text-[10px] leading-tight text-muted-foreground/70">
-            {projectThreadDiffs.length} thread{projectThreadDiffs.length === 1 ? "" : "s"}
-          </div>
+          {projectThreadDiffs.length > 0 && (
+            <div className="text-[10px] leading-tight text-muted-foreground/70">
+              {projectThreadDiffs.length} thread{projectThreadDiffs.length === 1 ? "" : "s"}
+            </div>
+          )}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
@@ -660,9 +691,83 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
           className="diff-panel-viewport min-h-0 min-w-0 flex-1 overflow-auto p-2"
         >
           {projectThreadDiffs.length === 0 ? (
-            <div className="flex h-full items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-              No completed thread diffs yet in this project.
-            </div>
+            // No thread diffs yet — show the working-tree diff so the panel is
+            // useful even before any thread has run (matches the +X/-Y button stats).
+            workingDiffQuery.isError ? (
+              <div className="flex h-full items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+                <span className="max-w-md text-destructive/90">
+                  {workingDiffQuery.error instanceof Error
+                    ? workingDiffQuery.error.message
+                    : String(workingDiffQuery.error)}
+                </span>
+              </div>
+            ) : workingDiffQuery.isLoading ? (
+              <DiffPanelLoadingState label="Loading working tree diff..." />
+            ) : workingDiffRenderablePatch?.kind === "files" ? (
+              <Virtualizer
+                className="diff-render-surface h-full min-h-0 overflow-auto px-2 pb-2"
+                config={{ overscrollSize: 600, intersectionObserverMargin: 1200 }}
+              >
+                {workingDiffRenderableFiles.map((fileDiff) => {
+                  const filePath = resolveFileDiffPath(fileDiff);
+                  const fileKey = buildFileDiffRenderKey(fileDiff);
+                  const themedFileKey = `${fileKey}:${resolvedTheme}`;
+                  return (
+                    <div
+                      key={themedFileKey}
+                      data-diff-file-path={filePath}
+                      className="diff-render-file mb-2 rounded-md first:mt-2 last:mb-0"
+                      onClickCapture={(event) => {
+                        const nativeEvent = event.nativeEvent as MouseEvent;
+                        const composedPath = nativeEvent.composedPath?.() ?? [];
+                        const clickedHeader = composedPath.some((node) => {
+                          if (!(node instanceof Element)) return false;
+                          return node.hasAttribute("data-title");
+                        });
+                        if (!clickedHeader) return;
+                        openDiffFileInEditor(filePath);
+                      }}
+                    >
+                      <FileDiff
+                        fileDiff={fileDiff}
+                        options={{
+                          diffStyle: diffRenderMode === "split" ? "split" : "unified",
+                          lineDiffType: "none",
+                          overflow: diffWordWrap ? "wrap" : "scroll",
+                          theme: resolveDiffThemeName(resolvedTheme),
+                          themeType: resolvedTheme as DiffThemeType,
+                          unsafeCSS: DIFF_PANEL_UNSAFE_CSS,
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </Virtualizer>
+            ) : workingDiffRenderablePatch?.kind === "raw" ? (
+              <div className="h-full overflow-auto p-2">
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground/75">
+                    {workingDiffRenderablePatch.reason}
+                  </p>
+                  <pre
+                    className={cn(
+                      "max-h-[72vh] rounded-md border border-border/70 bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground/90",
+                      diffWordWrap
+                        ? "overflow-auto whitespace-pre-wrap wrap-break-word"
+                        : "overflow-auto",
+                    )}
+                  >
+                    {workingDiffRenderablePatch.text}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-full items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+                {!isGitRepo
+                  ? "Diff panel unavailable — project must be a git repository."
+                  : "No uncommitted changes in the working tree."}
+              </div>
+            )
           ) : (
             <div className="space-y-3">
               {projectThreadDiffs.map(({ thread, latestSummary }) => {
@@ -710,8 +815,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                         </span>
                       ) : null}
                       <span className="ml-auto text-[10px] text-muted-foreground/70">
-                        Turn{" "}
-                        {latestSummary.checkpointTurnCount ?? "?"}
+                        Turn {latestSummary.checkpointTurnCount ?? "?"}
                       </span>
                       <span className="text-[10px] text-muted-foreground/60">
                         {formatShortTimestamp(latestSummary.completedAt, settings.timestampFormat)}

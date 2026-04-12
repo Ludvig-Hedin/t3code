@@ -139,7 +139,11 @@ export function getAppModelOptions(
   // OllamaSettings does not have customModels — fall back to empty array.
   // A2A providers have no entry in settings.providers; the cast handles missing keys safely.
   const customModels =
-    ((settings.providers as Record<string, unknown>)[provider] as { customModels?: readonly string[] } | undefined)?.customModels ?? [];
+    (
+      (settings.providers as Record<string, unknown>)[provider] as
+        | { customModels?: readonly string[] }
+        | undefined
+    )?.customModels ?? [];
   for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
     if (seen.has(slug)) {
       continue;

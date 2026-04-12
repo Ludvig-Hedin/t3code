@@ -58,6 +58,7 @@ import {
   getCustomModelOptionsByProvider,
   resolveAppModelSelectionState,
 } from "../../modelSelection";
+import { getDefaultServerModel } from "../../providerModels";
 import { ensureNativeApi, readNativeApi } from "../../nativeApi";
 import { useStore } from "../../store";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -525,6 +526,35 @@ export function GeneralSettingsPanel() {
   const observability = useServerObservability();
   const serverProviders = useServerProviders();
   const logsDirectoryPath = observability?.logsDirectoryPath ?? null;
+
+  // Providers that are fully connected — shown in the per-provider model defaults section.
+  // Excludes manifest (always "auto", no real model list) and a2a (dynamic remote agents).
+  const readyProviders = useMemo(
+    () =>
+      serverProviders.filter(
+        (p) => p.status === "ready" && p.provider !== "manifest" && p.provider !== "a2a",
+      ),
+    [serverProviders],
+  );
+
+  // Pre-computed model option lists for all providers (used by the default model pickers).
+  const defaultModelOptionsByProvider = useMemo(
+    () => getCustomModelOptionsByProvider(settings, serverProviders),
+    [settings, serverProviders],
+  );
+
+  // Update a single provider's default model without overwriting other providers.
+  const handleDefaultModelChange = useCallback(
+    (provider: ProviderKind, model: string) => {
+      updateSettings({
+        defaultModelByProvider: {
+          ...settings.defaultModelByProvider,
+          [provider]: model,
+        },
+      });
+    },
+    [settings.defaultModelByProvider, updateSettings],
+  );
   const diagnosticsDescription = (() => {
     const exports: string[] = [];
     if (observability?.otlpTracesEnabled && observability.otlpTracesUrl) {
@@ -711,9 +741,133 @@ export function GeneralSettingsPanel() {
             </Select>
           }
         />
+
+        {/* Default model — only meaningful when a concrete default provider is set */}
+        {settings.defaultProvider !== "use-latest" && (
+          <SettingsRow
+            title="Default model"
+            description={`Model used when ${PROVIDER_DISPLAY_NAMES[settings.defaultProvider as ProviderKind] ?? settings.defaultProvider} starts a new chat.`}
+            resetAction={
+              settings.defaultModelByProvider[settings.defaultProvider] ? (
+                <SettingResetButton
+                  label="default model"
+                  onClick={() =>
+                    updateSettings({
+                      defaultModelByProvider: {
+                        ...settings.defaultModelByProvider,
+                        [settings.defaultProvider]: "",
+                      },
+                    })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <ProviderModelPicker
+                provider={settings.defaultProvider as ProviderKind}
+                model={
+                  settings.defaultModelByProvider[settings.defaultProvider] ||
+                  getDefaultServerModel(serverProviders, settings.defaultProvider as ProviderKind)
+                }
+                lockedProvider={settings.defaultProvider as ProviderKind}
+                providers={serverProviders}
+                modelOptionsByProvider={defaultModelOptionsByProvider}
+                onProviderModelChange={handleDefaultModelChange}
+                compact
+                {...((settings.defaultProvider as ProviderKind) === "ollama"
+                  ? {
+                      onOllamaPullModel: async (model: string) => {
+                        try {
+                          const result = await getWsRpcClient().ollama.pullModel({ model });
+                          return {
+                            success: result.success,
+                            ...(result.error !== undefined ? { error: result.error } : {}),
+                          };
+                        } catch (err) {
+                          return { success: false, error: String(err) };
+                        }
+                      },
+                      onOllamaQuitServer: () => {
+                        void getWsRpcClient().ollama.quitServer().catch(console.error);
+                      },
+                    }
+                  : {})}
+              />
+            }
+          />
+        )}
       </SettingsSection>
 
-      {/* Chat behavior */}
+      {/* Per-provider model defaults — one row per ready connected provider */}
+      {readyProviders.length > 0 && (
+        <SettingsSection title="Provider defaults">
+          {readyProviders.map((serverProvider) => {
+            const kind = serverProvider.provider;
+            const savedModel = settings.defaultModelByProvider[kind];
+            const displayModel = savedModel || getDefaultServerModel(serverProviders, kind);
+            const Icon = PROVIDER_ICON_MAP[kind];
+            return (
+              <SettingsRow
+                key={kind}
+                title={
+                  <span className="flex items-center gap-1.5">
+                    {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+                    {PROVIDER_DISPLAY_NAMES[kind] ?? kind}
+                  </span>
+                }
+                description="Default model when switching to this provider in a chat."
+                resetAction={
+                  savedModel ? (
+                    <SettingResetButton
+                      label={`${PROVIDER_DISPLAY_NAMES[kind] ?? kind} default model`}
+                      onClick={() =>
+                        updateSettings({
+                          defaultModelByProvider: {
+                            ...settings.defaultModelByProvider,
+                            [kind]: "",
+                          },
+                        })
+                      }
+                    />
+                  ) : null
+                }
+                control={
+                  <ProviderModelPicker
+                    provider={kind}
+                    model={displayModel}
+                    lockedProvider={kind}
+                    providers={serverProviders}
+                    modelOptionsByProvider={defaultModelOptionsByProvider}
+                    onProviderModelChange={handleDefaultModelChange}
+                    compact
+                    // Use conditional spread to satisfy exactOptionalPropertyTypes —
+                    // passing `prop={fn | undefined}` is a type error with that flag.
+                    {...(kind === "ollama"
+                      ? {
+                          onOllamaPullModel: async (model: string) => {
+                            try {
+                              const result = await getWsRpcClient().ollama.pullModel({ model });
+                              return {
+                                success: result.success,
+                                ...(result.error !== undefined ? { error: result.error } : {}),
+                              };
+                            } catch (err) {
+                              return { success: false, error: String(err) };
+                            }
+                          },
+                          onOllamaQuitServer: () => {
+                            void getWsRpcClient().ollama.quitServer().catch(console.error);
+                          },
+                        }
+                      : {})}
+                  />
+                }
+              />
+            );
+          })}
+        </SettingsSection>
+      )}
+
       {/* Chat behavior */}
       <SettingsSection title="Chat">
         <SettingsRow
@@ -1268,7 +1422,10 @@ function ProviderCard({
   providerConfig: AnyProviderConfig;
   defaultProviderConfig: AnyProviderConfig;
   customModelOptions: ReadonlyArray<string>;
-  onUpdateProviderConfig: (provider: Exclude<ProviderKind, "a2a">, patch: Partial<AnyProviderConfig>) => void;
+  onUpdateProviderConfig: (
+    provider: Exclude<ProviderKind, "a2a">,
+    patch: Partial<AnyProviderConfig>,
+  ) => void;
 }) {
   const [customModelInput, setCustomModelInput] = useState("");
   const [customModelError, setCustomModelError] = useState<string | null>(null);
