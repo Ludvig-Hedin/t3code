@@ -1,8 +1,8 @@
-# How to Create a Release
+# How to Create a Bird Code Release
 
 ## Quick Start
 
-To release version `0.0.16`:
+To release Bird Code version `0.0.16`:
 
 ```bash
 git tag v0.0.16
