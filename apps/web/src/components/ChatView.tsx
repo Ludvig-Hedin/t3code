@@ -215,6 +215,7 @@ import {
   PullRequestDialogState,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
+  resolveComposerSelectedProvider,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
   threadHasStarted,
@@ -1234,11 +1235,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     : null;
   const serverConfig = useServerConfig();
   const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
-  const unlockedSelectedProvider = resolveSelectableProvider(
-    providerStatuses,
-    selectedProviderByThreadId ?? threadProvider ?? "codex",
-  );
-  const selectedProvider: ProviderKind = lockedProvider ?? unlockedSelectedProvider;
+  const selectedProvider: ProviderKind = resolveComposerSelectedProvider({
+    providers: providerStatuses,
+    lockedProvider,
+    draftActiveProvider: selectedProviderByThreadId,
+    threadProvider,
+  });
   const { modelOptions: composerModelOptions, selectedModel } = useEffectiveComposerModelState({
     threadId,
     providers: providerStatuses,
@@ -4082,7 +4084,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onProviderModelSelect = useCallback(
     (provider: ProviderKind, model: string) => {
       if (!activeThread) return;
-      if (lockedProvider !== null && provider !== lockedProvider) {
+      // manifest (auto) is a special case that delegates model selection to the router,
+      // so allow switching to it even when another provider is locked.
+      // All other provider switches while locked are rejected to maintain thread stability.
+      if (lockedProvider !== null && provider !== lockedProvider && provider !== "manifest") {
         scheduleComposerFocus();
         return;
       }

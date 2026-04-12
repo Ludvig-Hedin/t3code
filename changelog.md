@@ -1,9 +1,36 @@
 # Changelog
 
+## [2026-04-12] [Fix] Chat composer `Auto` model selection now sticks on started threads
+
+- **Root cause:** The picker allowed selecting `manifest/auto` while a thread was already started, but ChatView still derived the active provider from the locked session provider. That immediately overwrote the draft selection, so the visible model never changed and the next turn would keep using the old provider.
+- **Fix:** Added a shared `resolveComposerSelectedProvider` helper and switched ChatView to use it so an explicit draft switch to `manifest` wins over the locked provider. Added a regression test that covers the locked-thread `Auto` selection path.
+- **Files:** `apps/web/src/components/ChatView.logic.ts`, `apps/web/src/components/ChatView.tsx`, `apps/web/src/components/ChatView.logic.test.ts`
+
+## [2026-04-12] [Fix] Settings Ollama default model + safe Ollama base URL read
+
+- Removed duplicate `{/* Chat behavior */}` in settings. Default-model `ProviderModelPicker` now passes `onOllamaPullModel` / `onOllamaQuitServer` when the default provider is Ollama (matches Provider defaults block). `getOllamaBaseUrl` uses full optional chaining on server config so missing `settings` / `providers` / `ollama` does not throw.
+- **Files:** `apps/web/src/components/settings/SettingsPanels.tsx`, `apps/web/src/lib/ollamaClient.ts`
+
+## [2026-04-10] [Fix] DiffPanel: show working-tree diff on no-thread-selected page instead of empty state
+
+- **Root cause:** DiffPanel showed "No completed thread diffs yet in this project." when on the draft/empty-thread page because thread-based checkpoint diffs require an actual submitted thread. The diff button already showed accurate +X/-Y stats from git working-tree status, making the empty panel message contradictory.
+- **Fix:** Added `git.getWorkingDiff` API (`git diff HEAD --patch`) that returns the raw unified-diff patch for all uncommitted changes (staged + unstaged). DiffPanel now fetches this when no active thread is selected and renders it using the same `FileDiff`/`Virtualizer` renderer as thread diffs. Header changes from "Project diffs" to "Working tree" in this mode. Falls back to "No uncommitted changes" when working tree is clean.
+- **Files:** `packages/contracts/src/git.ts`, `packages/contracts/src/rpc.ts`, `packages/contracts/src/ipc.ts`, `apps/server/src/git/Services/GitCore.ts`, `apps/server/src/git/Layers/GitCore.ts`, `apps/server/src/git/Services/GitManager.ts`, `apps/server/src/git/Layers/GitManager.ts`, `apps/server/src/ws.ts`, `apps/web/src/wsRpcClient.ts`, `apps/web/src/wsNativeApi.ts`, `apps/web/src/lib/gitReactQuery.ts`, `apps/web/src/components/DiffPanel.tsx`
+
+## [2026-04-10] [Fix] Preview panel: route mismatch → Bird Code loads in iframe, sandbox warning, startup UX
+
+- **Root cause of "Bird Code loads inside iframe":** Route `/preview/:projectId/:appId/*` wildcard requires ≥1 char after the final slash. The iframe's first navigation is `/preview/pid/aid/` (trailing slash only) → doesn't match → falls through to SPA catch-all `GET *` → Bird Code's `index.html` served in iframe → Bird Code boots, shows its spinner, its own WebSocket (`wsTransport.ts`) tries connecting. Explains both reported symptoms.
+- **Root cause of sandbox warning:** Previous session added `allow-same-origin` to suppress CORS errors, but `allow-scripts + allow-same-origin` is a sandbox escape that browsers correctly warn about. Since the proxy already emits `Access-Control-Allow-Origin: *`, `allow-same-origin` is unnecessary.
+- **Fixes:**
+  - `previewProxyRoute.ts`: Changed route from `/preview/:projectId/:appId/*` → `/preview/*`. The broader wildcard matches the trailing-slash-only first navigation.
+  - `PreviewPanel.tsx`: Reverted `allow-same-origin` (CORS `*` from the proxy is sufficient for null-origin iframes). Added `StartupLogView` component: shown during `status === "starting"`, displays live dev-server output mapped to human-readable steps (Installing dependencies…, Compiling…, Dev server ready…) with raw lines at reduced opacity.
+- **Files:** `apps/server/src/preview/previewProxyRoute.ts`, `apps/web/src/components/PreviewPanel.tsx`
+
 ## [2026-04-10] [Fix] Preview panel white-screen CORS failure for Vite / React dev servers
+
 - **Root cause (3 compounding issues):**
   1. `<iframe sandbox>` lacked `allow-same-origin`, so the iframe's origin was opaque `null`. Every resource request from the iframe carried `Origin: null`, which Vite rejects.
-  2. Vite embeds absolute URLs (`http://localhost:{PORT}/@vite/client`, `/src/main.tsx`, `/@react-refresh`) in its served HTML. These bypassed the Bird Code proxy and hit Vite directly, where the `null`-origin CORS rejection fired.
+  2. Vite embeds URLs in its served HTML: `http://localhost:{PORT}/@vite/client` is absolute; `/src/main.tsx` and `/@react-refresh` are root-relative. These bypassed the Bird Code proxy and hit Vite directly, where the `null`-origin CORS rejection fired.
   3. The proxy forwarded the client's `Accept-Encoding: gzip` header, meaning Vite could return gzip-compressed HTML that couldn't be inspected or rewritten.
 - **Fix:**
   - `previewProxyRoute.ts`: Strip `Accept-Encoding` before forwarding; override `Access-Control-Allow-Origin: *` on all proxy responses (removing Vite's restrictive header); rewrite `http://localhost:{port}/…` / `http://127.0.0.1:{port}/…` occurrences in HTML and JS response bodies to the Bird Code proxy base path so all resource fetches route through the proxy; add OPTIONS preflight handler; add PATCH verb.
@@ -11,22 +38,26 @@
 - **Files:** `apps/server/src/preview/previewProxyRoute.ts`, `apps/web/src/components/PreviewPanel.tsx`
 
 ## [2026-04-10] [Fix] Hydration error due to whitespace text nodes in `<colgroup>`
+
 - **Root cause:** Inline comments on `<col>` elements inside `<colgroup>` were creating text nodes in the DOM. HTML spec disallows text nodes as children of `<colgroup>` (only `<col>` and `<colgroup>` allowed), causing hydration mismatch between server and client.
 - **Fix:** Removed inline comments from the `<col>` elements to eliminate whitespace text nodes. Column purposes are documented in the block comment above the `<colgroup>`.
 - **Files:** `apps/web/src/components/AutomationsManager.tsx`
 
 ## [2026-04-10] [Fix] Code review button fails for repos without a `main` branch
+
 - **Root cause:** `prepareReviewContext` in `GitManager.ts` hardcoded `"main"` as the final fallback base branch. Repos using `"master"` (or any other name) have no `main` ref, so `git log --oneline main..HEAD` threw `fatal: ambiguous argument 'main..HEAD': unknown revision or path not in the working tree`.
 - **Fix:** After resolving the candidate base branch, call `listLocalBranchNames` to verify it exists. If not, walk through `["main", "master", "develop", "trunk"]` to find the first available branch that isn't the current one. Falls back to any other local branch, then last-resort keeps the original candidate so git still produces a useful error message.
 - **Files:** `apps/server/src/git/Layers/GitManager.ts`
 
 ## [2026-04-10] [Fix] Infinite re-render loop in Sidebar — "Maximum update depth exceeded"
+
 - **Root cause:** Zustand selector `useStore((store) => store.projects.filter(...))` called `.filter()` inside the selector, creating a new array reference on every invocation. React's `useSyncExternalStore` (used internally by Zustand) re-checks snapshots during the passive effect commit phase — since `.filter()` always returns a new reference, `Object.is` always fails, forcing a re-render → infinite loop.
 - **Fix:** Moved `.filter()` out of the Zustand selector and into `useMemo`, reading the raw `store.projects` (stable reference) from the store instead.
 - **Files:** `apps/web/src/components/Sidebar.tsx`, `apps/web/src/routes/_chat.index.tsx`
 - **Introduced by:** commit `2aa3fc53` which changed from `store.projects` to `store.projects.filter(...)`.
 
 ## [2026-04-09] [Fix] Reliability and consistency (setup CORS, A2A, memory-compiler, web types)
+
 - **Server:** `setupRoutes` 503 import response now includes `SETUP_CORS_HEADERS`; A2A JSON-RPC body uses `Effect.exit(request.json)` (no JS try/catch); safer JSON parsing in `A2aTaskServiceLive.taskFromRow`; `A2aClientServiceLive.sendMessage` defaults missing task status to `submitted`; `A2aAgentCardServiceLive` uses `Effect.catchCause` / `Effect.catch` (Effect v4); `A2aAdapter` maps send failures to `ProviderAdapterRequestError`, uses `Effect.catch` for cancel, cancels remote task in `stopSession`.
 - **Contracts:** Replaced invalid `Schema.Literals` with `Schema.Union([Schema.Literal(...)])` patterns used elsewhere in the package.
 - **Web:** `Project.deletedAt` aligned with other optional timestamps; `store.mapProject` normalizes null to undefined; DiffPanel project overview turn label; MessagesTimeline `group` on user-message column for hover actions.
@@ -34,6 +65,7 @@
 - **memory-compiler:** AGENTS.md hook examples match `uv run --directory memory-compiler`; session-end flush spawn sets `CLAUDE_INVOKED_BY` and `start_new_session` on Unix; stricter flush OK/error detection; `compile.py` requires KB output before state update; `config.py` honors `TIMEZONE`; utilities and query/flush robustness; knowledge index/log YAML frontmatter; Obsidian wikilinks without `.md` in sources.
 
 ## [2026-04-08] [Feature] A2A Agents Web UI — store, settings panel, and route
+
 - Added `a2aStore.ts` Zustand store for managing A2A agent cards and tasks via WS RPC.
 - Added `A2aAgentsPanel.tsx` settings panel with agent list, discover/register form, expandable skill details, and remove action.
 - Added `settings.a2a.tsx` TanStack Router route for `/settings/a2a`.
@@ -42,6 +74,7 @@
 - Files: `apps/web/src/a2aStore.ts`, `apps/web/src/components/settings/A2aAgentsPanel.tsx`, `apps/web/src/routes/settings.a2a.tsx`, `apps/web/src/components/settings/SettingsSidebarNav.tsx`, `apps/web/src/wsRpcClient.ts`
 
 ## [2026-04-08] [Fix] Resolve type errors from A2aModelSelection requiring agentCardId
+
 - Added `NonA2aModelSelection` and `NonA2aProviderKind` types to contracts for future use.
 - Fixed type errors in web app where generic `{provider, model}` construction doesn't include `agentCardId`.
 - Used type assertions in composerDraftStore, ChatView, AutomationsManager, modelSelection where A2A is unreachable.
@@ -63,7 +96,7 @@
 - **Web:** Added instant toast notification when message send begins (shows "Sending message..." or "Preparing worktree..." based on context).
 - **Web:** Enhanced send button to display "Sending..." or "Connecting..." text next to the spinner when actively sending, providing clear visual feedback immediately.
 - **Impact:** Users now get clear, immediate feedback when they click send — no more confusion about whether the message was submitted. Toast appears instantly and button shows spinning indicator with status text.
-- **Files:** 
+- **Files:**
   - `apps/web/src/components/ChatView.tsx` — added `toastManager.add()` call immediately after `beginLocalDispatch()`
   - `apps/web/src/components/chat/ComposerPrimaryActions.tsx` — wrapped button with status text that appears when sending/connecting, increased spinner size for better visibility
 

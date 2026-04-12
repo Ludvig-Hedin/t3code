@@ -1,4 +1,4 @@
-import { ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
+import { ProjectId, ThreadId, TurnId, type ServerProvider } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useStore } from "../store";
 
@@ -9,6 +9,7 @@ import {
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
+  resolveComposerSelectedProvider,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 
@@ -166,6 +167,60 @@ describe("reconcileMountedTerminalThreadIds", () => {
         activeThreadTerminalOpen: false,
       }),
     ).toEqual(currentThreadIds.slice(-MAX_HIDDEN_MOUNTED_TERMINAL_THREADS));
+  });
+});
+
+describe("resolveComposerSelectedProvider", () => {
+  const providers: ReadonlyArray<ServerProvider> = [
+    {
+      provider: "codex",
+      enabled: true,
+      installed: true,
+      version: "0.116.0",
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-04-12T00:00:00.000Z",
+      models: [
+        {
+          slug: "gpt-5-codex",
+          name: "GPT-5 Codex",
+          isCustom: false,
+          capabilities: null,
+        },
+      ],
+    },
+    {
+      provider: "manifest",
+      enabled: true,
+      installed: true,
+      version: "1.0.0",
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-04-12T00:00:00.000Z",
+      models: [{ slug: "auto", name: "Auto", isCustom: false, capabilities: null }],
+    },
+  ];
+
+  it("prefers an explicit draft switch to manifest even when the thread is otherwise locked", () => {
+    expect(
+      resolveComposerSelectedProvider({
+        providers,
+        lockedProvider: "codex",
+        draftActiveProvider: "manifest",
+        threadProvider: "codex",
+      }),
+    ).toBe("manifest");
+  });
+
+  it("keeps the locked provider for non-manifest draft selections", () => {
+    expect(
+      resolveComposerSelectedProvider({
+        providers,
+        lockedProvider: "codex",
+        draftActiveProvider: "codex",
+        threadProvider: "codex",
+      }),
+    ).toBe("codex");
   });
 });
 

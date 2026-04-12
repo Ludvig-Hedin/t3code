@@ -1,9 +1,17 @@
-import { ProjectId, type ModelSelection, type ThreadId, type TurnId } from "@t3tools/contracts";
+import {
+  ProjectId,
+  type ModelSelection,
+  type ProviderKind,
+  type ServerProvider,
+  type ThreadId,
+  type TurnId,
+} from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
 import { randomUUID } from "~/lib/utils";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import { Schema } from "effect";
 import { useStore } from "../store";
+import { resolveSelectableProvider } from "../providerModels";
 import {
   filterTerminalContextsWithText,
   stripInlineTerminalContextPlaceholders,
@@ -196,6 +204,30 @@ export function threadHasStarted(thread: Thread | null | undefined): boolean {
   return Boolean(
     thread && (thread.latestTurn !== null || thread.messages.length > 0 || thread.session !== null),
   );
+}
+
+export function resolveComposerSelectedProvider(input: {
+  providers: ReadonlyArray<ServerProvider>;
+  lockedProvider: ProviderKind | null;
+  draftActiveProvider: ProviderKind | null;
+  threadProvider: ProviderKind | null;
+}): ProviderKind {
+  const unlockedSelectedProvider = resolveSelectableProvider(
+    input.providers,
+    input.draftActiveProvider ?? input.threadProvider ?? "codex",
+  );
+  if (input.lockedProvider === null) {
+    return unlockedSelectedProvider;
+  }
+
+  if (
+    input.draftActiveProvider === "manifest" &&
+    resolveSelectableProvider(input.providers, "manifest") === "manifest"
+  ) {
+    return "manifest";
+  }
+
+  return input.lockedProvider;
 }
 
 export async function waitForStartedServerThread(
