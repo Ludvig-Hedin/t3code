@@ -4,29 +4,61 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-09"
+updated: "2026-04-12"
 ---
 
 # Knowledge Base Index
 
-| Article | Summary | Compiled From | Updated |
-|---------|---------|---------------|---------|
-| [[concepts/memory-compiler-three-stage-pipeline]] | 3-stage data flow: SessionStart (inject), SessionEnd/PreCompact (capture), compile.py (extract) | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/python-path-resolution]] | Use Path(__file__).resolve() to locate ROOT; essential for variable hook cwd | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/venv-isolation-with-uv]] | Isolate memory-compiler in subdirectory with uv run --directory; avoids monorepo conflicts | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/hook-execution-context]] | SessionStart/SessionEnd/PreCompact hooks fire with project root cwd; spawn detached subprocesses | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/subprocess-detachment-macos]] | Use start_new_session=True to detach processes; critical for background compilation | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/auto-compilation-triggers]] | Compile.py auto-triggers at 6 PM if daily log changed; uses SHA-256 hashing for state | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/knowledge-base-index-and-log]] | Index.md: master catalog with table; log.md: append-only compile history | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/systematic-feature-implementation-phases]] | Break complex features into 8 phases (contracts → shared → logic → clients → adapters → RPC → UI → auth) | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/effect-services-layers-pattern]] | Services structured as contracts, business logic, persistence, and RPC handlers; enables testing and swapping implementations | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/http-endpoint-authentication-patterns]] | Public endpoints (discovery) vs authenticated endpoints (operations); Bearer tokens and env var API keys | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/provider-adapter-shape-pattern]] | Providers implement ProviderAdapterShape interface (initialize, validate, call, stream, cleanup) for pluggability | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/typecheck-validation-gates]] | Run TypeCheck between phases to catch integration bugs early; type safety enforces contracts | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/agent-discovery-endpoints]] | Public endpoint advertising agent capabilities, methods, and parameter schemas for dynamic client adaptation | daily/2026-04-09.md | 2026-04-09 |
-| [[concepts/settings-ui-management-pattern]] | Settings panel for managing integrations: discover, register, remove operations with feedback states | daily/2026-04-09.md | 2026-04-09 |
-| [[connections/architecture-depends-on-hooks]] | 3-stage pipeline works because hooks fire predictably with correct context and detachment | daily/2026-04-09.md | 2026-04-09 |
-| [[connections/environment-setup-patterns]] | Path resolution + venv isolation are complementary patterns ensuring correct environment | daily/2026-04-09.md | 2026-04-09 |
-| [[connections/a2a-endpoints-and-http-authentication]] | Strategic separation: discovery (public) vs operations (authenticated) enables secure extensibility | daily/2026-04-09.md | 2026-04-09 |
-| [[connections/systematic-phases-and-validation-gates]] | Phasing without validation is brittle; TypeCheck gates ensure each phase matches previous assumptions | daily/2026-04-09.md | 2026-04-09 |
-| [[connections/effect-pattern-and-adapter-shape]] | ProviderAdapterShape is the contract layer of effect services pattern made reusable across providers | daily/2026-04-09.md | 2026-04-09 |
+| Article                                                      | Summary                                                                                                                                    | Compiled From       | Updated    |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- | ---------- |
+| [[concepts/memory-compiler-three-stage-pipeline]]            | 3-stage data flow: SessionStart (inject), SessionEnd/PreCompact (capture), compile.py (extract)                                            | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/python-path-resolution]]                          | Use Path(**file**).resolve() to locate ROOT; essential for variable hook cwd                                                               | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/venv-isolation-with-uv]]                          | Isolate memory-compiler in subdirectory with uv run --directory; avoids monorepo conflicts                                                 | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/hook-execution-context]]                          | SessionStart/SessionEnd/PreCompact hooks fire with project root cwd; spawn detached subprocesses                                           | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/subprocess-detachment-macos]]                     | Use start_new_session=True to detach processes; critical for background compilation                                                        | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/auto-compilation-triggers]]                       | Compile.py auto-triggers at 6 PM if daily log changed; uses SHA-256 hashing for state                                                      | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/knowledge-base-index-and-log]]                    | Index.md: master catalog with table; log.md: append-only compile history                                                                   | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/systematic-feature-implementation-phases]]        | Break complex features into 8 phases (contracts → shared → logic → clients → adapters → RPC → UI → auth)                                   | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/effect-services-layers-pattern]]                  | Services structured as contracts, business logic, persistence, and RPC handlers; enables testing and swapping implementations              | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/http-endpoint-authentication-patterns]]           | Public endpoints (discovery) vs authenticated endpoints (operations); Bearer tokens and env var API keys                                   | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/provider-adapter-shape-pattern]]                  | Providers implement ProviderAdapterShape interface (initialize, validate, call, stream, cleanup) for pluggability                          | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/typecheck-validation-gates]]                      | Run TypeCheck between phases to catch integration bugs early; type safety enforces contracts                                               | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/agent-discovery-endpoints]]                       | Public endpoint advertising agent capabilities, methods, and parameter schemas for dynamic client adaptation                               | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/settings-ui-management-pattern]]                  | Settings panel for managing integrations: discover, register, remove operations with feedback states                                       | daily/2026-04-09.md | 2026-04-09 |
+| [[concepts/colgroup-text-node-hydration-error]]              | HTML `<colgroup>` only allows `<col>` children; inline comments and whitespace create text nodes causing hydration errors                  | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/html-semantic-constraints-jsx]]                   | Some HTML elements have strict content models; JSX formatting creates invisible text nodes that violate them                               | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/jsx-implicit-text-nodes]]                         | JSX whitespace and comments compile to text nodes; problematic in containers with strict content models                                    | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/zustand-selector-reference-stability]]            | Zustand selectors use Object.is equality; array methods like `.filter()` create new references triggering re-renders                       | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/react-infinite-rerender-from-unstable-selectors]] | Unstable selectors create infinite re-render loops during React's passive effect phase; manifests with commitHookPassiveMountEffects error | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/git-branch-resolution-fallbacks]]                 | Validate branch existence before using in git commands; implement fallback chains through common defaults (main → master → develop)        | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/process-serialization-piggyback-pattern]]         | Prevent thundering herd: first caller spawns process and holds shared promise; concurrent callers await and re-validate                    | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/ollama-integration-patterns]]                     | Local LLM integration: process serialization, model cache (60s), fallback to llama3.2, CORS, request cleanup via AbortController           | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/terminal-ai-command-bar]]                         | Cmd+K floating overlay generates shell commands via Ollama; appears above terminal input with edit/execute options                         | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/iframe-sandboxing-cors]]                          | Iframe sandbox `allow-scripts` + `allow-same-origin` is documented sandbox escape; use `allow-scripts` alone for safety                    | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/route-wildcard-trailing-slash]]                   | Wildcard patterns `/*` require ≥1 char after `/`; trailing-slash-only requests fall through to catch-alls causing wrong content            | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/external-service-initialization-fallback]]        | Multi-phase service initialization: try candidates, cache working model, fall back to defaults, make failures non-fatal                    | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/vite-url-rewriting-proxies]]                      | Vite embeds absolute localhost URLs in HTML; proxies must rewrite to relative paths before forwarding to iframe                            | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/app-naming-versioning-strategy]]                  | Product name separate from repo name; semantic versioning via git tags; auto-propagates to artifacts                                       | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/desktop-build-automation-bun]]                    | Bun task runner for platform-specific builds; universal arm64+x64 builds; local and CI/CD automation                                       | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/github-actions-multi-platform-release]]           | Git tag trigger (v*.*.\*) automatically builds macOS/Linux/Windows in parallel and publishes to GitHub Releases                            | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/working-tree-diff-git-operations]]                | Implement `git diff HEAD --patch` for uncommitted changes display; handle edge case of brand-new repos with no commits                     | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/model-selection-ui-pattern]]                      | Three-level fallback (per-provider → global → server default) with dual-section UI; early-exit handling for manifest providers             | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/startup-milestone-logging]]                       | Show human-readable milestone steps (Installing, Compiling, Ready) instead of bare spinner for long-running operations                     | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/bun-cache-corruption-repair]]                     | Bun install failures from corrupted cache; fix with `bun pm cache rm` then reinstall                                                       | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/react-commit-phase-debugging]]                    | Passive effect phase errors (`commitHookPassiveMountEffects`) often involve state subscriptions cascading into infinite re-renders         | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/dev-server-status-visualization]]                 | Display dev server lifecycle stages (Starting → Installing → Compiling → Ready) as human-readable milestones                               | daily/2026-04-12.md | 2026-04-12 |
+| [[concepts/rpc-layer-expansion-pattern]]                     | Add RPC methods following contracts-first pattern: define types, implement logic, create handlers, wire client queries                     | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/architecture-depends-on-hooks]]                | 3-stage pipeline works because hooks fire predictably with correct context and detachment                                                  | daily/2026-04-09.md | 2026-04-09 |
+| [[connections/environment-setup-patterns]]                   | Path resolution + venv isolation are complementary patterns ensuring correct environment                                                   | daily/2026-04-09.md | 2026-04-09 |
+| [[connections/a2a-endpoints-and-http-authentication]]        | Strategic separation: discovery (public) vs operations (authenticated) enables secure extensibility                                        | daily/2026-04-09.md | 2026-04-09 |
+| [[connections/systematic-phases-and-validation-gates]]       | Phasing without validation is brittle; TypeCheck gates ensure each phase matches previous assumptions                                      | daily/2026-04-09.md | 2026-04-09 |
+| [[connections/effect-pattern-and-adapter-shape]]             | ProviderAdapterShape is the contract layer of effect services pattern made reusable across providers                                       | daily/2026-04-09.md | 2026-04-09 |
+| [[connections/jsx-formatting-and-hydration-mismatches]]      | JSX formatting artifacts violate HTML semantic constraints in special containers, causing hydration errors                                 | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/react-stability-across-lifecycle-phases]]      | Hydration, selector stability, and commit phase debugging are distinct React lifecycle issues requiring different debugging approaches     | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/cross-repo-standardization-challenges]]        | Tools must discover and adapt to repo variance (branch names, product names, build platforms) via fallback chains and validation           | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/fallback-strategies-across-domains]]           | Git branch, route matching, and service discovery use identical fallback chain pattern to handle variable environments                     | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/nested-context-routing-and-security]]          | Iframe preview requires routing, security sandboxing, and network URL rewriting to work together correctly                                 | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/release-infrastructure-code-to-artifacts]]     | Versioning (git tags), builds (Bun), and CI/CD (GitHub Actions) form an integrated system from code to artifacts                           | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/git-operations-edge-cases]]                    | Git branch resolution and working-tree diff share a root cause: assuming repo state without validation                                     | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/provider-config-extends-adapter]]              | Provider per-model config extends the adapter shape pattern from 2026-04-09 with runtime fallback chains                                   | daily/2026-04-12.md | 2026-04-12 |
+| [[connections/race-condition-and-detached-processes]]        | Race condition serialization requires detached process spawning—piggyback pattern depends on subprocess independence                       | daily/2026-04-12.md | 2026-04-12 |

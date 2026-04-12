@@ -35,11 +35,13 @@ The pattern consists of:
 ### Why This Pattern
 
 Monolithic services without layers become difficult to test and modify:
+
 - Can't test business logic without a database
 - Can't test RPC handling without the full service
 - Changing storage strategy requires rewriting business logic
 
 Layers decouple these concerns:
+
 - Test business logic with mock persistence
 - Test RPC with mock business logic
 - Swap database implementations without touching business logic

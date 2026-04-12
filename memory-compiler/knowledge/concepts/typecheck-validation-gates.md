@@ -32,11 +32,13 @@ In the 8-phase pattern, each phase outputs artifacts that later phases depend on
 4. **RPC handlers phase** → TypeCheck verifies handlers correctly marshal contracts to JSON
 
 Without TypeCheck at each phase:
+
 - Contracts might drift from their implementations
 - Business logic might use wrong types
 - RPC handlers might add fields that don't exist on the contract
 
 With TypeCheck:
+
 - Each phase can verify its outputs match the expectations of downstream phases
 - Integration bugs are caught in minutes, not hours of debugging
 
@@ -46,7 +48,7 @@ With TypeCheck:
 // Phase 1: Contracts
 interface AgentCard {
   id: string;
-  methods: Array<{name: string; params: Record<string, unknown>}>;
+  methods: Array<{ name: string; params: Record<string, unknown> }>;
 }
 
 // Phase 3: Business Logic
@@ -69,6 +71,7 @@ function handleDiscovery() {
 ### Integration Debugging
 
 When integration bugs do occur, having recent TypeCheck results helps:
+
 - If TypeCheck passed and runtime failed, the bug is in logic, not types
 - If TypeCheck failed, fix types first, recompile, test again
 - Pre-existing errors can be ignored (focus on new failures)

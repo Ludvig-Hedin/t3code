@@ -28,16 +28,19 @@ External integrations (like A2A agents) are best managed through a dedicated Set
 A typical integration settings panel includes:
 
 **Discovery Section**
+
 - Input field for discovering agents (e.g., enter remote agent URL)
 - "Discover" button that queries the discovery endpoint
 - List of available agents with details (name, description, methods)
 
 **Registered Section**
+
 - List of currently registered agents
 - For each: name, status (connected/disconnected), button to remove
 - Optional: test/verify connection button
 
 **Actions**
+
 - Register: Add selected agent from discovery results
 - Remove: Delete a registered agent
 - Refresh: Re-query discovery endpoint
@@ -59,21 +62,21 @@ A typical integration settings panel includes:
 function A2aSettingsPanel() {
   const [discoveredAgents, setDiscoveredAgents] = useState([]);
   const [registeredAgents, setRegisteredAgents] = useState([]);
-  
+
   async function handleDiscover(url: string) {
     const response = await fetch(`${url}/a2a/agents`);
-    const {agents} = await response.json();
+    const { agents } = await response.json();
     setDiscoveredAgents(agents);
   }
-  
+
   async function handleRegister(agent: AgentCard) {
     await api.registerAgent(agent);
     setRegisteredAgents([...registeredAgents, agent]);
   }
-  
+
   async function handleRemove(agentId: string) {
     await api.unregisterAgent(agentId);
-    setRegisteredAgents(registeredAgents.filter(a => a.id !== agentId));
+    setRegisteredAgents(registeredAgents.filter((a) => a.id !== agentId));
   }
 }
 ```

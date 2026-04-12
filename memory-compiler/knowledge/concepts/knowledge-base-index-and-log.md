@@ -28,12 +28,13 @@ The knowledge base maintains two structural files: `knowledge/index.md` (master 
 `knowledge/index.md` contains a table:
 
 ```markdown
-| Article | Summary | Compiled From | Updated |
-|---------|---------|---------------|---------|
+| Article                    | Summary                     | Compiled From       | Updated    |
+| -------------------------- | --------------------------- | ------------------- | ---------- |
 | [[concepts/supabase-auth]] | Row-level security patterns | daily/2026-04-02.md | 2026-04-02 |
 ```
 
 **Why a table?**
+
 - Compact, scannable by LLM and human
 - Wikilinks enable navigation within the knowledge base
 - Summary column answers "do I need to read the full article?"
@@ -46,16 +47,19 @@ The knowledge base maintains two structural files: `knowledge/index.md` (master 
 
 ```markdown
 ## [2026-04-01T14:30:00] compile | Daily Log 2026-04-01
+
 - Source: daily/2026-04-01.md
 - Articles created: [[concepts/nextjs-project-structure]], [[concepts/tailwind-setup]]
 - Articles updated: (none)
 
 ## [2026-04-02T09:00:00] query | "How do I handle auth redirects?"
+
 - Consulted: [[concepts/supabase-auth]], [[concepts/nextjs-middleware]]
 - Filed to: [[qa/auth-redirect-handling]]
 ```
 
 **Log purposes:**
+
 - Chronological audit trail of knowledge base changes
 - Cost tracking (each entry notes compilation cost)
 - State snapshot (which articles exist, what sources they came from)
@@ -64,6 +68,7 @@ The knowledge base maintains two structural files: `knowledge/index.md` (master 
 ### Incremental Compilation
 
 compile.py reads the log to determine what's already been compiled:
+
 1. Load `state.json` (SHA-256 hashes of daily logs)
 2. If daily/YYYY-MM-DD.md hash matches stored hash, skip compilation
 3. Otherwise, compile and update hash

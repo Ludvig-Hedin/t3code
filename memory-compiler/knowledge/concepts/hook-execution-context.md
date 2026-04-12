@@ -33,6 +33,7 @@ Claude Code hooks (SessionStart, SessionEnd, PreCompact) fire with specific work
 ### The Problem with Working Directory
 
 When SessionEnd hook spawns `flush.py` as a detached process:
+
 - Hook itself runs in project root
 - Spawned process may inherit different cwd (implementation detail)
 - Hardcoded paths like `./daily/` break in child process
@@ -41,6 +42,7 @@ When SessionEnd hook spawns `flush.py` as a detached process:
 ### Detached Subprocess Spawning
 
 Both SessionEnd and PreCompact spawn background processes that survive after the hook exits:
+
 - The spawned process is fully detached
 - Uses `uv run --directory` to invoke with correct venv
 - Any subsequent spawning (e.g., flush.py → compile.py) must also detach properly

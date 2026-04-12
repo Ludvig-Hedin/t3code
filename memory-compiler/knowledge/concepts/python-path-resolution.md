@@ -33,6 +33,7 @@ DAILY_DIR = ROOT_DIR / "daily"
 ```
 
 This works because:
+
 1. `__file__` gives the script's location at runtime
 2. `.resolve()` converts to absolute path, handling symlinks and `..` correctly
 3. `.parent.parent` goes up two levels: script is in `scripts/`, one level up is `memory-compiler/`, another level up would be project root (adjusted based on actual structure)

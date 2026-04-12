@@ -54,4 +54,3 @@ This is **validation-driven phasing**: phases are sequential, but validation is 
 - [[concepts/systematic-feature-implementation-phases]] - The phases being validated
 - [[concepts/typecheck-validation-gates]] - The validation mechanism
 - [[concepts/effect-services-layers-pattern]] - Layers define contracts that TypeCheck validates
-

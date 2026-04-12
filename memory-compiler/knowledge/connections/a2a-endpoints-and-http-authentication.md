@@ -54,4 +54,3 @@ Separating read (discovery) from write (operations) by authentication level is a
 - [[concepts/agent-discovery-endpoints]] - The public discovery side
 - [[concepts/http-endpoint-authentication-patterns]] - The authenticated operations side
 - [[concepts/provider-adapter-shape-pattern]] - The adapter must handle both endpoints
-

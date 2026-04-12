@@ -41,6 +41,7 @@ From the daily log:
 ## Design Pattern
 
 The combined pattern is:
+
 ```bash
 # Hook configuration
 uv run --directory memory-compiler python scripts/compile.py
@@ -53,6 +54,7 @@ KNOWLEDGE_DIR = ROOT_DIR / "knowledge"
 ```
 
 This pattern ensures:
+
 - Correct dependencies are loaded (`uv` scoping)
 - Correct files are found (absolute path resolution)
 - Works across different machines (no hardcoded paths)

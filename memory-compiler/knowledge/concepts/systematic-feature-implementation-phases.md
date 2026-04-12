@@ -38,12 +38,14 @@ Early phases (contracts, shared) are lightweight; later phases depend on them be
 ### Why This Works
 
 Without phasing, developers often:
+
 - Start UI before backend is ready
 - Implement adapters before contracts are stable
 - Miss integration points between layers
 - Debug multiple broken layers simultaneously
 
 With phases:
+
 - Each layer knows its contract with the previous layer
 - Integration happens in a predictable order
 - Validation can occur at boundaries

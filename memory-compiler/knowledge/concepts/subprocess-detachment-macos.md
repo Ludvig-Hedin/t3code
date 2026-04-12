@@ -45,12 +45,14 @@ else:
 ### Why Detachment Matters
 
 Hooks are short-lived. When SessionEnd hook finishes:
+
 1. Hook process exits
 2. Without detachment, child process (flush.py) would receive SIGHUP and terminate
 3. With `start_new_session=True`, flush.py belongs to a new process group
 4. flush.py continues even after hook exits
 
 This pattern allows:
+
 - Flush operations to complete asynchronously
 - Flush to spawn compile.py without blocking
 - Entire pipeline to run without user interaction

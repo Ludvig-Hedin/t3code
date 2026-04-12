@@ -37,6 +37,7 @@ No auth required; rate-limiting or IP restrictions optional.
 Operations that modify state or access private data require authentication. Two patterns:
 
 **Bearer Token (HTTP Authorization header)**
+
 ```
 POST /a2a/rpc
 Authorization: Bearer <token>
@@ -48,6 +49,7 @@ Content-Type: application/json
 The middleware checks the Bearer token against `A2A_INBOUND_AUTH_TOKEN` (inbound requests from external agents).
 
 **Environment Variable API Keys**
+
 ```
 // Outbound requests from local agent to remote agent
 fetch(`https://remote-agent/a2a/rpc`, {
@@ -62,14 +64,14 @@ When the local agent calls a remote agent, it uses `A2A_AUTH_TOKEN` (the remote 
 ### Middleware Pattern
 
 ```typescript
-app.post('/a2a/rpc', authMiddleware, rpcHandler);
+app.post("/a2a/rpc", authMiddleware, rpcHandler);
 
 async function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const token = req.headers.authorization?.replace("Bearer ", "");
   if (token === process.env.A2A_INBOUND_AUTH_TOKEN) {
     next();
   } else {
-    res.status(401).json({error: 'Unauthorized'});
+    res.status(401).json({ error: "Unauthorized" });
   }
 }
 ```

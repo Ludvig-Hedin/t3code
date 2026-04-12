@@ -36,6 +36,7 @@ When flush.py runs after a session ends:
 ### Why 6 PM?
 
 Daily logs accumulate throughout the day as sessions end. Waiting until 6 PM:
+
 - Batches multiple sessions' conversations into one compilation run
 - Reduces API costs (one compile per day instead of one per session)
 - Ensures knowledge is available by next morning (compiled during evening)
@@ -44,6 +45,7 @@ Daily logs accumulate throughout the day as sessions end. Waiting until 6 PM:
 ### Manual Compilation
 
 The auto-trigger is a convenience; manual compilation is always available:
+
 ```bash
 uv run --directory memory-compiler python scripts/compile.py              # compile new/changed
 uv run --directory memory-compiler python scripts/compile.py --all        # force recompile

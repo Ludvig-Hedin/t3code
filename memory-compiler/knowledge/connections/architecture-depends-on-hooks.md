@@ -18,7 +18,7 @@ The memory compiler's 3-stage pipeline (SessionStart → SessionEnd/PreCompact �
 
 ## Key Insight
 
-Without understanding how hooks execute and detach processes, the architecture seems magical: "how does compilation happen in the background?" The answer is not magic—it's careful process management. The pipeline design *requires* correct subprocess detachment on each platform, and *requires* absolute path resolution because hook execution contexts vary.
+Without understanding how hooks execute and detach processes, the architecture seems magical: "how does compilation happen in the background?" The answer is not magic—it's careful process management. The pipeline design _requires_ correct subprocess detachment on each platform, and _requires_ absolute path resolution because hook execution contexts vary.
 
 In other words: the architecture is the **sum of hook behavior + path resolution + process detachment**. Change any of these, and the pipeline breaks.
 

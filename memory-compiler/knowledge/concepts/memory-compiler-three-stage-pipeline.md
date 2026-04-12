@@ -31,6 +31,7 @@ The hook runs in under 1 second with pure local I/O (no API calls) and outputs m
 ### Stage 2: SessionEnd / PreCompact (Transcript Capture)
 
 Two hooks capture conversation transcripts:
+
 - **SessionEnd** fires when the user closes the session
 - **PreCompact** fires before Claude Code auto-compacts the context window (important for long sessions)
 

@@ -33,6 +33,7 @@ Without `--directory` scoping, `uv run` would look for dependencies at the proje
 ### Hook Integration
 
 Hooks configured in `.claude/settings.json` invoke scripts like:
+
 ```bash
 uv run --directory memory-compiler python scripts/compile.py
 ```

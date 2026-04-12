@@ -42,19 +42,23 @@ Each file follows this format:
 **Context:** What the user was working on.
 
 **Key Exchanges:**
+
 - User asked about X, assistant explained Y
 - Decided to use Z approach because...
 - Discovered that W doesn't work when...
 
 **Decisions Made:**
+
 - Chose library X over Y because...
 - Architecture: went with pattern Z
 
 **Lessons Learned:**
+
 - Always do X before Y to avoid...
 - The gotcha with Z is that...
 
 **Action Items:**
+
 - [ ] Follow up on X
 - [ ] Refactor Y when time permits
 ```
@@ -89,9 +93,9 @@ Format:
 ```markdown
 # Knowledge Base Index
 
-| Article | Summary | Compiled From | Updated |
-|---------|---------|---------------|---------|
-| [[concepts/supabase-auth]] | Row-level security patterns and JWT gotchas | daily/2026-04-02.md | 2026-04-02 |
+| Article                           | Summary                                                                     | Compiled From                            | Updated    |
+| --------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------- | ---------- |
+| [[concepts/supabase-auth]]        | Row-level security patterns and JWT gotchas                                 | daily/2026-04-02.md                      | 2026-04-02 |
 | [[connections/auth-and-webhooks]] | Token verification patterns shared across Supabase auth and Stripe webhooks | daily/2026-04-02.md, daily/2026-04-04.md | 2026-04-04 |
 ```
 
@@ -105,11 +109,13 @@ Format:
 # Build Log
 
 ## [2026-04-01T14:30:00] compile | Daily Log 2026-04-01
+
 - Source: daily/2026-04-01.md
 - Articles created: [[concepts/nextjs-project-structure]], [[concepts/tailwind-setup]]
 - Articles updated: (none)
 
 ## [2026-04-02T09:00:00] query | "How do I handle auth redirects?"
+
 - Consulted: [[concepts/supabase-auth]], [[concepts/nextjs-middleware]]
 - Filed to: [[qa/auth-redirect-handling]]
 ```
@@ -242,6 +248,7 @@ When processing a daily log:
 7. APPEND to `knowledge/log.md`
 
 **Important guidelines:**
+
 - A single daily log may touch 3-10 knowledge articles
 - Prefer updating existing articles over creating near-duplicates
 - Use Obsidian-style `[[wikilinks]]` with full relative paths from knowledge/
@@ -328,9 +335,42 @@ Hooks are configured in `.claude/settings.json` and fire automatically when you 
 ```json
 {
   "hooks": {
-    "SessionStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "uv run --directory memory-compiler python hooks/session-start.py", "timeout": 15 }] }],
-    "PreCompact": [{ "matcher": "", "hooks": [{ "type": "command", "command": "uv run --directory memory-compiler python hooks/pre-compact.py", "timeout": 10 }] }],
-    "SessionEnd": [{ "matcher": "", "hooks": [{ "type": "command", "command": "uv run --directory memory-compiler python hooks/session-end.py", "timeout": 10 }] }]
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --directory memory-compiler python hooks/session-start.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --directory memory-compiler python hooks/pre-compact.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --directory memory-compiler python hooks/session-end.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -340,6 +380,7 @@ Commands use `uv run --directory memory-compiler` so hooks resolve `memory-compi
 ### Hook Details
 
 **`session-start.py`** (SessionStart)
+
 - Pure local I/O, no API calls, runs in under 1 second
 - Reads `knowledge/index.md` and the most recent daily log
 - Outputs JSON to stdout: `{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "..."}}`
@@ -347,12 +388,14 @@ Commands use `uv run --directory memory-compiler` so hooks resolve `memory-compi
 - Max context: 20,000 characters
 
 **`session-end.py`** (SessionEnd)
+
 - Reads hook input from stdin (JSON with `session_id`, `transcript_path`, `cwd`)
 - Copies the raw JSONL transcript to a temp file (no parsing in the hook - keeps it fast)
 - Spawns `flush.py` as a fully detached background process
 - Recursion guard: exits immediately if `CLAUDE_INVOKED_BY` env var is set
 
 **`pre-compact.py`** (PreCompact)
+
 - Same architecture as session-end.py
 - Fires before Claude Code auto-compacts the context window
 - Guards against empty `transcript_path` (known Claude Code bug #13668)
@@ -363,12 +406,14 @@ Commands use `uv run --directory memory-compiler` so hooks resolve `memory-compi
 ### Background Flush Process (`flush.py`)
 
 Spawned by both hooks as a fully detached background process:
+
 - **Windows:** `CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS` flags
 - **Mac/Linux:** `start_new_session=True`
 
 This ensures flush.py survives after Claude Code's hook process exits.
 
 **What flush.py does:**
+
 1. Sets `CLAUDE_INVOKED_BY=memory_flush` env var (prevents recursive hook firing)
 2. Reads the pre-extracted conversation context from the temp `.md` file
 3. Skips if context is empty or if same session was flushed within 60 seconds (deduplication)
@@ -419,6 +464,7 @@ async for message in query(
 - Cost: ~$0.45-0.65 per daily log (increases as KB grows)
 
 **CLI:**
+
 ```bash
 uv run python scripts/compile.py              # compile new/changed only
 uv run python scripts/compile.py --all        # force recompile everything
@@ -433,6 +479,7 @@ Loads the entire knowledge base into context (index + all articles). No RAG.
 At personal KB scale (50-500 articles), the LLM reading a structured index outperforms vector similarity. The LLM understands what you're really asking; cosine similarity just finds similar words.
 
 **CLI:**
+
 ```bash
 uv run python scripts/query.py "What auth patterns do I use?"
 uv run python scripts/query.py "What's my error handling strategy?" --file-back
@@ -444,17 +491,18 @@ With `--file-back`, creates a Q&A article in `knowledge/qa/` and updates the ind
 
 Seven checks:
 
-| Check | Type | Catches |
-|-------|------|---------|
-| Broken links | Structural | `[[wikilinks]]` to non-existent articles |
-| Orphan pages | Structural | Articles with zero inbound links |
-| Orphan sources | Structural | Daily logs not yet compiled |
-| Stale articles | Structural | Source logs changed since compilation |
-| Missing backlinks | Structural | A links to B but B doesn't link back |
-| Sparse articles | Structural | Under 200 words |
-| Contradictions | LLM | Conflicting claims across articles |
+| Check             | Type       | Catches                                  |
+| ----------------- | ---------- | ---------------------------------------- |
+| Broken links      | Structural | `[[wikilinks]]` to non-existent articles |
+| Orphan pages      | Structural | Articles with zero inbound links         |
+| Orphan sources    | Structural | Daily logs not yet compiled              |
+| Stale articles    | Structural | Source logs changed since compilation    |
+| Missing backlinks | Structural | A links to B but B doesn't link back     |
+| Sparse articles   | Structural | Under 200 words                          |
+| Contradictions    | LLM        | Conflicting claims across articles       |
 
 **CLI:**
+
 ```bash
 uv run python scripts/lint.py                    # all checks
 uv run python scripts/lint.py --structural-only  # skip LLM check (free)
@@ -467,6 +515,7 @@ Reports saved to `reports/lint-YYYY-MM-DD.md`.
 ## State Tracking
 
 `scripts/state.json` tracks:
+
 - `ingested` - map of daily log filenames to SHA-256 hashes, compilation timestamps, and costs
 - `query_count` - total queries run
 - `last_lint` - timestamp of most recent lint
@@ -481,6 +530,7 @@ Both are gitignored and regenerated automatically.
 ## Dependencies
 
 `pyproject.toml` (at project root):
+
 - `claude-agent-sdk>=0.1.29` - Claude Agent SDK for LLM calls with tool use
 - `python-dotenv>=1.0.0` - Environment variable management
 - `tzdata>=2024.1` - Timezone data
@@ -492,14 +542,14 @@ No API key needed - uses Claude Code's built-in credentials at `~/.claude/.crede
 
 ## Costs
 
-| Operation | Cost |
-|-----------|------|
-| Compile one daily log | $0.45-0.65 |
-| Query (no file-back) | ~$0.15-0.25 |
-| Query (with file-back) | ~$0.25-0.40 |
+| Operation                       | Cost        |
+| ------------------------------- | ----------- |
+| Compile one daily log           | $0.45-0.65  |
+| Query (no file-back)            | ~$0.15-0.25 |
+| Query (with file-back)          | ~$0.25-0.40 |
 | Full lint (with contradictions) | ~$0.15-0.25 |
-| Structural lint only | $0.00 |
-| Memory flush (per session) | ~$0.02-0.05 |
+| Structural lint only            | $0.00       |
+| Memory flush (per session)      | ~$0.02-0.05 |
 
 ---
 

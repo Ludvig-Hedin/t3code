@@ -50,6 +50,7 @@ Response: {
 ### Agent Card Structure
 
 Each agent card includes:
+
 - `id` - Unique identifier for the agent
 - `name` - Human-readable agent name
 - `description` - What the agent does
@@ -61,12 +62,14 @@ Each agent card includes:
 ### Client-Side Use Case
 
 A client discovering agents can:
+
 1. Fetch agent cards from the discovery endpoint
 2. Display a list of available agents and their methods
 3. Generate dynamic UI based on parameter schemas
 4. Call methods with validated inputs
 
 This enables:
+
 - UI auto-generation (forms generated from parameter schemas)
 - Agent switching without code changes (discover agents at startup)
 - Error prevention (validate inputs against schemas before calling)
@@ -74,6 +77,7 @@ This enables:
 ### A2A Discovery Specifics
 
 The A2A spec mandates:
+
 - Discovery endpoint is public (no authentication)
 - Agent cards include method parameter schemas
 - Clients MUST not assume a fixed set of agents (discover dynamically)

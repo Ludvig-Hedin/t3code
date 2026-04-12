@@ -50,4 +50,3 @@ From the daily log:
 - [[concepts/effect-services-layers-pattern]] - The broader pattern
 - [[concepts/provider-adapter-shape-pattern]] - The adapter as contract layer
 - [[concepts/systematic-feature-implementation-phases]] - Implementing a new provider as an adapter follows the 8-phase pattern
-

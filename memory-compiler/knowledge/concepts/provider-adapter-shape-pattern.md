@@ -38,6 +38,7 @@ interface ProviderAdapterShape {
 ```
 
 Each method has a clear contract:
+
 - `initialize` - Setup (load credentials, validate config)
 - `validate` - Pre-flight checks before calling
 - `call` - Synchronous request/response
@@ -51,21 +52,21 @@ The A2A adapter implements this shape for remote A2A agents:
 ```typescript
 class A2aAdapter implements ProviderAdapterShape {
   name = "a2a";
-  
+
   async call(request) {
     // Marshal request to JSON-RPC
     // POST to remote agent /a2a/rpc
     // Parse response, handle errors
     return response;
   }
-  
+
   async *stream(request) {
     // POST to /a2a/rpc with streaming response
     // Parse SSE chunks and yield
   }
 }
 
-registry.register('a2a', new A2aAdapter());
+registry.register("a2a", new A2aAdapter());
 ```
 
 When user selects `provider="a2a"`, the system routes through this adapter.
@@ -75,11 +76,11 @@ When user selects `provider="a2a"`, the system routes through this adapter.
 ```typescript
 class ProviderAdapterRegistry {
   private adapters = new Map<string, ProviderAdapterShape>();
-  
+
   register(name: string, adapter: ProviderAdapterShape) {
     this.adapters.set(name, adapter);
   }
-  
+
   get(name: string): ProviderAdapterShape {
     return this.adapters.get(name);
   }
