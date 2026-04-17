@@ -29,7 +29,11 @@ import {
   parseAuthStatusFromOutput,
   readCodexConfigModelProvider,
 } from "./CodexProvider";
-import { checkClaudeProviderStatus, parseClaudeAuthStatusFromOutput } from "./ClaudeProvider";
+import {
+  checkClaudeProviderStatus,
+  getClaudeModelCapabilities,
+  parseClaudeAuthStatusFromOutput,
+} from "./ClaudeProvider";
 import { haveProvidersChanged, ProviderRegistryLive } from "./ProviderRegistry";
 import { ServerSettingsService, type ServerSettingsShape } from "../../serverSettings";
 import { ProviderRegistry } from "../Services/ProviderRegistry";
@@ -1012,6 +1016,22 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
           ),
         ),
       );
+    });
+
+    describe("getClaudeModelCapabilities", () => {
+      it("returns 1m context support for Opus 4.7", () => {
+        const caps = getClaudeModelCapabilities("claude-opus-4-7");
+
+        assert.deepEqual(
+          caps.contextWindowOptions.map((option) => option.value),
+          ["200k", "1m"],
+        );
+        assert.strictEqual(caps.contextWindowOptions[0]?.isDefault, true);
+        assert.strictEqual(
+          caps.contextWindowOptions[1]?.description,
+          "Opus 4.7 with 1M context · ~2× usage vs Sonnet · Billed as extra usage · $5/$25 per Mtok",
+        );
+      });
     });
 
     // ── parseClaudeAuthStatusFromOutput pure tests ────────────────────

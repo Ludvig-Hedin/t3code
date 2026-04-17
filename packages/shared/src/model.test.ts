@@ -50,6 +50,7 @@ describe("normalizeModelSlug", () => {
   it("maps known aliases to canonical slugs", () => {
     expect(normalizeModelSlug("5.3")).toBe("gpt-5.3-codex");
     expect(normalizeModelSlug("sonnet", "claudeAgent")).toBe("claude-sonnet-4-6");
+    expect(normalizeModelSlug("opus-4.7", "claudeAgent")).toBe("claude-opus-4-7");
   });
 
   it("returns null for empty or missing values", () => {
@@ -203,6 +204,13 @@ describe("resolveApiModelId", () => {
         options: { contextWindow: "1m" },
       }),
     ).toBe("claude-opus-4-6[1m]");
+    expect(
+      resolveApiModelId({
+        provider: "claudeAgent",
+        model: "claude-opus-4-7",
+        options: { contextWindow: "1m" },
+      }),
+    ).toBe("claude-opus-4-7[1m]");
   });
 
   it("returns the model as-is for 200k context window", () => {
