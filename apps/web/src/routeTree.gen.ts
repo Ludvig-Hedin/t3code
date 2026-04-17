@@ -17,6 +17,7 @@ import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as TerminalPopoutThreadIdRouteImport } from './routes/terminal-popout.$threadId'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
+import { Route as SettingsPromptImprovementRouteImport } from './routes/settings.prompt-improvement'
 import { Route as SettingsPersonalizationRouteImport } from './routes/settings.personalization'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
 import { Route as SettingsMobileRouteImport } from './routes/settings.mobile'
@@ -68,6 +69,12 @@ const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   path: '/providers',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsPromptImprovementRoute =
+  SettingsPromptImprovementRouteImport.update({
+    id: '/prompt-improvement',
+    path: '/prompt-improvement',
+    getParentRoute: () => SettingsRoute,
+  } as any)
 const SettingsPersonalizationRoute = SettingsPersonalizationRouteImport.update({
   id: '/personalization',
   path: '/personalization',
@@ -141,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/settings/mobile': typeof SettingsMobileRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/personalization': typeof SettingsPersonalizationRoute
+  '/settings/prompt-improvement': typeof SettingsPromptImprovementRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
 }
@@ -160,6 +168,7 @@ export interface FileRoutesByTo {
   '/settings/mobile': typeof SettingsMobileRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/personalization': typeof SettingsPersonalizationRoute
+  '/settings/prompt-improvement': typeof SettingsPromptImprovementRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
   '/': typeof ChatIndexRoute
@@ -182,6 +191,7 @@ export interface FileRoutesById {
   '/settings/mobile': typeof SettingsMobileRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/personalization': typeof SettingsPersonalizationRoute
+  '/settings/prompt-improvement': typeof SettingsPromptImprovementRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
   '/_chat/': typeof ChatIndexRoute
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/settings/mobile'
     | '/settings/notifications'
     | '/settings/personalization'
+    | '/settings/prompt-improvement'
     | '/settings/providers'
     | '/terminal-popout/$threadId'
   fileRoutesByTo: FileRoutesByTo
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/settings/mobile'
     | '/settings/notifications'
     | '/settings/personalization'
+    | '/settings/prompt-improvement'
     | '/settings/providers'
     | '/terminal-popout/$threadId'
     | '/'
@@ -245,6 +257,7 @@ export interface FileRouteTypes {
     | '/settings/mobile'
     | '/settings/notifications'
     | '/settings/personalization'
+    | '/settings/prompt-improvement'
     | '/settings/providers'
     | '/terminal-popout/$threadId'
     | '/_chat/'
@@ -316,6 +329,13 @@ declare module '@tanstack/react-router' {
       path: '/providers'
       fullPath: '/settings/providers'
       preLoaderRoute: typeof SettingsProvidersRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/prompt-improvement': {
+      id: '/settings/prompt-improvement'
+      path: '/prompt-improvement'
+      fullPath: '/settings/prompt-improvement'
+      preLoaderRoute: typeof SettingsPromptImprovementRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/personalization': {
@@ -420,6 +440,7 @@ interface SettingsRouteChildren {
   SettingsMobileRoute: typeof SettingsMobileRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   SettingsPersonalizationRoute: typeof SettingsPersonalizationRoute
+  SettingsPromptImprovementRoute: typeof SettingsPromptImprovementRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
 }
 
@@ -433,6 +454,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsMobileRoute: SettingsMobileRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,
   SettingsPersonalizationRoute: SettingsPersonalizationRoute,
+  SettingsPromptImprovementRoute: SettingsPromptImprovementRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
 }
 

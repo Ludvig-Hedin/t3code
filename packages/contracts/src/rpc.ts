@@ -93,6 +93,11 @@ import {
   A2aSseEvent,
   A2aTask,
 } from "./a2a";
+import {
+  PromptImprovementError,
+  PromptImprovementInput,
+  PromptImprovementResult,
+} from "./promptImprovement";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings";
 import {
   SkillDeleteInput,
@@ -162,6 +167,7 @@ export const WS_METHODS = {
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
   serverTranscribeAudio: "server.transcribeAudio",
+  promptsImprove: "prompts.improve",
 
   // Skills methods
   skillsList: "skills.list",
@@ -244,6 +250,12 @@ export const WsServerTranscribeAudioRpc = Rpc.make(WS_METHODS.serverTranscribeAu
   payload: ServerTranscribeAudioInput,
   success: ServerTranscribeAudioResult,
   error: TranscriptionError,
+});
+
+export const WsPromptImproveRpc = Rpc.make(WS_METHODS.promptsImprove, {
+  payload: PromptImprovementInput,
+  success: PromptImprovementResult,
+  error: PromptImprovementError,
 });
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
@@ -630,6 +642,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
   WsServerTranscribeAudioRpc,
+  WsPromptImproveRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsWriteFileRpc,

@@ -19,6 +19,7 @@ import {
   type PreviewApp,
   type PreviewEvent,
   type PreviewSession,
+  type PromptImprovementResult,
   type ProjectId,
   type ProviderKind,
   type ServerSettingsPatch,
@@ -109,6 +110,9 @@ export interface WsRpcClient {
     ) => Promise<ServerTranscribeAudioResult>;
     readonly subscribeConfig: RpcStreamMethod<typeof WS_METHODS.subscribeServerConfig>;
     readonly subscribeLifecycle: RpcStreamMethod<typeof WS_METHODS.subscribeServerLifecycle>;
+  };
+  readonly prompts: {
+    readonly improve: RpcUnaryMethod<typeof WS_METHODS.promptsImprove>;
   };
   readonly orchestration: {
     readonly getSnapshot: RpcUnaryNoArgMethod<typeof ORCHESTRATION_WS_METHODS.getSnapshot>;
@@ -272,6 +276,10 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport.subscribe((client) => client[WS_METHODS.subscribeServerConfig]({}), listener),
       subscribeLifecycle: (listener) =>
         transport.subscribe((client) => client[WS_METHODS.subscribeServerLifecycle]({}), listener),
+    },
+    prompts: {
+      improve: (input): Promise<PromptImprovementResult> =>
+        transport.request((client) => client[WS_METHODS.promptsImprove](input)),
     },
     orchestration: {
       getSnapshot: () =>

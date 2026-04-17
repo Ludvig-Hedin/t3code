@@ -15,10 +15,15 @@ import { resolveApiModelId } from "@t3tools/shared/model";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 
 import { TextGenerationError } from "@t3tools/contracts";
-import { type TextGenerationShape, TextGeneration } from "../Services/TextGeneration.ts";
+import {
+  type PromptImprovementGenerationResult,
+  type TextGenerationShape,
+  TextGeneration,
+} from "../Services/TextGeneration.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildPromptImprovementPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "../Prompts.ts";
@@ -77,7 +82,8 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateImprovedPrompt";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -328,11 +334,59 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
     };
   });
 
+  const generateImprovedPrompt: TextGenerationShape["generateImprovedPrompt"] = Effect.fn(
+    "ClaudeTextGeneration.generateImprovedPrompt",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildPromptImprovementPrompt({
+      prompt: input.prompt,
+      messages: input.threadMessages,
+      instructions: input.instructions,
+    });
+
+    if (input.modelSelection.provider !== "claudeAgent") {
+      return yield* new TextGenerationError({
+        operation: "generateImprovedPrompt",
+        detail: "Invalid model selection.",
+      });
+    }
+
+    const generated = yield* runClaudeJson({
+      operation: "generateImprovedPrompt",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    if (
+      typeof generated.improvedPrompt === "string" &&
+      generated.improvedPrompt.trim().length > 0
+    ) {
+      return {
+        kind: "improved",
+        improvedPrompt: generated.improvedPrompt.trim(),
+      } satisfies PromptImprovementGenerationResult;
+    }
+
+    if (generated.error === "too_vague") {
+      return {
+        kind: "too_vague",
+        message: generated.message?.trim() || "Prompt is too vague to improve meaningfully.",
+      } satisfies PromptImprovementGenerationResult;
+    }
+
+    return yield* new TextGenerationError({
+      operation: "generateImprovedPrompt",
+      detail: "Claude returned an invalid prompt-improvement result.",
+    });
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateImprovedPrompt,
   } satisfies TextGenerationShape;
 });
 

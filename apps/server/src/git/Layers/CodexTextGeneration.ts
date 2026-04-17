@@ -11,6 +11,7 @@ import { ServerConfig } from "../../config.ts";
 import { TextGenerationError } from "@t3tools/contracts";
 import {
   type BranchNameGenerationInput,
+  type PromptImprovementGenerationResult,
   type ThreadTitleGenerationResult,
   type TextGenerationShape,
   TextGeneration,
@@ -18,6 +19,7 @@ import {
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildPromptImprovementPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "../Prompts.ts";
@@ -134,7 +136,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateImprovedPrompt";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -405,11 +408,59 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     } satisfies ThreadTitleGenerationResult;
   });
 
+  const generateImprovedPrompt: TextGenerationShape["generateImprovedPrompt"] = Effect.fn(
+    "CodexTextGeneration.generateImprovedPrompt",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildPromptImprovementPrompt({
+      prompt: input.prompt,
+      messages: input.threadMessages,
+      instructions: input.instructions,
+    });
+
+    if (input.modelSelection.provider !== "codex") {
+      return yield* new TextGenerationError({
+        operation: "generateImprovedPrompt",
+        detail: "Invalid model selection.",
+      });
+    }
+
+    const generated = yield* runCodexJson({
+      operation: "generateImprovedPrompt",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    if (
+      typeof generated.improvedPrompt === "string" &&
+      generated.improvedPrompt.trim().length > 0
+    ) {
+      return {
+        kind: "improved",
+        improvedPrompt: generated.improvedPrompt.trim(),
+      } satisfies PromptImprovementGenerationResult;
+    }
+
+    if (generated.error === "too_vague") {
+      return {
+        kind: "too_vague",
+        message: generated.message?.trim() || "Prompt is too vague to improve meaningfully.",
+      } satisfies PromptImprovementGenerationResult;
+    }
+
+    return yield* new TextGenerationError({
+      operation: "generateImprovedPrompt",
+      detail: "Codex returned an invalid prompt-improvement result.",
+    });
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateImprovedPrompt,
   } satisfies TextGenerationShape;
 });
 

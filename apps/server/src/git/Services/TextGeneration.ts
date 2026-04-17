@@ -80,6 +80,25 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
+export interface PromptImprovementGenerationInput {
+  cwd: string;
+  prompt: string;
+  threadMessages: ReadonlyArray<{ readonly role: string; readonly text: string }>;
+  instructions: string;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+export type PromptImprovementGenerationResult =
+  | {
+      kind: "improved";
+      improvedPrompt: string;
+    }
+  | {
+      kind: "too_vague";
+      message: string;
+    };
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -87,6 +106,9 @@ export interface TextGenerationService {
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   generateThreadTitle(input: ThreadTitleGenerationInput): Promise<ThreadTitleGenerationResult>;
+  generateImprovedPrompt(
+    input: PromptImprovementGenerationInput,
+  ): Promise<PromptImprovementGenerationResult>;
 }
 
 /**
@@ -120,6 +142,13 @@ export interface TextGenerationShape {
   readonly generateThreadTitle: (
     input: ThreadTitleGenerationInput,
   ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+  /**
+   * Rewrite a user prompt to be clearer and more actionable.
+   */
+  readonly generateImprovedPrompt: (
+    input: PromptImprovementGenerationInput,
+  ) => Effect.Effect<PromptImprovementGenerationResult, TextGenerationError>;
 }
 
 /**

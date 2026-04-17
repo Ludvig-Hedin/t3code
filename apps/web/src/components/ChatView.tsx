@@ -202,6 +202,7 @@ import { VoiceInputControls } from "./chat/VoiceInputControls";
 import { ComposerPendingApprovalPanel } from "./chat/ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./chat/ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./chat/ComposerPlanFollowUpBanner";
+import { ComposerImproveButton } from "./chat/ComposerImproveButton";
 import {
   getComposerProviderState,
   renderProviderTraitsMenuContent,
@@ -233,11 +234,13 @@ import {
   waitForStartedServerThread,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { usePromptImprover } from "~/hooks/usePromptImprover";
 import {
   useServerAvailableEditors,
   useServerConfig,
   useServerKeybindings,
 } from "~/rpc/serverState";
+import { Skeleton } from "./ui/skeleton";
 
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
@@ -4168,7 +4171,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         scheduleComposerFocus();
         return;
       }
-      const resolvedProvider = resolveSelectableProvider(providerStatuses, provider);
+      // manifest requires special handling: bypass provider resolution and use "manifest" directly
+      // to avoid resolution to a fallback provider when manifest is disabled/unavailable.
+      // This matches the behavior in ProviderModelPicker where manifest is always passed through unresolved.
+      const resolvedProvider =
+        provider === "manifest"
+          ? "manifest"
+          : resolveSelectableProvider(providerStatuses, provider);
       const resolvedModel = resolveAppModelSelection(
         resolvedProvider,
         settings,
@@ -4226,6 +4235,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
     models: selectedProviderModels,
     modelOptions: composerModelOptions?.[selectedProvider],
     prompt,
+    onPromptChange: setPromptFromTraits,
+  });
+  const promptImprover = usePromptImprover({
+    prompt,
+    threadMessages: activeThread?.messages ?? [],
     onPromptChange: setPromptFromTraits,
   });
   const onEnvModeChange = useCallback(
@@ -4680,7 +4694,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   ? "warning"
                   : "neutral"
             }
-            canStopExecution={phase === "running" && activeAgentStatus.canStop}
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -4690,9 +4703,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
             onToggleTerminal={toggleTerminalVisibility}
             onToggleDiff={onToggleDiff}
             onTogglePreview={onTogglePreview}
-            onStopExecution={() => {
-              void onInterrupt();
-            }}
             onClose={() => window.close()}
           />
         </header>
@@ -4738,7 +4748,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   ? "warning"
                   : "neutral"
             }
-            canStopExecution={phase === "running" && activeAgentStatus.canStop}
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -4748,9 +4757,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
             onToggleTerminal={toggleTerminalVisibility}
             onToggleDiff={onToggleDiff}
             onTogglePreview={onTogglePreview}
-            onStopExecution={() => {
-              void onInterrupt();
-            }}
             onPopout={() => openThreadPopout(activeThread.id)}
           />
         </header>
@@ -5066,39 +5072,48 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           ))}
                         </div>
                       )}
-                    <ComposerPromptEditor
-                      ref={composerEditorRef}
-                      value={
-                        isComposerApprovalState
-                          ? ""
-                          : activePendingProgress
-                            ? activePendingProgress.customAnswer
-                            : prompt
-                      }
-                      cursor={composerCursor}
-                      terminalContexts={
-                        !isComposerApprovalState && pendingUserInputs.length === 0
-                          ? composerTerminalContexts
-                          : []
-                      }
-                      onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
-                      onChange={onPromptChange}
-                      onCommandKeyDown={onComposerCommandKey}
-                      onPaste={onComposerPaste}
-                      placeholder={
-                        isComposerApprovalState
-                          ? (activePendingApproval?.detail ??
-                            "Resolve this approval request to continue")
-                          : activePendingProgress
-                            ? "Type your own answer, or leave this blank to use the selected option"
-                            : showPlanFollowUpPrompt && activeProposedPlan
-                              ? "Add feedback to refine the plan, or leave this blank to implement it"
-                              : phase === "disconnected"
-                                ? "Ask for follow-up changes or attach images"
-                                : "Ask anything, @tag files/folders, or use / to show available commands"
-                      }
-                      disabled={isConnecting || isComposerApprovalState}
-                    />
+                    <div className="relative">
+                      <ComposerPromptEditor
+                        ref={composerEditorRef}
+                        value={
+                          isComposerApprovalState
+                            ? ""
+                            : activePendingProgress
+                              ? activePendingProgress.customAnswer
+                              : prompt
+                        }
+                        cursor={composerCursor}
+                        terminalContexts={
+                          !isComposerApprovalState && pendingUserInputs.length === 0
+                            ? composerTerminalContexts
+                            : []
+                        }
+                        onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                        onChange={onPromptChange}
+                        onCommandKeyDown={onComposerCommandKey}
+                        onPaste={onComposerPaste}
+                        placeholder={
+                          isComposerApprovalState
+                            ? (activePendingApproval?.detail ??
+                              "Resolve this approval request to continue")
+                            : activePendingProgress
+                              ? "Type your own answer, or leave this blank to use the selected option"
+                              : showPlanFollowUpPrompt && activeProposedPlan
+                                ? "Add feedback to refine the plan, or leave this blank to implement it"
+                                : phase === "disconnected"
+                                  ? "Ask for follow-up changes or attach images"
+                                  : "Ask anything, @tag files/folders, or use / to show available commands"
+                        }
+                        disabled={
+                          isConnecting || isComposerApprovalState || promptImprover.isImproving
+                        }
+                      />
+                      {promptImprover.isImproving ? (
+                        <div className="pointer-events-none absolute inset-0 rounded-[16px] bg-background/45">
+                          <Skeleton className="h-full w-full rounded-[16px]" />
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/* Bottom toolbar */}
@@ -5164,6 +5179,23 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           </TooltipTrigger>
                           <TooltipPopup side="top">Attach file or image</TooltipPopup>
                         </Tooltip>
+
+                        {settings.promptImprovementEnabled &&
+                        !isComposerApprovalState &&
+                        activePendingProgress === null ? (
+                          <ComposerImproveButton
+                            canImprove={promptImprover.canImprove}
+                            canShowNextVersion={promptImprover.canShowNextVersion}
+                            canShowPreviousVersion={promptImprover.canShowPreviousVersion}
+                            error={promptImprover.error}
+                            isImproving={promptImprover.isImproving}
+                            onCancel={promptImprover.cancelImprovement}
+                            onImprove={() => void promptImprover.improvePrompt()}
+                            onShowNextVersion={promptImprover.showNextVersion}
+                            onShowPreviousVersion={promptImprover.showPreviousVersion}
+                            versionLabel={promptImprover.versionLabel}
+                          />
+                        ) : null}
 
                         {/* Provider/model picker */}
                         <ProviderModelPicker

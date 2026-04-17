@@ -9,6 +9,7 @@ import {
   MoonIcon,
   PlusIcon,
   SaveIcon,
+  SparklesIcon,
   SunIcon,
   Undo2Icon,
   XIcon,
@@ -56,6 +57,7 @@ import {
 } from "../../lib/desktopUpdateReactQuery";
 import {
   getCustomModelOptionsByProvider,
+  resolveConfiguredModelSelectionState,
   resolveAppModelSelectionState,
 } from "../../modelSelection";
 import { getDefaultServerModel } from "../../providerModels";
@@ -1856,6 +1858,147 @@ export function GitSettingsPanel() {
             </Select>
           }
         />
+      </SettingsSection>
+    </SettingsPageContainer>
+  );
+}
+
+export function PromptImprovementSettingsPanel() {
+  const settings = useSettings();
+  const { updateSettings } = useUpdateSettings();
+  const serverProviders = useServerProviders();
+
+  const resolvedSelection = useMemo(
+    () =>
+      resolveConfiguredModelSelectionState(
+        settings.promptImprovementModelSelection,
+        settings,
+        serverProviders,
+      ),
+    [settings, serverProviders],
+  );
+
+  const modelOptionsByProvider = useMemo(
+    () =>
+      getCustomModelOptionsByProvider(
+        settings,
+        serverProviders,
+        resolvedSelection.provider,
+        resolvedSelection.model,
+      ),
+    [settings, serverProviders, resolvedSelection.model, resolvedSelection.provider],
+  );
+
+  const handleModelChange = useCallback(
+    (provider: ProviderKind, model: string) => {
+      updateSettings({ promptImprovementModelSelection: { provider, model } as ModelSelection });
+    },
+    [updateSettings],
+  );
+
+  return (
+    <SettingsPageContainer>
+      <SettingsSection title="Prompt improvement" icon={<SparklesIcon className="size-3.5" />}>
+        <SettingsRow
+          title="Enable Improve button"
+          description="Show the Improve action in the composer and allow prompt rewrites."
+          resetAction={
+            settings.promptImprovementEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.promptImprovementEnabled ? (
+              <SettingResetButton
+                label="prompt improvement toggle"
+                onClick={() =>
+                  updateSettings({
+                    promptImprovementEnabled: DEFAULT_UNIFIED_SETTINGS.promptImprovementEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.promptImprovementEnabled}
+              onCheckedChange={(checked) => updateSettings({ promptImprovementEnabled: checked })}
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Model"
+          description="Model used when rewriting your prompt from the composer."
+          resetAction={
+            settings.promptImprovementModelSelection !==
+            DEFAULT_UNIFIED_SETTINGS.promptImprovementModelSelection ? (
+              <SettingResetButton
+                label="prompt improvement model"
+                onClick={() =>
+                  updateSettings({
+                    promptImprovementModelSelection:
+                      DEFAULT_UNIFIED_SETTINGS.promptImprovementModelSelection,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ProviderModelPicker
+              provider={resolvedSelection.provider}
+              model={resolvedSelection.model}
+              lockedProvider={null}
+              providers={serverProviders}
+              modelOptionsByProvider={modelOptionsByProvider}
+              onProviderModelChange={handleModelChange}
+              compact
+              onOllamaPullModel={async (model) => {
+                try {
+                  const result = await getWsRpcClient().ollama.pullModel({ model });
+                  return {
+                    success: result.success,
+                    ...(result.error !== undefined ? { error: result.error } : {}),
+                  };
+                } catch (err) {
+                  return { success: false, error: String(err) };
+                }
+              }}
+              onOllamaQuitServer={() => {
+                void getWsRpcClient().ollama.quitServer().catch(console.error);
+              }}
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Instructions">
+        <div className="px-4 py-4 sm:px-5">
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-medium text-foreground">Rewrite preferences</h3>
+              {settings.promptImprovementInstructions !==
+                DEFAULT_UNIFIED_SETTINGS.promptImprovementInstructions && (
+                <SettingResetButton
+                  label="prompt improvement instructions"
+                  onClick={() =>
+                    updateSettings({
+                      promptImprovementInstructions:
+                        DEFAULT_UNIFIED_SETTINGS.promptImprovementInstructions,
+                    })
+                  }
+                />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Optional guidance for how the improver should rewrite prompts.
+            </p>
+            <Textarea
+              value={settings.promptImprovementInstructions}
+              onChange={(event) =>
+                updateSettings({ promptImprovementInstructions: event.target.value })
+              }
+              placeholder="e.g. Prefer explicit acceptance criteria and mention likely files when the context makes them obvious."
+              rows={4}
+            />
+          </div>
+        </div>
       </SettingsSection>
     </SettingsPageContainer>
   );

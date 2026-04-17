@@ -15,6 +15,7 @@ export * from "./mcp";
 export * from "./plugins";
 export * from "./rpc";
 export * from "./skills";
+export * from "./promptImprovement";
 export * from "./preview";
 export * from "./importHistory";
 export * from "./a2a";

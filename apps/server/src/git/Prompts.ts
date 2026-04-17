@@ -200,3 +200,59 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+// ---------------------------------------------------------------------------
+// Prompt improvement
+// ---------------------------------------------------------------------------
+
+export interface PromptImprovementPromptInput {
+  prompt: string;
+  messages: ReadonlyArray<{ readonly role: string; readonly text: string }>;
+  instructions: string;
+}
+
+/** Raw LLM output shape for prompt improvement. */
+export const PromptImprovementOutputSchema = Schema.Struct({
+  improvedPrompt: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+  message: Schema.optional(Schema.String),
+});
+
+export function buildPromptImprovementPrompt(input: PromptImprovementPromptInput) {
+  const instructionsSection = input.instructions.trim()
+    ? `\nStyle preferences: ${input.instructions.trim()}\n`
+    : "";
+
+  const conversationSection =
+    input.messages.length > 0
+      ? [
+          "Recent conversation (context only — do not summarize or respond to it):",
+          ...input.messages.map(
+            (message) => `[${message.role}]: ${limitSection(message.text, 800)}`,
+          ),
+          "",
+        ].join("\n")
+      : "";
+
+  const systemPrompt = [
+    "You are an expert at rewriting AI coding-assistant prompts to be clearer, more specific, and more actionable.",
+    "",
+    "Rules:",
+    "- Preserve the user's original intent exactly — do not change what they are asking for.",
+    "- Add specificity: include file paths, function names, or exact expected behavior when inferable from context.",
+    "- Structure complex tasks with numbered steps when helpful.",
+    "- Keep the improved prompt concise — do not pad it.",
+    "- Write in the same natural voice as the original (imperative, first-person, etc.).",
+    '- If the prompt is too vague to improve meaningfully, return JSON: {"error":"too_vague","message":"<brief reason>"}',
+    '- Otherwise return JSON: {"improvedPrompt":"<rewritten prompt>"}',
+    instructionsSection,
+    conversationSection,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    prompt: `${systemPrompt}\n\nPrompt to improve:\n${limitSection(input.prompt, 4_000)}`,
+    outputSchema: PromptImprovementOutputSchema,
+  };
+}

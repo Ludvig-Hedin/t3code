@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { ServerProvider } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 
-import { resolveAppModelSelection, resolveAppModelSelectionState } from "./modelSelection";
+import {
+  resolveAppModelSelection,
+  resolveAppModelSelectionState,
+  resolveConfiguredModelSelectionState,
+} from "./modelSelection";
 
 const GEMINI_PROVIDER: ServerProvider = {
   provider: "gemini",
@@ -58,6 +62,22 @@ describe("modelSelection", () => {
             model: "gemini-3-flash-preview",
           },
         },
+        PROVIDERS,
+      ),
+    ).toMatchObject({
+      provider: "gemini",
+      model: "gemini-3-flash-preview",
+    });
+  });
+
+  it("resolves an explicit prompt-improvement selection independently of text generation", () => {
+    expect(
+      resolveConfiguredModelSelectionState(
+        {
+          provider: "gemini",
+          model: "gemini-3-flash-preview",
+        },
+        DEFAULT_UNIFIED_SETTINGS,
         PROVIDERS,
       ),
     ).toMatchObject({

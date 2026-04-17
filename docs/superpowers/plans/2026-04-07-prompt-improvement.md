@@ -8,6 +8,18 @@
 
 **Tech Stack:** Effect (service, RPC, streaming), Zod/Effect Schema, React (hooks, useState, useRef, useCallback), TanStack Router (settings route), Tailwind CSS, Lucide icons, shadcn/ui Button + Skeleton, Lexical (composer is controlled — updating `prompt` via `setPrompt` is enough).
 
+## Implementation Status
+
+- Implemented on `main` on 2026-04-17.
+- Server path is wired end-to-end: contracts, settings, prompt builder, provider implementations, routing, and `prompts.improve` RPC.
+- Web path is wired end-to-end: composer improve button, shimmer/cancel/version navigation, settings screen, and route.
+- Validation completed:
+  - `bun fmt`
+  - `bun lint`
+  - `bun typecheck`
+  - `bun x vitest run src/serverSettings.test.ts` in `apps/server`
+  - `bun run build` in `apps/web`
+
 ---
 
 ## File Map

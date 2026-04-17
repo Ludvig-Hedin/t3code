@@ -14,6 +14,7 @@ import {
   ProjectSearchEntriesError,
   ProjectReadFileError,
   ProjectWriteFileError,
+  PromptImprovementError,
   OrchestrationReplayEventsError,
   ThreadId,
   type TerminalEvent,
@@ -29,6 +30,7 @@ import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuer
 import { ServerConfig } from "./config";
 import { GitCore } from "./git/Services/GitCore";
 import { GitManager } from "./git/Services/GitManager";
+import { TextGeneration } from "./git/Services/TextGeneration";
 import { Keybindings } from "./keybindings";
 import { Open, resolveAvailableEditors } from "./open";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer";
@@ -164,6 +166,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const open = yield* Open;
     const gitManager = yield* GitManager;
     const git = yield* GitCore;
+    const textGeneration = yield* TextGeneration;
     const terminalManager = yield* TerminalManager;
     const providerRegistry = yield* ProviderRegistry;
     const config = yield* ServerConfig;
@@ -733,6 +736,49 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           {
             "rpc.aggregate": "server",
           },
+        ),
+      [WS_METHODS.promptsImprove]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.promptsImprove,
+          Effect.gen(function* () {
+            const currentSettings = yield* serverSettings.getSettings.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new PromptImprovementError({
+                    detail:
+                      cause instanceof Error
+                        ? cause.message
+                        : "Failed to load prompt-improvement settings.",
+                    cause,
+                  }),
+              ),
+            );
+            if (!currentSettings.promptImprovementEnabled) {
+              return yield* new PromptImprovementError({
+                detail: "Prompt improvement is disabled in settings.",
+              });
+            }
+
+            return yield* textGeneration
+              .generateImprovedPrompt({
+                cwd: process.cwd(),
+                prompt: input.prompt,
+                threadMessages: input.threadMessages,
+                instructions: currentSettings.promptImprovementInstructions,
+                modelSelection: currentSettings.promptImprovementModelSelection,
+              })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new PromptImprovementError({
+                      detail:
+                        cause instanceof Error ? cause.message : "Failed to improve the prompt.",
+                      cause,
+                    }),
+                ),
+              );
+          }),
+          { "rpc.aggregate": "prompts" },
         ),
       [WS_METHODS.projectsSearchEntries]: (input) =>
         observeRpcEffect(

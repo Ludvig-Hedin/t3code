@@ -1,5 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { DEFAULT_SERVER_SETTINGS, ServerSettingsPatch } from "@t3tools/contracts";
+import {
+  DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
+  DEFAULT_SERVER_SETTINGS,
+  ServerSettingsPatch,
+} from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Schema } from "effect";
 import { ServerConfig } from "./config";
@@ -39,6 +43,23 @@ it.layer(NodeServices.layer)("server settings", (it) => {
               fastMode: false,
             },
           },
+        },
+      );
+
+      assert.deepEqual(
+        decodePatch({
+          promptImprovementModelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-6",
+          },
+          promptImprovementEnabled: false,
+        }),
+        {
+          promptImprovementModelSelection: {
+            provider: "claudeAgent",
+            model: "claude-sonnet-4-6",
+          },
+          promptImprovementEnabled: false,
         },
       );
     }),
@@ -139,6 +160,30 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "falls back prompt-improvement provider to the first enabled provider at read time",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsService;
+
+        const next = yield* serverSettings.updateSettings({
+          providers: {
+            codex: { enabled: false },
+            claudeAgent: { enabled: true },
+          },
+          promptImprovementModelSelection: {
+            provider: "codex",
+            model: "gpt-5.4",
+          },
+        });
+
+        assert.deepEqual(next.promptImprovementModelSelection, {
+          provider: "claudeAgent",
+          model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.claudeAgent,
+        });
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
   it.effect("trims provider path settings when updates are applied", () =>

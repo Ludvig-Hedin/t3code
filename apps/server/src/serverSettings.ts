@@ -100,8 +100,11 @@ const PROVIDER_ORDER: readonly NonA2aProviderKind[] = ["codex", "claudeAgent", "
  * provider with its default model.  This is applied at read-time so the
  * persisted preference is preserved for when a provider is re-enabled.
  */
-function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
-  const selection = settings.textGenerationModelSelection;
+function resolveModelSelectionProvider(
+  settings: ServerSettings,
+  key: "textGenerationModelSelection" | "promptImprovementModelSelection",
+): ServerSettings {
+  const selection = settings[key];
   // "a2a" provider has no per-provider config — treat as always-enabled for text generation.
   const providerConfig =
     selection.provider in settings.providers
@@ -119,15 +122,25 @@ function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings
 
   return {
     ...settings,
-    textGenerationModelSelection: {
+    [key]: {
       provider: fallback,
       model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[fallback],
     } as ModelSelection,
   };
 }
 
+function resolveServerSettingsSelections(settings: ServerSettings): ServerSettings {
+  return resolveModelSelectionProvider(
+    resolveModelSelectionProvider(settings, "textGenerationModelSelection"),
+    "promptImprovementModelSelection",
+  );
+}
+
 // Values under these keys are compared as a whole — never stripped field-by-field.
-const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set(["textGenerationModelSelection"]);
+const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+  "textGenerationModelSelection",
+  "promptImprovementModelSelection",
+]);
 
 function stripDefaultServerSettings(current: unknown, defaults: unknown): unknown | undefined {
   if (Array.isArray(current) || Array.isArray(defaults)) {
@@ -315,7 +328,7 @@ const makeServerSettings = Effect.gen(function* () {
   return {
     start,
     ready: Deferred.await(startedDeferred),
-    getSettings: getSettingsFromCache.pipe(Effect.map(resolveTextGenerationProvider)),
+    getSettings: getSettingsFromCache.pipe(Effect.map(resolveServerSettingsSelections)),
     updateSettings: (patch) =>
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
@@ -333,11 +346,11 @@ const makeServerSettings = Effect.gen(function* () {
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);
           yield* emitChange(next);
-          return resolveTextGenerationProvider(next);
+          return resolveServerSettingsSelections(next);
         }),
       ),
     get streamChanges() {
-      return Stream.fromPubSub(changesPubSub).pipe(Stream.map(resolveTextGenerationProvider));
+      return Stream.fromPubSub(changesPubSub).pipe(Stream.map(resolveServerSettingsSelections));
     },
   } satisfies ServerSettingsShape;
 });

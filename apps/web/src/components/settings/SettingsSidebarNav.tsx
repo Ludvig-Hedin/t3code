@@ -10,6 +10,7 @@ import {
   PlugIcon,
   QrCodeIcon,
   Settings2Icon,
+  SparklesIcon,
   UserIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -31,6 +32,7 @@ export type SettingsSectionPath =
   | "/settings/git"
   | "/settings/notifications"
   | "/settings/personalization"
+  | "/settings/prompt-improvement"
   | "/settings/mobile"
   | "/settings/mcp"
   | "/settings/a2a"
@@ -47,6 +49,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Git & Code Review", to: "/settings/git", icon: GitBranchIcon },
   { label: "Notifications", to: "/settings/notifications", icon: BellIcon },
   { label: "Personalization", to: "/settings/personalization", icon: UserIcon },
+  { label: "Prompt Improvement", to: "/settings/prompt-improvement", icon: SparklesIcon },
   { label: "Mobile", to: "/settings/mobile", icon: QrCodeIcon },
   { label: "MCP & Plugins", to: "/settings/mcp", icon: PlugIcon },
   { label: "A2A Agents", to: "/settings/a2a", icon: NetworkIcon },

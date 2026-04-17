@@ -208,6 +208,14 @@ export const ServerSettings = Schema.Struct({
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(() => ({}))),
   codeReview: CodeReviewSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   commitInstructions: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
+  promptImprovementEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  promptImprovementModelSelection: ModelSelection.pipe(
+    Schema.withDecodingDefault(() => ({
+      provider: "codex" as const,
+      model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex,
+    })),
+  ),
+  promptImprovementInstructions: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -349,5 +357,8 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   commitInstructions: Schema.optionalKey(Schema.String),
+  promptImprovementEnabled: Schema.optionalKey(Schema.Boolean),
+  promptImprovementModelSelection: Schema.optionalKey(ModelSelectionPatch),
+  promptImprovementInstructions: Schema.optionalKey(Schema.String),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
