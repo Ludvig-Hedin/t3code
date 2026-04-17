@@ -4,7 +4,7 @@
 
 **Goal:** Fix three UI issues: (1) single-word messages breaking mid-word, (2) user message bubbles too dark in dark mode, (3) add save/copy functionality to expanded image modal.
 
-**Progress note:** The sidebar resize rail now uses a horizontal resize cursor (`col-resize`) so the affordance matches the drag behavior.
+**Progress note:** The sidebar resize rail now uses a horizontal resize cursor (`col-resize`) so the affordance matches the drag behavior, `ChatView.tsx` no longer crashes on mount because the active-agent status helper import has been restored, and the sidebar filter popover now relies on a single scroll container instead of nested `overflow-y-auto` layers.
 
 **Architecture:**
 
@@ -155,7 +155,7 @@ Locate the `<img>` tag on line 5505 in ChatView.tsx:
 />
 ```
 
-Actually, the browser's native context menu already provides "Save image" and "Copy image" options automatically. We just need to ensure the img element is selectable, which it already is. Instead, let's add explicit action buttons for better UX.
+Actually, the browser's native context menu still provides "Save image" and "Copy image" options even though the `img` element has the `select-none` class applied (which prevents text selection, but not the context menu). While the native menu works, let's add explicit action buttons for better UX.
 
 - [ ] **Step 2: Add Copy Image handler function**
 

@@ -1079,7 +1079,7 @@ function SidebarFilterButton({
         />
         <TooltipPopup side="right">Filter &amp; organize</TooltipPopup>
       </Tooltip>
-      <PopoverPopup align="end" side="bottom" className="min-w-56 max-h-96 overflow-y-auto">
+      <PopoverPopup align="end" side="bottom" className="min-w-56 max-h-96">
         {/* Section A: Organize by */}
         <div className="px-2 pb-1 pt-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
           Organize by
