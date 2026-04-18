@@ -7,13 +7,7 @@ import {
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
 import { CodeReviewControl } from "../CodeReviewControl";
-import {
-  DiffIcon,
-  ExternalLinkIcon,
-  MonitorPlayIcon,
-  SquareIcon,
-  TerminalSquareIcon,
-} from "lucide-react";
+import { DiffIcon, ExternalLinkIcon, MonitorPlayIcon, TerminalSquareIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -46,12 +40,7 @@ interface ChatHeaderProps {
   previewAvailable: boolean;
   previewOpen: boolean;
   hasRunningPreviewApp: boolean;
-  executionStatusLabel: string | null;
-  executionStatusDetail: string | null;
-  executionStatusTone: "neutral" | "warning" | "danger";
-  canStopExecution: boolean;
   onTogglePreview: () => void;
-  onStopExecution: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
@@ -84,12 +73,7 @@ export const ChatHeader = memo(function ChatHeader({
   previewAvailable,
   previewOpen,
   hasRunningPreviewApp,
-  executionStatusLabel,
-  executionStatusDetail,
-  executionStatusTone,
-  canStopExecution,
   onTogglePreview,
-  onStopExecution,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -124,51 +108,6 @@ export const ChatHeader = memo(function ChatHeader({
       {/* gap-1 keeps buttons compact; px-2 on each toggle overrides the xs
           size's ~3px default padding so labels don't look smashed to the edges */}
       <div className="flex shrink-0 items-center justify-end gap-1">
-        {executionStatusLabel ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Badge
-                  variant="outline"
-                  className={
-                    executionStatusTone === "danger"
-                      ? "max-w-[13rem] shrink overflow-hidden border-amber-500/60 bg-amber-500/10 text-amber-700"
-                      : executionStatusTone === "warning"
-                        ? "max-w-[13rem] shrink overflow-hidden border-sky-500/60 bg-sky-500/10 text-sky-700"
-                        : "max-w-[13rem] shrink overflow-hidden"
-                  }
-                />
-              }
-            >
-              <span className="min-w-0 truncate text-[10px] font-medium">
-                {executionStatusLabel}
-              </span>
-            </TooltipTrigger>
-            {executionStatusDetail ? (
-              <TooltipPopup side="bottom">{executionStatusDetail}</TooltipPopup>
-            ) : null}
-          </Tooltip>
-        ) : null}
-        {canStopExecution ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  aria-label="Stop active turn"
-                  className="shrink-0 border-rose-500/40 px-2 text-rose-600 hover:border-rose-500 hover:bg-rose-500/10 hover:text-rose-700"
-                  onClick={onStopExecution}
-                >
-                  <SquareIcon className="size-3 fill-current" />
-                  <span className="text-[10px]">Stop</span>
-                </Button>
-              }
-            />
-            <TooltipPopup side="bottom">Interrupt the active turn</TooltipPopup>
-          </Tooltip>
-        ) : null}
         {/* Secondary controls — hidden on mobile to avoid header overflow, visible md+ */}
         <div className="hidden md:contents">
           {activeProjectScripts && (

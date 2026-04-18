@@ -40,7 +40,7 @@ import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { gitStatusQueryOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
-import { isElectron } from "../env";
+import { isElectron, isMobileWebView } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
   clampCollapsedComposerCursor,
@@ -56,8 +56,8 @@ import {
   derivePendingApprovals,
   derivePendingUserInputs,
   derivePhase,
-  deriveActiveAgentStatus,
   deriveTimelineEntries,
+  deriveActiveAgentStatus,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   findSidebarProposedPlan,
@@ -113,22 +113,31 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  CopyIcon,
+  DownloadIcon,
   FileIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  LayersIcon,
   ListChecksIcon,
   ListTodoIcon,
   MessageSquareIcon,
   PaperclipIcon,
   SearchCodeIcon,
+  SearchIcon,
+  ShieldIcon,
   SparklesIcon,
   WrenchIcon,
   XIcon,
+  ZapIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "./ui/menu";
+import { createProjectFromPath } from "../lib/createProject";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
-import { orderItemsByPreferredIds } from "./Sidebar.logic";
-import { cn, randomUUID } from "~/lib/utils";
+import { orderItemsByPreferredIds, sortProjectsForSidebar } from "./Sidebar.logic";
+import { cn, isLinuxPlatform, randomUUID } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -138,7 +147,7 @@ import {
   nextProjectScriptId,
   projectScriptIdFromCommand,
 } from "~/projectScripts";
-import { SidebarTrigger } from "./ui/sidebar";
+import { SidebarTrigger, useSidebar } from "./ui/sidebar";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import { getWsRpcClient } from "~/wsRpcClient";
@@ -148,7 +157,7 @@ import {
   getProviderModelsByProvider,
   resolveSelectableProvider,
 } from "../providerModels";
-import { useSettings } from "../hooks/useSettings";
+import { useSettings, useUpdateSettings } from "../hooks/useSettings";
 import { useMessageQueue } from "../hooks/useMessageQueue";
 import { MessageQueue } from "./chat/MessageQueue";
 import { isMacPlatform } from "../lib/utils";
@@ -742,33 +751,77 @@ function PersistentThreadTerminalDrawer({
   );
 }
 
-/** Prompt suggestion cards shown inside an empty/draft thread — same set as the index page */
-const CHAT_VIEW_PROMPT_SUGGESTIONS = [
+/** Always-visible prompt suggestion cards shown inside an empty/draft thread */
+const CHAT_VIEW_PROMPT_SUGGESTIONS_PRIMARY = [
   {
     title: "Code review",
-    description: "Review recent changes for issues",
+    description: "Audit recent changes by severity",
     icon: SearchCodeIcon,
     prompt:
-      "Review the recent changes in this project for bugs, security issues, and code quality improvements.",
+      "Act as a senior engineer reviewing a pull request. Examine the recent changes in this codebase. For each issue: (1) cite the file and line, (2) classify it — bug / security / performance / style, (3) explain the impact, and (4) show a corrected snippet. Order findings by severity, most critical first.",
   },
   {
     title: "New feature",
-    description: "Plan and build something new",
+    description: "Plan first, then build",
     icon: SparklesIcon,
-    prompt: "Help me plan and implement a new feature. I want to add ",
+    // Intentionally left open — user fills in the feature description
+    prompt:
+      "I want to build [describe the feature]. Before writing any code:\n1. Confirm your understanding of the requirement\n2. List every file to create or modify\n3. Flag risks, edge cases, and new dependencies\n4. Present a numbered implementation plan\n\nWait for my approval before writing any code.",
   },
   {
     title: "Fix a bug",
-    description: "Debug and resolve an issue",
+    description: "Root-cause first, then fix",
     icon: BugIcon,
-    prompt: "Help me debug and fix an issue I'm experiencing. ",
+    // Intentionally left open — user fills in the error/steps to reproduce
+    prompt:
+      "I'm hitting a bug: [paste the error message and/or describe the unexpected behavior + steps to reproduce].\n\nDiagnose step-by-step: identify the root cause, pinpoint the exact location in the code, and explain why it occurs. Then provide a targeted fix. If you need more context before diagnosing, ask.",
   },
   {
     title: "Refactor",
-    description: "Improve code quality",
+    description: "Prioritize by impact vs effort",
     icon: WrenchIcon,
     prompt:
-      "Analyze this codebase and suggest refactoring improvements for better maintainability, performance, and code organization.",
+      "Audit this codebase for refactoring opportunities. For each one, rate it by impact (high/med/low) and effort (high/med/low). Focus on: duplicated logic, bloated files or functions, unclear naming, and missing abstractions. Present findings as a prioritized table, then start with the highest-impact, lowest-effort item.",
+  },
+] as const;
+
+/** Secondary prompt suggestion cards revealed by the "Show more" toggle */
+const CHAT_VIEW_PROMPT_SUGGESTIONS_SECONDARY = [
+  {
+    title: "Write tests",
+    description: "Cover the untested paths",
+    icon: ListChecksIcon,
+    prompt:
+      "Identify the untested or undertested areas in this codebase and write comprehensive tests for them. Cover: happy paths, edge cases, and failure conditions. Match the existing test framework and patterns. For each test file you create, briefly explain what it covers and why those cases matter.",
+  },
+  {
+    title: "Explain code",
+    description: "Understand what's happening",
+    icon: MessageSquareIcon,
+    // Intentionally left open — user pastes or describes the code to explain
+    prompt:
+      "Explain [paste code or describe the file / function]. Walk through: what it does, how it works step by step, any non-obvious design decisions, and potential gotchas. Assume I'm unfamiliar with this part of the codebase.",
+  },
+  {
+    title: "Performance audit",
+    description: "Find and fix bottlenecks",
+    icon: ZapIcon,
+    prompt:
+      "Audit this codebase for performance bottlenecks. Look for: N+1 queries, unnecessary re-renders, missing memoization, expensive operations in hot paths, and large bundle contributions. For each issue, estimate the user-visible impact and provide a concrete fix.",
+  },
+  {
+    title: "Security audit",
+    description: "Find vulnerabilities",
+    icon: ShieldIcon,
+    prompt:
+      "Perform a security audit of this codebase. Check for: injection vulnerabilities, broken authentication or authorization, exposed secrets, CSRF/XSS risks, and insecure dependencies. Rate each finding (critical / high / medium / low) and provide specific remediation steps.",
+  },
+  {
+    title: "Architecture review",
+    description: "Evaluate the big picture",
+    icon: LayersIcon,
+    prompt:
+      "Review the overall architecture of this codebase. Identify structural weaknesses: tight coupling, unclear module boundaries, missing abstractions, and scalability risks. For each weakness, explain the impact and suggest a targeted improvement — prioritizing changes that would most reduce future friction.",
   },
 ] as const;
 
@@ -780,6 +833,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     (store) => store.threadLastVisitedAtById[threadId],
   );
   const settings = useSettings();
+  const { updateSettings } = useUpdateSettings();
   const messageQueue = useMessageQueue(threadId);
   const isMac = useMemo(() => isMacPlatform(navigator.platform), []);
   const sendNowShortcutLabel = isMac ? "⌘⇧↵" : "Ctrl+Shift+Enter";
@@ -788,6 +842,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const timestampFormat = settings.timestampFormat;
   const enterKeyBehavior = settings.enterKeyBehavior;
+  const handleToggleToolCallDisplayStyle = useCallback(() => {
+    updateSettings({
+      toolCallDisplayStyle: settings.toolCallDisplayStyle === "verbose" ? "clean" : "verbose",
+    });
+  }, [settings.toolCallDisplayStyle, updateSettings]);
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
@@ -880,6 +939,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     useState<Record<string, number>>({});
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
+  // Controls the "Show more" expansion on the empty-thread prompt suggestion cards
+  const [showMoreSuggestions, setShowMoreSuggestions] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
@@ -1118,17 +1179,95 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   // For the empty-thread prompt card UI — project list and switcher
   const allProjects = useStore((store) => store.projects);
+  // Mirror the sidebar: exclude soft-deleted projects
+  const nonDeletedProjects = useMemo(
+    () => allProjects.filter((p) => p.deletedAt === null),
+    [allProjects],
+  );
   const projectOrder = useUiStateStore((store) => store.projectOrder);
+  // Threads used for activity-based project sort (same source as the sidebar)
+  const sidebarThreadsById = useStore((store) => store.sidebarThreadsById);
+  const sidebarThreads = useMemo(() => Object.values(sidebarThreadsById), [sidebarThreadsById]);
+  // Stage 1: apply the user's manual project order (drag-to-reorder in sidebar)
+  // Stage 2: apply the activity-based sort, identical to what the sidebar does
   const orderedProjects = useMemo(
     () =>
-      orderItemsByPreferredIds({
-        items: allProjects,
-        preferredIds: projectOrder,
-        getId: (p) => p.id,
-      }),
-    [allProjects, projectOrder],
+      sortProjectsForSidebar(
+        orderItemsByPreferredIds({
+          items: nonDeletedProjects,
+          preferredIds: projectOrder,
+          getId: (p) => p.id,
+        }),
+        sidebarThreads,
+        settings.sidebarProjectSortOrder,
+      ),
+    [nonDeletedProjects, projectOrder, sidebarThreads, settings.sidebarProjectSortOrder],
   );
   const { handleNewThread } = useHandleNewThread();
+
+  // Search filter state for the project-switcher dropdown on the empty-thread screen
+  const [projectSearch, setProjectSearch] = useState("");
+
+  // Projects filtered by the current search query (empty query = all projects)
+  const filteredProjects = useMemo(
+    () =>
+      projectSearch.trim()
+        ? orderedProjects.filter((p) => p.name.toLowerCase().includes(projectSearch.toLowerCase()))
+        : orderedProjects,
+    [orderedProjects, projectSearch],
+  );
+
+  // Sidebar open/close handle — used by "Add new project" fallback on web/Linux
+  const { setOpen: setSidebarOpen } = useSidebar();
+
+  // "Add new project" button handler in the project-switcher dropdown.
+  // On Electron (macOS/Windows): opens the native folder picker and creates the project.
+  // On web / Linux Electron: opens the sidebar so the user can add a project there.
+  const handleAddNewProject = useCallback(async () => {
+    const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform);
+    const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop && !isMobileWebView;
+
+    if (shouldBrowseForProjectImmediately) {
+      const api = readNativeApi();
+      if (!api) return;
+      let pickedPath: string | null | undefined;
+      try {
+        pickedPath = await api.dialogs.pickFolder();
+      } catch {
+        return;
+      }
+      if (!pickedPath) return;
+      try {
+        await createProjectFromPath({
+          cwd: pickedPath,
+          projects: allProjects,
+          defaultThreadEnvMode: settings.defaultThreadEnvMode,
+          handleNewThread: async (projectId, options) => {
+            await handleNewThread(projectId, options).catch(() => undefined);
+          },
+          dispatchProjectCreate: async (input) => {
+            const rpcApi = readNativeApi();
+            if (!rpcApi) return;
+            await rpcApi.orchestration.dispatchCommand({
+              type: "project.create",
+              commandId: newCommandId(),
+              ...input,
+            });
+          },
+        });
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "Failed to add project",
+          description:
+            error instanceof Error ? error.message : "An error occurred while adding the project.",
+        });
+      }
+    } else {
+      // For web / Linux Electron, open the sidebar where the user can add a project
+      setSidebarOpen(true);
+    }
+  }, [allProjects, handleNewThread, settings, setSidebarOpen]);
 
   const previewOpen = useUiStateStore((store) => store.previewOpen);
   const setPreviewOpen = useUiStateStore((store) => store.setPreviewOpen);
@@ -1290,7 +1429,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [selectedModel, selectedModelOptionsForDispatch, selectedProvider],
   );
   const selectedModelForPicker = selectedModel;
-  const phase = derivePhase(activeThread?.session ?? null);
+  const phase = derivePhase(activeThread?.session ?? null, activeThread?.latestTurn ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   const activeRuntimeModel = useMemo(
     () => deriveLatestTurnStartedModel(threadActivities),
@@ -3720,15 +3859,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onInterrupt = async () => {
     const api = readNativeApi();
     if (!api || !activeThread) return;
+    const runningLatestTurnId =
+      activeThread.latestTurn?.state === "running" ? activeThread.latestTurn.turnId : undefined;
+    const interruptTurnId =
+      runningLatestTurnId ?? activeThread.session?.activeTurnId ?? activeThread.latestTurn?.turnId;
     await api.orchestration.dispatchCommand({
       type: "thread.turn.interrupt",
       commandId: newCommandId(),
       threadId: activeThread.id,
-      ...(activeThread.session?.activeTurnId !== undefined
-        ? { turnId: activeThread.session.activeTurnId }
-        : activeThread.latestTurn?.turnId !== undefined
-          ? { turnId: activeThread.latestTurn.turnId }
-          : {}),
+      ...(interruptTurnId !== undefined ? { turnId: interruptTurnId } : {}),
       createdAt: new Date().toISOString(),
     });
   };
@@ -4566,6 +4705,152 @@ export default function ChatView({ threadId }: ChatViewProps) {
     setExpandedImage(preview);
   }, []);
   const expandedImageItem = expandedImage ? expandedImage.images[expandedImage.index] : null;
+
+  // Save the expanded image: same-origin uses a direct download link; cross-origin uses fetch + blob URL.
+  const handleSaveExpandedImage = useCallback(async () => {
+    if (!expandedImageItem) return;
+    let parsed: URL;
+    try {
+      parsed = new URL(expandedImageItem.src, window.location.href);
+    } catch {
+      toastManager.add({
+        type: "error",
+        title: "Could not save image",
+        description: "The image address is not valid.",
+      });
+      return;
+    }
+
+    const downloadName = expandedImageItem.name || "image";
+    const sameOrigin = parsed.origin === window.location.origin;
+
+    if (sameOrigin) {
+      try {
+        const a = document.createElement("a");
+        a.href = expandedImageItem.src;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } catch {
+        toastManager.add({
+          type: "error",
+          title: "Could not save image",
+          description: "Try opening the image in a new tab and saving from there.",
+        });
+      }
+      return;
+    }
+
+    let objectUrl: string | undefined;
+    try {
+      const response = await fetch(expandedImageItem.src);
+      if (!response.ok) {
+        throw new Error("fetch failed");
+      }
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      toastManager.add({
+        type: "error",
+        title: "Could not save image",
+        description:
+          "Your browser may block this download (cross-origin). Opening the image in a new tab.",
+      });
+      window.open(expandedImageItem.src, "_blank", "noopener");
+    } finally {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+  }, [expandedImageItem]);
+
+  // Copy image to clipboard when possible; on CORS/opaque responses or errors, copy the image URL.
+  const handleCopyExpandedImage = useCallback(async () => {
+    if (!expandedImageItem) return;
+
+    if (!window.isSecureContext || typeof navigator.clipboard?.writeText !== "function") {
+      toastManager.add({
+        type: "error",
+        title: "Clipboard not available",
+        description: "Copy needs a secure page and clipboard permission.",
+      });
+      return;
+    }
+
+    const copyUrlWithFeedback = async (description: string) => {
+      try {
+        await navigator.clipboard.writeText(expandedImageItem.src);
+        toastManager.add({
+          type: "info",
+          title: "Image link copied",
+          description,
+        });
+      } catch {
+        toastManager.add({
+          type: "error",
+          title: "Could not copy",
+          description: "Clipboard permission was denied.",
+        });
+      }
+    };
+
+    try {
+      const response = await fetch(expandedImageItem.src);
+      if (response.type === "opaque" || !response.ok) {
+        await copyUrlWithFeedback(
+          "Could not read the image bytes (cross-origin or network). Copied the image URL instead.",
+        );
+        return;
+      }
+
+      const blob = await response.blob();
+      try {
+        if (typeof navigator.clipboard?.write !== "function") {
+          await copyUrlWithFeedback(
+            "Image clipboard API is not available. Copied the image URL instead.",
+          );
+          return;
+        }
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+        toastManager.add({ type: "success", title: "Image copied to clipboard" });
+      } catch {
+        await copyUrlWithFeedback(
+          "Could not copy image data to the clipboard. Copied the image URL instead.",
+        );
+      }
+    } catch {
+      await copyUrlWithFeedback("Could not load the image. Copied the image URL instead.");
+    }
+  }, [expandedImageItem]);
+
+  // Right-click handler on the expanded image — shows a native context menu with
+  // save and copy actions so the user can interact without reaching for the buttons.
+  const handleExpandedImageContextMenu = useCallback(
+    async (event: React.MouseEvent) => {
+      event.preventDefault();
+      if (!expandedImageItem) return;
+      const api = readNativeApi();
+      if (!api) return;
+      const clicked = await api.contextMenu.show(
+        [
+          { id: "save" as const, label: "Save Image" },
+          { id: "copy" as const, label: "Copy Image" },
+        ],
+        { x: event.clientX, y: event.clientY },
+      );
+      if (clicked === "save") void handleSaveExpandedImage();
+      if (clicked === "copy") void handleCopyExpandedImage();
+    },
+    [expandedImageItem, handleSaveExpandedImage, handleCopyExpandedImage],
+  );
+
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       void navigate({
@@ -4685,15 +4970,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
             previewAvailable={previewAvailable}
             previewOpen={previewOpen}
             hasRunningPreviewApp={hasRunningPreviewApp}
-            executionStatusLabel={phase === "running" ? activeAgentStatus.label : null}
-            executionStatusDetail={phase === "running" ? activeAgentStatus.detail : null}
-            executionStatusTone={
-              activeAgentStatus.state === "stalled"
-                ? "danger"
-                : activeAgentStatus.state === "quiet" || activeAgentStatus.state === "waiting"
-                  ? "warning"
-                  : "neutral"
-            }
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -4704,6 +4980,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
             onToggleDiff={onToggleDiff}
             onTogglePreview={onTogglePreview}
             onClose={() => window.close()}
+            turnRunning={phase === "running"}
+            onInterruptTurn={() => void onInterrupt()}
           />
         </header>
       ) : (
@@ -4739,15 +5017,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
             previewAvailable={previewAvailable}
             previewOpen={previewOpen}
             hasRunningPreviewApp={hasRunningPreviewApp}
-            executionStatusLabel={phase === "running" ? activeAgentStatus.label : null}
-            executionStatusDetail={phase === "running" ? activeAgentStatus.detail : null}
-            executionStatusTone={
-              activeAgentStatus.state === "stalled"
-                ? "danger"
-                : activeAgentStatus.state === "quiet" || activeAgentStatus.state === "waiting"
-                  ? "warning"
-                  : "neutral"
-            }
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -4796,7 +5065,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   {/* "New thread in [Project]" heading with project switcher */}
                   <div className="flex flex-col items-center gap-1 text-center">
                     <h1 className="text-3xl font-semibold text-foreground">New thread in</h1>
-                    <Menu>
+                    {/* onOpenChange resets search when the dropdown closes */}
+                    <Menu
+                      onOpenChange={(open) => {
+                        if (!open) setProjectSearch("");
+                      }}
+                    >
                       <MenuTrigger
                         render={
                           <button
@@ -4808,43 +5082,124 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           </button>
                         }
                       />
-                      <MenuPopup align="start" side="bottom" sideOffset={6}>
-                        {orderedProjects.map((project) => (
-                          <MenuItem
-                            key={project.id}
-                            onClick={() => void handleNewThread(project.id)}
-                          >
-                            {project.name}
+                      {/*
+                        contentClassName overrides the inner wrapper so we can split it into
+                        three non-homogeneous zones:
+                          1. Search input  (not scrollable)
+                          2. Project list  (scrollable, max-height)
+                          3. Add-project   (not scrollable, separated by a border)
+                      */}
+                      <MenuPopup
+                        align="start"
+                        side="bottom"
+                        sideOffset={6}
+                        contentClassName="overflow-hidden flex flex-col p-0"
+                      >
+                        {/* ── Search input ── */}
+                        <div className="flex items-center gap-2 px-2 py-1.5">
+                          <SearchIcon className="size-4 shrink-0 text-muted-foreground opacity-70" />
+                          <input
+                            className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+                            placeholder="Search projects"
+                            value={projectSearch}
+                            onChange={(e) => setProjectSearch(e.target.value)}
+                            // Prevent the menu's keyboard navigation from swallowing typed characters
+                            onKeyDown={(e) => {
+                              if (e.key !== "Escape") e.stopPropagation();
+                            }}
+                          />
+                        </div>
+
+                        {/* ── Project list (scrollable) ── */}
+                        <div className="max-h-52 overflow-y-auto p-1 pt-0">
+                          {filteredProjects.map((project) => (
+                            <MenuItem
+                              key={project.id}
+                              onClick={() => void handleNewThread(project.id)}
+                            >
+                              <FolderIcon />
+                              {project.name}
+                            </MenuItem>
+                          ))}
+                        </div>
+
+                        {/* ── Add new project ── */}
+                        <div className="border-t border-border p-1">
+                          <MenuItem onClick={() => void handleAddNewProject()}>
+                            <FolderPlusIcon />
+                            Add new project
                           </MenuItem>
-                        ))}
+                        </div>
                       </MenuPopup>
                     </Menu>
                   </div>
 
                   {/* Prompt suggestion cards — clicking pre-fills the real composer below */}
-                  <div className="grid w-full max-w-lg grid-cols-2 gap-3">
-                    {CHAT_VIEW_PROMPT_SUGGESTIONS.map((suggestion) => (
-                      <button
-                        key={suggestion.title}
-                        type="button"
-                        className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-border bg-card p-4 text-left shadow-xs/5 transition-colors hover:bg-accent"
-                        onClick={() => {
-                          // Pre-fill the real composer with the suggestion text and focus it
-                          setPrompt(suggestion.prompt);
-                          scheduleComposerFocus();
-                        }}
-                      >
-                        <suggestion.icon className="size-5 text-muted-foreground" />
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium text-foreground">
-                            {suggestion.title}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {suggestion.description}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+                  <div className="flex w-full max-w-lg flex-col gap-3">
+                    {/* Primary suggestions — always visible */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {CHAT_VIEW_PROMPT_SUGGESTIONS_PRIMARY.map((suggestion) => (
+                        <button
+                          key={suggestion.title}
+                          type="button"
+                          className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-border bg-card p-4 text-left shadow-xs/5 transition-colors hover:bg-accent"
+                          onClick={() => {
+                            // Pre-fill the real composer with the suggestion text and focus it
+                            setPrompt(suggestion.prompt);
+                            scheduleComposerFocus();
+                          }}
+                        >
+                          <suggestion.icon className="size-5 text-muted-foreground" />
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium text-foreground">
+                              {suggestion.title}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {suggestion.description}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Secondary suggestions — revealed by the "Show more" toggle */}
+                    {showMoreSuggestions && (
+                      <div className="grid grid-cols-2 gap-3">
+                        {CHAT_VIEW_PROMPT_SUGGESTIONS_SECONDARY.map((suggestion) => (
+                          <button
+                            key={suggestion.title}
+                            type="button"
+                            className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-border bg-card p-4 text-left shadow-xs/5 transition-colors hover:bg-accent"
+                            onClick={() => {
+                              setPrompt(suggestion.prompt);
+                              scheduleComposerFocus();
+                            }}
+                          >
+                            <suggestion.icon className="size-5 text-muted-foreground" />
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-sm font-medium text-foreground">
+                                {suggestion.title}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {suggestion.description}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Show more / Show less toggle */}
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 self-center text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={() => setShowMoreSuggestions((prev) => !prev)}
+                    >
+                      <ChevronDownIcon
+                        className={`size-3.5 transition-transform duration-200 ${showMoreSuggestions ? "rotate-180" : ""}`}
+                      />
+                      {showMoreSuggestions ? "Show less" : "Show more"}
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -4877,6 +5232,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   resolvedTheme={resolvedTheme}
                   timestampFormat={timestampFormat}
                   workspaceRoot={activeProject?.cwd ?? undefined}
+                  toolCallDisplayStyle={settings.toolCallDisplayStyle}
+                  onToggleToolCallDisplayStyle={handleToggleToolCallDisplayStyle}
                   onRunInTerminal={handleRunInTerminal}
                 />
               )}
@@ -5274,8 +5631,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               onClick={toggleInteractionMode}
                               title={
                                 interactionMode === "plan"
-                                  ? "Plan mode — agent proposes a plan before making changes. Click to return to Chat mode."
-                                  : "Chat mode — agent acts on each message directly. Click to switch to Plan mode."
+                                  ? "Plan mode — agent proposes a plan before making changes. Click to return to Build mode."
+                                  : "Build mode — agent acts on each message directly. Click to switch to Plan mode."
                               }
                             >
                               {interactionMode === "plan" ? (
@@ -5284,7 +5641,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                 <MessageSquareIcon />
                               )}
                               <span className="sr-only sm:not-sr-only">
-                                {interactionMode === "plan" ? "Plan" : "Chat"}
+                                {interactionMode === "plan" ? "Plan" : "Build"}
                               </span>
                             </Button>
 
@@ -5510,21 +5867,47 @@ export default function ChatView({ threadId }: ChatViewProps) {
             </Button>
           )}
           <div className="relative isolate z-10 max-h-[92vh] max-w-[92vw]">
-            <Button
-              type="button"
-              size="icon-xs"
-              variant="ghost"
-              className="absolute right-2 top-2"
-              onClick={closeExpandedImage}
-              aria-label="Close image preview"
-            >
-              <XIcon />
-            </Button>
+            {/* Action buttons — copy, save, close — grouped top-right of the image */}
+            <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                className="bg-black/30 text-white/80 hover:bg-black/50 hover:text-white"
+                onClick={() => void handleCopyExpandedImage()}
+                aria-label="Copy image"
+                title="Copy image"
+              >
+                <CopyIcon className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                className="bg-black/30 text-white/80 hover:bg-black/50 hover:text-white"
+                onClick={() => void handleSaveExpandedImage()}
+                aria-label="Save image"
+                title="Save image"
+              >
+                <DownloadIcon className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                className="bg-black/30 text-white/80 hover:bg-black/50 hover:text-white"
+                onClick={closeExpandedImage}
+                aria-label="Close image preview"
+              >
+                <XIcon className="size-3.5" />
+              </Button>
+            </div>
             <img
               src={expandedImageItem.src}
               alt={expandedImageItem.name}
-              className="max-h-[86vh] max-w-[92vw] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
+              className="max-h-[86vh] max-w-[92vw] shrink-0 select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
               draggable={false}
+              onContextMenu={(e) => void handleExpandedImageContextMenu(e)}
             />
             <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-muted-foreground/80">
               {expandedImageItem.name}
