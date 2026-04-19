@@ -380,6 +380,23 @@ export class TunnelManager extends EventEmitter {
 
     const onData = (chunk: Buffer) => {
       const text = chunk.toString();
+
+      // cloudflared reports errors before exiting (DNS, API connection failures, etc.)
+      // Detect common error patterns and fail fast instead of waiting for timeout.
+      if (!ready && /error|failed|refused|no such host|dial tcp|connection refused|permission denied/i.test(text)) {
+        ready = true;
+        clearTimeout(startupTimer);
+        proc.stdout?.removeListener("data", onData);
+        proc.stderr?.removeListener("data", onData);
+        const errorMessage = text.slice(0, 200).trim();
+        this.setStatus({
+          status: "error",
+          message: `Tunnel initialization failed: ${errorMessage}`,
+        });
+        proc.kill("SIGTERM");
+        return;
+      }
+
       // cloudflared emits this line when the tunnel is established.
       if (!ready && /registered tunnel connection|ready to proxy/i.test(text)) {
         ready = true;
