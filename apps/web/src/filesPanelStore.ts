@@ -34,6 +34,17 @@ interface PersistedFilesPanelState {
   activeRelativePath?: string | null;
 }
 
+/**
+ * Position inside a file that the editor should scroll to and highlight once
+ * it finishes loading. Currently only produced by content-search hits in the
+ * Files panel, but kept generic so future features (e.g. "go to error") can
+ * reuse the same channel.
+ */
+export interface FilesPanelEditorSelection {
+  line: number;
+  column: number;
+}
+
 export interface FilesPanelState {
   open: boolean;
   activeRelativePath: string | null;
@@ -42,16 +53,20 @@ export interface FilesPanelState {
   searchQuery: string;
   searchScope: FilesPanelSearchScope;
   filters: FilesPanelFilters;
+  /** Consumed (and cleared) by `FileEditorPane` once it positions the cursor. */
+  pendingSelection: FilesPanelEditorSelection | null;
 
   setOpen: (open: boolean) => void;
   toggle: () => void;
   setActivePath: (path: string | null) => void;
+  openFileAt: (path: string, selection?: FilesPanelEditorSelection | null) => void;
   setExpanded: (path: string, expanded: boolean) => void;
   setDirty: (path: string, contents: string) => void;
   clearDirty: (path: string) => void;
   setSearchQuery: (query: string) => void;
   setSearchScope: (scope: FilesPanelSearchScope) => void;
   setFilters: (patch: Partial<FilesPanelFilters>) => void;
+  consumePendingSelection: () => FilesPanelEditorSelection | null;
 }
 
 const PERSISTED_STATE_KEY = "t3code:files-panel:v1";
@@ -103,6 +118,7 @@ const initialState: Pick<
   | "searchQuery"
   | "searchScope"
   | "filters"
+  | "pendingSelection"
 > = {
   open: false,
   activeRelativePath: persisted.activeRelativePath ?? null,
@@ -111,6 +127,7 @@ const initialState: Pick<
   searchQuery: "",
   searchScope: persisted.searchScope ?? "names",
   filters: { ...DEFAULT_FILTERS, ...(persisted.filters ?? {}) },
+  pendingSelection: null,
 };
 
 export const useFilesPanelStore = create<FilesPanelState>((set, get) => ({
@@ -123,7 +140,14 @@ export const useFilesPanelStore = create<FilesPanelState>((set, get) => ({
     set({ open: !get().open });
   },
   setActivePath: (path) => {
-    set({ activeRelativePath: path });
+    set({ activeRelativePath: path, pendingSelection: null });
+    debouncedPersist.maybeExecute(get());
+  },
+  openFileAt: (path, selection) => {
+    // A search hit wants the editor to open a file *and* jump to a specific
+    // line/column. Set both in one update so the editor's mount effect always
+    // sees the selection together with the new active path.
+    set({ activeRelativePath: path, pendingSelection: selection ?? null });
     debouncedPersist.maybeExecute(get());
   },
   setExpanded: (path, expanded) => {
@@ -152,6 +176,12 @@ export const useFilesPanelStore = create<FilesPanelState>((set, get) => ({
   setFilters: (patch) => {
     set({ filters: { ...get().filters, ...patch } });
     debouncedPersist.maybeExecute(get());
+  },
+  consumePendingSelection: () => {
+    const current = get().pendingSelection;
+    if (!current) return null;
+    set({ pendingSelection: null });
+    return current;
   },
 }));
 

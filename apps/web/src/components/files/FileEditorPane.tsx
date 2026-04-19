@@ -231,6 +231,15 @@ export function FileEditorPane({ cwd, relativePath }: FileEditorPaneProps) {
         currentContents={dirtyContents ?? loaded.savedContents}
         filePath={relativePath}
         theme={resolvedTheme}
+        // Selection is stashed in the store by content-search hits; consume
+        // it on mount so opening a hit jumps the cursor + scrolls it into
+        // view. Safe to call during render since the store setter only fires
+        // when a selection is pending.
+        onReady={(view) => {
+          const selection = useFilesPanelStore.getState().consumePendingSelection();
+          if (!selection) return;
+          applyEditorSelection(view, selection);
+        }}
         onChange={(value) => {
           if (value === loaded.savedContents) {
             clearDirty(relativePath);
@@ -278,6 +287,8 @@ interface CodeMirrorEditorProps {
   theme: "light" | "dark";
   onChange: (value: string) => void;
   onSave: () => void;
+  /** Fires once the view is mounted, before the language extension loads. */
+  onReady?: (view: EditorView) => void;
 }
 
 function CodeMirrorEditor({
@@ -287,6 +298,7 @@ function CodeMirrorEditor({
   theme,
   onChange,
   onSave,
+  onReady,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -296,12 +308,16 @@ function CodeMirrorEditor({
   // Remember the latest callbacks without forcing the view to re-mount.
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
+  const onReadyRef = useRef(onReady);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   // Initial mount — create the EditorView once per (cwd,path) keyed remount.
   useEffect(() => {
@@ -331,6 +347,10 @@ function CodeMirrorEditor({
     });
     const view = new EditorView({ state, parent: containerRef.current });
     viewRef.current = view;
+
+    // Let the caller seed cursor / selection before the language extension
+    // kicks in so content-search hits jump to the right line immediately.
+    onReadyRef.current?.(view);
 
     // Load the language extension asynchronously so the initial paint isn't
     // blocked by tokenizer lookup.
@@ -370,6 +390,30 @@ function CodeMirrorEditor({
   }, [currentContents]);
 
   return <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" />;
+}
+
+// Move the cursor to a 1-based (line, column) pair and scroll the target
+// into the middle of the viewport. Used by content-search hits; tolerant of
+// out-of-range line/column values so a stale hit never throws.
+function applyEditorSelection(
+  view: EditorView,
+  selection: { line: number; column: number },
+) {
+  const doc = view.state.doc;
+  const safeLine = Math.max(1, Math.min(selection.line, doc.lines));
+  const lineInfo = doc.line(safeLine);
+  const column = Math.max(1, selection.column);
+  // Column is 1-based; clamp to the line length so we don't step past the
+  // newline character.
+  const pos = Math.min(lineInfo.from + (column - 1), lineInfo.to);
+  view.dispatch({
+    selection: { anchor: pos, head: pos },
+    scrollIntoView: true,
+  });
+  // Let the browser settle the scroll before focusing to avoid a jump flash.
+  requestAnimationFrame(() => {
+    view.focus();
+  });
 }
 
 // Pick a CodeMirror language extension based on the file extension. Uses the
