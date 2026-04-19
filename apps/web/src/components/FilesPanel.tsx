@@ -17,6 +17,8 @@ import { ThreadId } from "@t3tools/contracts";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useFilesPanelStore } from "~/filesPanelStore";
 import { useTheme } from "~/hooks/useTheme";
+import { showFileContextMenu } from "~/lib/fileContextMenu";
+import { useServerAvailableEditors } from "~/rpc/serverState";
 import { useStore } from "~/store";
 
 import { Checkbox } from "./ui/checkbox";
@@ -80,6 +82,7 @@ export default function FilesPanel({ mode }: FilesPanelProps) {
   const activeCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
 
   const { resolvedTheme } = useTheme();
+  const availableEditors = useServerAvailableEditors();
 
   const handleOpenFile = useCallback(
     (
@@ -89,6 +92,20 @@ export default function FilesPanel({ mode }: FilesPanelProps) {
       openFileAt(relativePath, selection ?? null);
     },
     [openFileAt],
+  );
+
+  const handleContextMenuFile = useCallback(
+    (relativePath: string, position: { x: number; y: number }) => {
+      if (!activeCwd) return;
+      void showFileContextMenu({
+        cwd: activeCwd,
+        relativePath,
+        availableEditors,
+        position,
+        onOpen: () => openFileAt(relativePath, null),
+      });
+    },
+    [activeCwd, availableEditors, openFileAt],
   );
 
   const trimmedQuery = draftQuery.trim();
@@ -220,6 +237,7 @@ export default function FilesPanel({ mode }: FilesPanelProps) {
                 resolvedTheme={resolvedTheme}
                 activeRelativePath={activeRelativePath}
                 onOpenFile={handleOpenFile}
+                onContextMenuFile={handleContextMenuFile}
               />
             ) : (
               <FilesPanelTree
@@ -227,6 +245,7 @@ export default function FilesPanel({ mode }: FilesPanelProps) {
                 activeRelativePath={activeRelativePath}
                 resolvedTheme={resolvedTheme}
                 onOpenFile={(path) => handleOpenFile(path)}
+                onContextMenuFile={handleContextMenuFile}
               />
             )}
           </div>

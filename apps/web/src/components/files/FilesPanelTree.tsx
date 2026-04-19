@@ -29,6 +29,15 @@ export interface FilesPanelTreeProps {
   activeRelativePath: string | null;
   resolvedTheme: "light" | "dark";
   onOpenFile: (relativePath: string) => void;
+  /**
+   * Right-click hook — fired with the file path and click position so the
+   * Files panel can open its context menu. Directories do not open a context
+   * menu in this first iteration (keeps scope tight; rename/delete are
+   * follow-ups).
+   */
+  onContextMenuFile?:
+    | ((relativePath: string, position: { x: number; y: number }) => void)
+    | undefined;
 }
 
 export const FilesPanelTree = memo(function FilesPanelTree({
@@ -36,6 +45,7 @@ export const FilesPanelTree = memo(function FilesPanelTree({
   activeRelativePath,
   resolvedTheme,
   onOpenFile,
+  onContextMenuFile,
 }: FilesPanelTreeProps) {
   // Root folder ("") always rendered — the user does not need to click to open
   // the repository root, it is the starting surface.
@@ -48,6 +58,7 @@ export const FilesPanelTree = memo(function FilesPanelTree({
         activeRelativePath={activeRelativePath}
         resolvedTheme={resolvedTheme}
         onOpenFile={onOpenFile}
+        onContextMenuFile={onContextMenuFile}
       />
     </div>
   );
@@ -60,6 +71,9 @@ interface DirectoryChildrenProps {
   activeRelativePath: string | null;
   resolvedTheme: "light" | "dark";
   onOpenFile: (relativePath: string) => void;
+  onContextMenuFile?:
+    | ((relativePath: string, position: { x: number; y: number }) => void)
+    | undefined;
 }
 
 function DirectoryChildren({
@@ -69,6 +83,7 @@ function DirectoryChildren({
   activeRelativePath,
   resolvedTheme,
   onOpenFile,
+  onContextMenuFile,
 }: DirectoryChildrenProps) {
   const query = useQuery(
     projectListDirectoryQueryOptions({
@@ -108,6 +123,7 @@ function DirectoryChildren({
             activeRelativePath={activeRelativePath}
             resolvedTheme={resolvedTheme}
             onOpenFile={onOpenFile}
+            onContextMenuFile={onContextMenuFile}
           />
         ) : (
           <FileNode
@@ -117,6 +133,7 @@ function DirectoryChildren({
             isActive={entry.path === activeRelativePath}
             resolvedTheme={resolvedTheme}
             onOpenFile={onOpenFile}
+            onContextMenuFile={onContextMenuFile}
           />
         ),
       )}
@@ -138,6 +155,9 @@ interface DirectoryNodeProps {
   activeRelativePath: string | null;
   resolvedTheme: "light" | "dark";
   onOpenFile: (relativePath: string) => void;
+  onContextMenuFile?:
+    | ((relativePath: string, position: { x: number; y: number }) => void)
+    | undefined;
 }
 
 function DirectoryNode({
@@ -147,6 +167,7 @@ function DirectoryNode({
   activeRelativePath,
   resolvedTheme,
   onOpenFile,
+  onContextMenuFile,
 }: DirectoryNodeProps) {
   const isExpanded = useFilesPanelStore((s) => Boolean(s.expandedDirs[entry.path]));
   const setExpanded = useFilesPanelStore((s) => s.setExpanded);
@@ -187,6 +208,7 @@ function DirectoryNode({
             activeRelativePath={activeRelativePath}
             resolvedTheme={resolvedTheme}
             onOpenFile={onOpenFile}
+            onContextMenuFile={onContextMenuFile}
           />
         </div>
       ) : null}
@@ -200,9 +222,19 @@ interface FileNodeProps {
   isActive: boolean;
   resolvedTheme: "light" | "dark";
   onOpenFile: (relativePath: string) => void;
+  onContextMenuFile?:
+    | ((relativePath: string, position: { x: number; y: number }) => void)
+    | undefined;
 }
 
-function FileNode({ entry, depth, isActive, resolvedTheme, onOpenFile }: FileNodeProps) {
+function FileNode({
+  entry,
+  depth,
+  isActive,
+  resolvedTheme,
+  onOpenFile,
+  onContextMenuFile,
+}: FileNodeProps) {
   const name = useMemo(() => leafName(entry.path), [entry.path]);
   // Align the file-icon column with the folder-icon column by reserving the
   // chevron slot (3.5 + gap-1.5 ≈ 20 px) in the leading padding.
@@ -220,6 +252,11 @@ function FileNode({ entry, depth, isActive, resolvedTheme, onOpenFile }: FileNod
       )}
       style={{ paddingLeft: `${leftPadding}px` }}
       onClick={() => onOpenFile(entry.path)}
+      onContextMenu={(event) => {
+        if (!onContextMenuFile) return;
+        event.preventDefault();
+        onContextMenuFile(entry.path, { x: event.clientX, y: event.clientY });
+      }}
     >
       <span aria-hidden="true" className="size-3.5 shrink-0" />
       <VscodeEntryIcon

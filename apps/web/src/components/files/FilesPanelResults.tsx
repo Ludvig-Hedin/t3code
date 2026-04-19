@@ -40,6 +40,9 @@ export interface FilesPanelResultsProps {
     relativePath: string,
     selection?: { line: number; column: number } | null,
   ) => void;
+  onContextMenuFile?:
+    | ((relativePath: string, position: { x: number; y: number }) => void)
+    | undefined;
 }
 
 export const FilesPanelResults = memo(function FilesPanelResults({
@@ -51,6 +54,7 @@ export const FilesPanelResults = memo(function FilesPanelResults({
   resolvedTheme,
   activeRelativePath,
   onOpenFile,
+  onContextMenuFile,
 }: FilesPanelResultsProps) {
   const namesQuery = useQuery(
     projectSearchEntriesQueryOptions({ cwd, query }),
@@ -81,6 +85,7 @@ export const FilesPanelResults = memo(function FilesPanelResults({
         activeRelativePath={activeRelativePath}
         resolvedTheme={resolvedTheme}
         onOpenFile={(path) => onOpenFile(path)}
+        onContextMenuFile={onContextMenuFile}
       />,
     );
     sections.push(
@@ -94,6 +99,7 @@ export const FilesPanelResults = memo(function FilesPanelResults({
         error={contentsQuery.error}
         activeRelativePath={activeRelativePath}
         onOpenFile={onOpenFile}
+        onContextMenuFile={onContextMenuFile}
       />,
     );
   } else {
@@ -108,6 +114,7 @@ export const FilesPanelResults = memo(function FilesPanelResults({
         error={contentsQuery.error}
         activeRelativePath={activeRelativePath}
         onOpenFile={onOpenFile}
+        onContextMenuFile={onContextMenuFile}
       />,
     );
     sections.push(
@@ -121,6 +128,7 @@ export const FilesPanelResults = memo(function FilesPanelResults({
         activeRelativePath={activeRelativePath}
         resolvedTheme={resolvedTheme}
         onOpenFile={(path) => onOpenFile(path)}
+        onContextMenuFile={onContextMenuFile}
       />,
     );
   }
@@ -145,6 +153,9 @@ interface NamesSectionProps {
   activeRelativePath: string | null;
   resolvedTheme: "light" | "dark";
   onOpenFile: (relativePath: string) => void;
+  onContextMenuFile?:
+    | ((relativePath: string, position: { x: number; y: number }) => void)
+    | undefined;
 }
 
 function NamesSection({
@@ -156,6 +167,7 @@ function NamesSection({
   activeRelativePath,
   resolvedTheme,
   onOpenFile,
+  onContextMenuFile,
 }: NamesSectionProps) {
   return (
     <section aria-label="Matching file names" className="mb-2">
@@ -183,6 +195,11 @@ function NamesSection({
               role="listitem"
               data-active={entry.path === activeRelativePath ? "true" : undefined}
               onClick={() => onOpenFile(entry.path)}
+              onContextMenu={(event) => {
+                if (!onContextMenuFile) return;
+                event.preventDefault();
+                onContextMenuFile(entry.path, { x: event.clientX, y: event.clientY });
+              }}
               className={cn(
                 "group flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left hover:bg-accent/40",
                 entry.path === activeRelativePath && "bg-accent/50",
@@ -216,6 +233,9 @@ interface ContentsSectionProps {
     relativePath: string,
     selection?: { line: number; column: number } | null,
   ) => void;
+  onContextMenuFile?:
+    | ((relativePath: string, position: { x: number; y: number }) => void)
+    | undefined;
 }
 
 function ContentsSection({
@@ -227,6 +247,7 @@ function ContentsSection({
   error,
   activeRelativePath,
   onOpenFile,
+  onContextMenuFile,
 }: ContentsSectionProps) {
   // Group hits by file so the list reads like VS Code's "search in files".
   const grouped = new Map<string, ProjectFileContentHit[]>();
@@ -260,7 +281,14 @@ function ContentsSection({
       ) : (
         Array.from(grouped.entries()).map(([relativePath, fileHits]) => (
           <div key={`content:${relativePath}`} className="mb-1">
-            <div className="sticky top-0 z-[1] flex items-center gap-1.5 bg-card/80 px-2 pt-1 pb-0.5 backdrop-blur-sm">
+            <div
+              className="sticky top-0 z-[1] flex items-center gap-1.5 bg-card/80 px-2 pt-1 pb-0.5 backdrop-blur-sm"
+              onContextMenu={(event) => {
+                if (!onContextMenuFile) return;
+                event.preventDefault();
+                onContextMenuFile(relativePath, { x: event.clientX, y: event.clientY });
+              }}
+            >
               <span className="truncate font-mono text-[11px] text-foreground/80">
                 {relativePath}
               </span>
