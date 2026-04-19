@@ -16,6 +16,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { useStore } from "~/store";
 
 import { DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
+import { FileEditorPane } from "./files/FileEditorPane";
 import { FilesPanelTree } from "./files/FilesPanelTree";
 
 export interface FilesPanelProps {
@@ -80,12 +81,27 @@ export default function FilesPanel({ mode }: FilesPanelProps) {
       }
     >
       {activeCwd ? (
-        <FilesPanelTree
-          cwd={activeCwd}
-          activeRelativePath={activeRelativePath}
-          resolvedTheme={resolvedTheme}
-          onOpenFile={handleOpenFile}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* Upper pane: the lazy file tree. Cap its height when a file is
+              open so the editor has room to breathe. */}
+          <div
+            className={
+              activeRelativePath
+                ? "flex min-h-0 shrink-0 basis-[40%] flex-col overflow-hidden border-b border-border/60"
+                : "flex min-h-0 flex-1 flex-col"
+            }
+          >
+            <FilesPanelTree
+              cwd={activeCwd}
+              activeRelativePath={activeRelativePath}
+              resolvedTheme={resolvedTheme}
+              onOpenFile={handleOpenFile}
+            />
+          </div>
+          {activeRelativePath ? (
+            <FileEditorPane cwd={activeCwd} relativePath={activeRelativePath} />
+          ) : null}
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-xs text-muted-foreground/70">
           No active workspace.
