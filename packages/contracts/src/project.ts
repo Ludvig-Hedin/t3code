@@ -75,3 +75,76 @@ export class ProjectReadFileError extends Schema.TaggedErrorClass<ProjectReadFil
     cause: Schema.optional(Schema.Defect),
   },
 ) {}
+
+// ---------------------------------------------------------------------------
+// Directory listing — used by the Files panel tree to lazy-load children.
+// `relativePath` may be the empty string to list the workspace root.
+// ---------------------------------------------------------------------------
+
+const PROJECT_LIST_DIRECTORY_MAX_ENTRIES = 1_000;
+
+export const ProjectListDirectoryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  // Empty string is allowed (= root). We therefore use Schema.String directly
+  // instead of TrimmedNonEmptyString.
+  relativePath: Schema.String.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
+  showHidden: Schema.optional(Schema.Boolean),
+});
+export type ProjectListDirectoryInput = typeof ProjectListDirectoryInput.Type;
+
+export const ProjectListDirectoryResult = Schema.Struct({
+  relativePath: Schema.String,
+  entries: Schema.Array(ProjectEntry),
+  truncated: Schema.Boolean,
+});
+export type ProjectListDirectoryResult = typeof ProjectListDirectoryResult.Type;
+
+export class ProjectListDirectoryError extends Schema.TaggedErrorClass<ProjectListDirectoryError>()(
+  "ProjectListDirectoryError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+// ---------------------------------------------------------------------------
+// File-contents search — ripgrep when available, bounded JS fallback otherwise.
+// Hits include byte offsets (`matchStart`/`matchEnd`) relative to the preview
+// line so the UI can highlight without re-running the regex.
+// ---------------------------------------------------------------------------
+
+const PROJECT_SEARCH_FILE_CONTENTS_MAX_LIMIT = 500;
+
+export const ProjectSearchFileContentsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  query: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  limit: PositiveInt.check(Schema.isLessThanOrEqualTo(PROJECT_SEARCH_FILE_CONTENTS_MAX_LIMIT)),
+  caseSensitive: Schema.optional(Schema.Boolean),
+  useRegex: Schema.optional(Schema.Boolean),
+});
+export type ProjectSearchFileContentsInput = typeof ProjectSearchFileContentsInput.Type;
+
+export const ProjectFileContentHit = Schema.Struct({
+  relativePath: TrimmedNonEmptyString,
+  line: PositiveInt,
+  column: PositiveInt,
+  preview: Schema.String,
+  matchStart: Schema.Number,
+  matchEnd: Schema.Number,
+});
+export type ProjectFileContentHit = typeof ProjectFileContentHit.Type;
+
+export const ProjectSearchFileContentsResult = Schema.Struct({
+  hits: Schema.Array(ProjectFileContentHit),
+  truncated: Schema.Boolean,
+  ripgrepAvailable: Schema.Boolean,
+});
+export type ProjectSearchFileContentsResult = typeof ProjectSearchFileContentsResult.Type;
+
+export class ProjectSearchFileContentsError extends Schema.TaggedErrorClass<ProjectSearchFileContentsError>()(
+  "ProjectSearchFileContentsError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}

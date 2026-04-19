@@ -21,8 +21,12 @@ import type {
   GitStatusResult,
 } from "./git";
 import type {
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
+  ProjectSearchFileContentsInput,
+  ProjectSearchFileContentsResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
   ProjectWriteFileInput,
@@ -201,8 +205,17 @@ export interface NativeApi {
   };
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
+    // Shallow-list the children of a workspace-relative directory for the
+    // Files panel tree. Respects gitignore and hidden-file rules the same way
+    // as `searchEntries` so the tree never surfaces files the search index
+    // already hides.
+    listDirectory: (input: ProjectListDirectoryInput) => Promise<ProjectListDirectoryResult>;
     readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult | null>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+    // Full-text content search (ripgrep when available, JS grep fallback).
+    searchFileContents: (
+      input: ProjectSearchFileContentsInput,
+    ) => Promise<ProjectSearchFileContentsResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;

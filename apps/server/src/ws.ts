@@ -14,6 +14,7 @@ import {
   ProjectSearchEntriesError,
   ProjectReadFileError,
   ProjectWriteFileError,
+  ProjectListDirectoryError,
   PromptImprovementError,
   OrchestrationReplayEventsError,
   ThreadId,
@@ -54,6 +55,7 @@ import { TerminalManager } from "./terminal/Services/Manager";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
+import { searchFileContents as workspaceSearchFileContents } from "./workspace/contentSearch";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
 import { SkillService } from "./skills";
 import { Mem0Service, type Mem0Memory, type Mem0ServiceShape } from "./memory/Services/Mem0Service";
@@ -834,6 +836,27 @@ const WsRpcLayer = WsRpcGroup.toLayer(
               });
             }),
           ),
+          { "rpc.aggregate": "workspace" },
+        ),
+      [WS_METHODS.projectsListDirectory]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.projectsListDirectory,
+          workspaceEntries.listDirectory(input).pipe(
+            Effect.mapError((cause) => {
+              const message = Schema.is(WorkspacePathOutsideRootError)(cause)
+                ? "Workspace directory path must stay within the project root."
+                : `Failed to list directory: ${
+                    cause instanceof Error ? cause.message : String(cause)
+                  }`;
+              return new ProjectListDirectoryError({ message, cause });
+            }),
+          ),
+          { "rpc.aggregate": "workspace" },
+        ),
+      [WS_METHODS.projectsSearchFileContents]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.projectsSearchFileContents,
+          workspaceSearchFileContents(input),
           { "rpc.aggregate": "workspace" },
         ),
       [WS_METHODS.shellOpenInEditor]: (input) =>

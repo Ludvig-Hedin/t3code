@@ -3,7 +3,10 @@ import type { Dirent } from "node:fs";
 
 import { Cache, Duration, Effect, Exit, Layer, Option, Path } from "effect";
 
-import { type ProjectEntry } from "@t3tools/contracts";
+import {
+  type ProjectEntry,
+  type ProjectListDirectoryResult,
+} from "@t3tools/contracts";
 
 import { GitCore } from "../../git/Services/GitCore.ts";
 import {
@@ -17,6 +20,9 @@ const WORKSPACE_CACHE_TTL_MS = 15_000;
 const WORKSPACE_CACHE_MAX_KEYS = 4;
 const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_SCAN_READDIR_CONCURRENCY = 32;
+// Shallow directory listings are capped so the Files-panel tree stays responsive
+// even in pathological directories (e.g. a Downloads folder with 10k items).
+const WORKSPACE_LIST_DIRECTORY_MAX_ENTRIES = 1_000;
 const IGNORED_DIRECTORY_NAMES = new Set([
   ".git",
   ".convex",
@@ -494,9 +500,115 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
     },
   );
 
+  /**
+   * Shallow directory listing used by the Files panel tree.
+   *
+   * Intentionally NOT cached — expansions happen one folder at a time and the
+   * read is cheap; keeping it uncached means edits made outside the app
+   * (terminal `touch`, external editor, git checkout) show up immediately
+   * without waiting for the 15 s TTL on the search index.
+   */
+  const listDirectory: WorkspaceEntriesShape["listDirectory"] = Effect.fn(
+    "WorkspaceEntries.listDirectory",
+  )(function* (
+    input,
+  ): Effect.fn.Return<
+    ProjectListDirectoryResult,
+    WorkspaceEntriesError | import("../Services/WorkspacePaths.ts").WorkspacePathOutsideRootError
+  > {
+    const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
+
+    // Normalize the relative path. "" = workspace root.
+    const rawRelativePath = input.relativePath.trim();
+    const normalizedRelativePath = toPosixPath(
+      rawRelativePath.replace(/^\/+|\/+$/g, ""),
+    );
+
+    // Use WorkspacePaths to ensure the requested directory is within root.
+    // For the root itself we skip resolution (the service rejects empty
+    // relativePath as outside-root) and use normalizedCwd directly.
+    const absoluteDir = normalizedRelativePath.length === 0
+      ? normalizedCwd
+      : (yield* workspacePaths.resolveRelativePathWithinRoot({
+          workspaceRoot: normalizedCwd,
+          relativePath: normalizedRelativePath,
+        })).absolutePath;
+
+    const dirents = yield* Effect.tryPromise({
+      try: () => fsPromises.readdir(absoluteDir, { withFileTypes: true }),
+      catch: (cause) =>
+        new WorkspaceEntriesError({
+          cwd: normalizedCwd,
+          operation: "workspaceEntries.listDirectory",
+          detail: processErrorDetail(cause),
+          cause,
+        }),
+    });
+
+    dirents.sort((left, right) => left.name.localeCompare(right.name));
+
+    const showHidden = input.showHidden === true;
+    const candidates: ProjectEntry[] = [];
+    const gitCheckPaths: string[] = [];
+    const gitCheckIndexes: number[] = [];
+    for (const dirent of dirents) {
+      if (!dirent.name || dirent.name === "." || dirent.name === "..") continue;
+      if (!showHidden && dirent.name.startsWith(".")) continue;
+      if (dirent.isDirectory() && IGNORED_DIRECTORY_NAMES.has(dirent.name)) continue;
+      if (!dirent.isDirectory() && !dirent.isFile()) continue;
+
+      const relativePath = toPosixPath(
+        normalizedRelativePath
+          ? path.join(normalizedRelativePath, dirent.name)
+          : dirent.name,
+      );
+
+      candidates.push({
+        path: relativePath,
+        kind: dirent.isDirectory() ? "directory" : "file",
+        parentPath: parentPathOf(relativePath),
+      });
+      gitCheckPaths.push(relativePath);
+      gitCheckIndexes.push(candidates.length - 1);
+    }
+
+    // Filter out .gitignored entries when inside a git work tree. The same
+    // filter is applied by the search index above, so the tree and search
+    // stay consistent.
+    const shouldFilterWithGitIgnore = yield* isInsideGitWorkTree(normalizedCwd);
+    const allowedPathSet = shouldFilterWithGitIgnore
+      ? new Set(yield* filterGitIgnoredPaths(normalizedCwd, gitCheckPaths))
+      : null;
+
+    const filtered = allowedPathSet
+      ? candidates.filter((candidate) => allowedPathSet.has(candidate.path))
+      : candidates;
+
+    // Directories first, then files — each group alphabetical. Mirrors VS Code's
+    // default Explorer sort so the UI feels familiar.
+    const sorted = [...filtered].sort((left, right) => {
+      if (left.kind !== right.kind) {
+        return left.kind === "directory" ? -1 : 1;
+      }
+      return left.path.localeCompare(right.path);
+    });
+
+    const truncated = sorted.length > WORKSPACE_LIST_DIRECTORY_MAX_ENTRIES;
+    const entries = truncated
+      ? sorted.slice(0, WORKSPACE_LIST_DIRECTORY_MAX_ENTRIES)
+      : sorted;
+
+    return {
+      relativePath: normalizedRelativePath,
+      entries,
+      truncated,
+    };
+  });
+
   return {
     invalidate,
     search,
+    listDirectory,
   } satisfies WorkspaceEntriesShape;
 });
 

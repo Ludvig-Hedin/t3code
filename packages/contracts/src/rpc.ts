@@ -56,6 +56,12 @@ import {
   ProjectWriteFileError,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
+  ProjectListDirectoryError,
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
+  ProjectSearchFileContentsError,
+  ProjectSearchFileContentsInput,
+  ProjectSearchFileContentsResult,
 } from "./project";
 import {
   TerminalClearInput,
@@ -133,6 +139,8 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsReadFile: "projects.readFile",
   projectsWriteFile: "projects.writeFile",
+  projectsListDirectory: "projects.listDirectory",
+  projectsSearchFileContents: "projects.searchFileContents",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -274,6 +282,23 @@ export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
   error: ProjectWriteFileError,
+});
+
+// Shallow directory listing for the Files-panel tree. Lazy per-folder so that
+// expanding one node does not force a recursive scan of the whole workspace.
+export const WsProjectsListDirectoryRpc = Rpc.make(WS_METHODS.projectsListDirectory, {
+  payload: ProjectListDirectoryInput,
+  success: ProjectListDirectoryResult,
+  error: ProjectListDirectoryError,
+});
+
+// Content search for the Files panel. Prefers ripgrep for speed; falls back to
+// a bounded JS grep when `rg` is not on PATH. The `ripgrepAvailable` flag on
+// the result lets the client show a hint when the fallback is active.
+export const WsProjectsSearchFileContentsRpc = Rpc.make(WS_METHODS.projectsSearchFileContents, {
+  payload: ProjectSearchFileContentsInput,
+  success: ProjectSearchFileContentsResult,
+  error: ProjectSearchFileContentsError,
 });
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
@@ -646,6 +671,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsWriteFileRpc,
+  WsProjectsListDirectoryRpc,
+  WsProjectsSearchFileContentsRpc,
   WsShellOpenInEditorRpc,
   WsGitStatusRpc,
   WsGitPullRpc,

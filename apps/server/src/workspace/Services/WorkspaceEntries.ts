@@ -9,7 +9,13 @@
 import { Schema, ServiceMap } from "effect";
 import type { Effect } from "effect";
 
-import type { ProjectSearchEntriesInput, ProjectSearchEntriesResult } from "@t3tools/contracts";
+import type {
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
+  ProjectSearchEntriesInput,
+  ProjectSearchEntriesResult,
+} from "@t3tools/contracts";
+import type { WorkspacePathOutsideRootError } from "./WorkspacePaths.ts";
 
 export class WorkspaceEntriesError extends Schema.TaggedErrorClass<WorkspaceEntriesError>()(
   "WorkspaceEntriesError",
@@ -33,6 +39,20 @@ export interface WorkspaceEntriesShape {
   readonly search: (
     input: ProjectSearchEntriesInput,
   ) => Effect.Effect<ProjectSearchEntriesResult, WorkspaceEntriesError>;
+
+  /**
+   * Shallow-list the children of a workspace-relative directory.
+   *
+   * Used by the Files panel tree for lazy per-folder expansion. Respects the
+   * same ignored-directory list and gitignore filtering as `search`, so the
+   * tree never surfaces files that the search index already hides.
+   */
+  readonly listDirectory: (
+    input: ProjectListDirectoryInput,
+  ) => Effect.Effect<
+    ProjectListDirectoryResult,
+    WorkspaceEntriesError | WorkspacePathOutsideRootError
+  >;
 
   /**
    * Drop any cached workspace entries for the given workspace root.
