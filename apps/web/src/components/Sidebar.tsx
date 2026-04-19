@@ -103,6 +103,7 @@ import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { createProjectFromPath } from "../lib/createProject";
 import { SearchModal } from "./search/SearchModal";
 import { useSearchModalStore } from "../searchModalStore";
+import { useFilesPanelStore } from "../filesPanelStore";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -2403,6 +2404,18 @@ export default function Sidebar() {
         return;
       }
 
+      // Toggle Files panel on Cmd+Shift+E (Mac) or Ctrl+Shift+E (others) — VS Code parity.
+      const isFilesShortcut = isMacPlatform(platform)
+        ? key === "e" && event.metaKey && !event.ctrlKey && !event.altKey && event.shiftKey
+        : key === "e" && event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey;
+
+      if (isFilesShortcut && !isTerminalFocused()) {
+        event.preventDefault();
+        event.stopPropagation();
+        useFilesPanelStore.getState().toggle();
+        return;
+      }
+
       // Toggle sidebar on Cmd+B (Mac) or Ctrl+B (other platforms)
       const isSidebarToggleShortcut = isMacPlatform(platform)
         ? key === "b" && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
@@ -3098,6 +3111,19 @@ export default function Sidebar() {
                 {/* Plain-text shortcut hint — matches the settings button style (no border/bg). */}
                 <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
                   {isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"}
+                </span>
+              </button>
+              {/* Files button — toggles the VS Code-style Files panel (also Cmd/Ctrl+Shift+E). */}
+              <button
+                type="button"
+                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                onClick={() => useFilesPanelStore.getState().toggle()}
+                aria-label="Toggle Files panel"
+              >
+                <FolderIcon className="size-3.5 shrink-0" />
+                <span className="flex-1 text-left">Files</span>
+                <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
+                  {isMacPlatform(navigator.platform) ? "⇧⌘E" : "Ctrl+Shift+E"}
                 </span>
               </button>
             </div>

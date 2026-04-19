@@ -9,11 +9,12 @@
  *
  * Returns null on non-Electron, non-mobile-webview builds.
  */
-import { PanelLeftIcon, SearchIcon, SquarePenIcon } from "lucide-react";
+import { FolderIcon, PanelLeftIcon, SearchIcon, SquarePenIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { isElectron, isMobileWebView } from "../env";
 import { isMacPlatform } from "../lib/utils";
+import { useFilesPanelStore } from "../filesPanelStore";
 import { useSearchModalStore } from "../searchModalStore";
 import { useServerKeybindings } from "../rpc/serverState";
 import { shortcutLabelForCommand } from "../keybindings";
@@ -98,6 +99,25 @@ export function SidebarCollapsedControls() {
             />
             <TooltipPopup side="bottom" sideOffset={4}>
               Search ({isMac ? "⌘K" : "Ctrl+K"})
+            </TooltipPopup>
+          </Tooltip>
+
+          {/* Files panel toggle — matches Cmd/Ctrl+Shift+E keybinding in Sidebar.tsx. */}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Toggle Files panel"
+                  className={btnClass}
+                  onClick={() => useFilesPanelStore.getState().toggle()}
+                >
+                  <FolderIcon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipPopup side="bottom" sideOffset={4}>
+              Files ({isMac ? "⇧⌘E" : "Ctrl+Shift+E"})
             </TooltipPopup>
           </Tooltip>
         </>
