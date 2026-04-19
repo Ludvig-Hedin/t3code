@@ -170,7 +170,9 @@ export function buildDetectionCandidates(
       if (!seenIds.has(id) && !standaloneCandidates.has(id)) {
         standaloneCandidates.set(id, {
           id,
-          label: standaloneRule.label,
+          // Use the actual filename (e.g. "README.md") rather than the generic
+          // kind label (e.g. "Markdown") so the tab is immediately recognisable.
+          label: path.basename(rel),
           command: createStandalonePreviewCommand({
             relativePath: rel,
             kind: standaloneRule.kind,

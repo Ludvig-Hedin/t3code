@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readdirSync, readlinkSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
@@ -154,6 +154,78 @@ function resolvePythonForNodeGyp(): string | undefined {
   return executable;
 }
 
+function collectBunStorePackagesFromNodeModulesEntry(
+  nodeModulesEntry: string,
+  bunStoreRoot: string,
+  seenPackages = new Set<string>(),
+): Set<string> {
+  const visitPath = (currentPath: string) => {
+    try {
+      const stats = lstatSync(currentPath);
+      if (stats.isSymbolicLink()) {
+        const resolvedTarget = resolve(dirname(currentPath), readlinkSync(currentPath));
+        const normalizedTarget = resolvedTarget.replaceAll("\\", "/");
+        const normalizedBunStoreRoot = bunStoreRoot.replaceAll("\\", "/");
+        const markerIndex = normalizedTarget.indexOf(`${normalizedBunStoreRoot}/`);
+        if (markerIndex >= 0) {
+          const relativeToStore = normalizedTarget.slice(
+            markerIndex + normalizedBunStoreRoot.length + 1,
+          );
+          const parts = relativeToStore.split("/");
+          // Bun store dirs are always a single first segment, e.g.
+          // `react@19.2.4+hash/...` or `@effect+platform-bun@0.x/.../node_modules/@effect/platform-bun`.
+          // Scoped packages use `+` in the folder name, not `@scope/name`, so we must not treat
+          // `parts[1] === "node_modules"` as the package name segment.
+          const packageName = parts[0] ?? "";
+          if (packageName && !seenPackages.has(packageName)) {
+            seenPackages.add(packageName);
+            const packageRoot = join(bunStoreRoot, packageName);
+            if (existsSync(packageRoot)) {
+              visitDirectory(packageRoot);
+            }
+          }
+        }
+        return;
+      }
+
+      if (stats.isDirectory()) {
+        visitDirectory(currentPath);
+      }
+    } catch (err) {
+      console.warn(
+        `[build-desktop-artifact] Skipping path during bun store scan: ${currentPath}`,
+        err,
+      );
+    }
+  };
+
+  const visitDirectory = (directory: string) => {
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch (err) {
+      console.warn(`[build-desktop-artifact] Skipping directory read: ${directory}`, err);
+      return;
+    }
+    for (const entry of entries) {
+      try {
+        visitPath(join(directory, entry.name));
+      } catch (err) {
+        console.warn(
+          `[build-desktop-artifact] Skipping entry during bun store scan: ${join(directory, entry.name)}`,
+          err,
+        );
+      }
+    }
+  };
+
+  if (existsSync(nodeModulesEntry)) {
+    visitPath(nodeModulesEntry);
+  }
+
+  return seenPackages;
+}
+
 interface ResolvedBuildOptions {
   readonly platform: typeof BuildPlatform.Type;
   readonly target: string;
@@ -183,6 +255,11 @@ interface StagePackageJson {
     readonly electron: string;
   };
 }
+
+const PACKAGED_BACKEND_RUNTIME_DIR = "backend-runtime";
+const PACKAGED_BACKEND_SERVER_MODULES_STAGE_DIR = "backend-server-modules";
+const PACKAGED_BACKEND_BUN_STORE_STAGE_DIR = "backend-bun-store";
+const PACKAGED_BACKEND_AFTER_PACK_HOOK = "electron-builder-after-pack.cjs";
 
 const AzureTrustedSigningOptionsConfig = Config.all({
   publisherName: Config.string("AZURE_TRUSTED_SIGNING_PUBLISHER_NAME"),
@@ -478,6 +555,24 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     directories: {
       buildResources: "apps/desktop/resources",
     },
+    afterPack: PACKAGED_BACKEND_AFTER_PACK_HOOK,
+    extraResources: [
+      {
+        from: "apps/server/dist",
+        to: `${PACKAGED_BACKEND_RUNTIME_DIR}/apps/server/dist`,
+        filter: ["**/*"],
+      },
+      {
+        from: PACKAGED_BACKEND_SERVER_MODULES_STAGE_DIR,
+        to: `${PACKAGED_BACKEND_RUNTIME_DIR}/${PACKAGED_BACKEND_SERVER_MODULES_STAGE_DIR}`,
+        filter: ["**/*"],
+      },
+      {
+        from: PACKAGED_BACKEND_BUN_STORE_STAGE_DIR,
+        to: `${PACKAGED_BACKEND_RUNTIME_DIR}/${PACKAGED_BACKEND_BUN_STORE_STAGE_DIR}`,
+        filter: ["**/*"],
+      },
+    ],
   };
   const publishConfig = resolveGitHubPublishConfig();
   if (publishConfig) {
@@ -605,6 +700,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   const stageAppDir = path.join(stageRoot, "app");
   const stageResourcesDir = path.join(stageAppDir, "apps/desktop/resources");
+  const stageBackendServerModulesDir = path.join(
+    stageAppDir,
+    PACKAGED_BACKEND_SERVER_MODULES_STAGE_DIR,
+  );
+  const stageBackendBunStoreDir = path.join(stageAppDir, PACKAGED_BACKEND_BUN_STORE_STAGE_DIR);
   const distDirs = {
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
     desktopResources: path.join(repoRoot, "apps/desktop/resources"),
@@ -642,11 +742,77 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/desktop"), { recursive: true });
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/server"), { recursive: true });
+  yield* fs.writeFileString(
+    path.join(stageAppDir, PACKAGED_BACKEND_AFTER_PACK_HOOK),
+    [
+      'const fs = require("node:fs/promises");',
+      'const path = require("node:path");',
+      "",
+      `const runtimeDir = ${JSON.stringify(PACKAGED_BACKEND_RUNTIME_DIR)};`,
+      `const stagedServerModulesDir = ${JSON.stringify(PACKAGED_BACKEND_SERVER_MODULES_STAGE_DIR)};`,
+      `const stagedBunStoreDir = ${JSON.stringify(PACKAGED_BACKEND_BUN_STORE_STAGE_DIR)};`,
+      "",
+      "async function pathExists(target) {",
+      "  try {",
+      "    await fs.access(target);",
+      "    return true;",
+      "  } catch {",
+      "    return false;",
+      "  }",
+      "}",
+      "",
+      "async function resolveResourcesDir(context) {",
+      "  const candidates = [",
+      '    path.join(context.appOutDir, "Contents", "Resources"),',
+      '    path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, "Contents", "Resources"),',
+      '    path.join(context.appOutDir, "resources"),',
+      "  ];",
+      "  for (const candidate of candidates) {",
+      "    if (await pathExists(candidate)) return candidate;",
+      "  }",
+      "  throw new Error(`Unable to resolve resources directory for afterPack: ${context.appOutDir}`);",
+      "}",
+      "",
+      "module.exports = async function afterPack(context) {",
+      "  const resourcesDir = await resolveResourcesDir(context);",
+      "  const runtimeRoot = path.join(resourcesDir, runtimeDir);",
+      "  const stagedServerModulesPath = path.join(runtimeRoot, stagedServerModulesDir);",
+      '  const finalServerModulesPath = path.join(runtimeRoot, "apps", "server", "node_modules");',
+      "  if (await pathExists(stagedServerModulesPath)) {",
+      "    await fs.mkdir(path.dirname(finalServerModulesPath), { recursive: true });",
+      "    await fs.rename(stagedServerModulesPath, finalServerModulesPath);",
+      "  }",
+      "  const stagedBunStorePath = path.join(runtimeRoot, stagedBunStoreDir);",
+      '  const finalBunStorePath = path.join(runtimeRoot, "node_modules", ".bun");',
+      "  if (await pathExists(stagedBunStorePath)) {",
+      "    await fs.mkdir(path.dirname(finalBunStorePath), { recursive: true });",
+      "    await fs.rename(stagedBunStorePath, finalBunStorePath);",
+      "  }",
+      "};",
+      "",
+    ].join("\n"),
+  );
 
   yield* Effect.log("[desktop-artifact] Staging release app...");
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
+  yield* fs.makeDirectory(stageBackendServerModulesDir, { recursive: true });
+  const bunStoreRoot = path.join(repoRoot, "node_modules/.bun");
+  const requiredBunStorePackages = new Set<string>();
+  for (const dependencyName of Object.keys(resolvedServerDependencies)) {
+    const source = path.join(repoRoot, "apps/server/node_modules", dependencyName);
+    const target = path.join(stageBackendServerModulesDir, dependencyName);
+    yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+    yield* fs.copy(source, target);
+    collectBunStorePackagesFromNodeModulesEntry(source, bunStoreRoot, requiredBunStorePackages);
+  }
+  yield* fs.makeDirectory(stageBackendBunStoreDir, { recursive: true });
+  for (const packageName of requiredBunStorePackages) {
+    const source = path.join(bunStoreRoot, packageName);
+    const target = path.join(stageBackendBunStoreDir, packageName);
+    yield* fs.copy(source, target);
+  }
 
   yield* assertPlatformBuildResources(options.platform, stageResourcesDir, options.verbose);
 

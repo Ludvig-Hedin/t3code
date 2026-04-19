@@ -5,17 +5,19 @@ import {
   clearThreadUi,
   markThreadUnread,
   reorderProjects,
+  setChangedFilesExpanded,
   setProjectExpanded,
   syncProjects,
   syncThreads,
   type UiState,
 } from "./uiStateStore";
 
-function makeUiState(overrides: Partial<UiState> = {}): UiState {
+function makeUiState(overrides?: Partial<UiState>): UiState {
   return {
     projectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
+    changedFilesExpandedByThreadId: {},
     previewOpen: false,
     previewDetached: false,
     previewFloatingBounds: null,
@@ -180,6 +182,28 @@ describe("uiStateStore pure functions", () => {
 
     expect(next.projectExpandedById[project1]).toBe(false);
     expect(next.projectOrder).toEqual([project1]);
+  });
+
+  it("setChangedFilesExpanded updates only the targeted thread and no-ops when unchanged", () => {
+    const thread1 = ThreadId.makeUnsafe("thread-1");
+    const thread2 = ThreadId.makeUnsafe("thread-2");
+    const initialState = makeUiState({
+      changedFilesExpandedByThreadId: {
+        [thread1]: true,
+      },
+    });
+
+    const expandedNext = setChangedFilesExpanded(initialState, thread2, false);
+
+    expect(expandedNext).not.toBe(initialState);
+    expect(expandedNext.changedFilesExpandedByThreadId).toEqual({
+      [thread1]: true,
+      [thread2]: false,
+    });
+
+    const unchangedNext = setChangedFilesExpanded(expandedNext, thread2, false);
+
+    expect(unchangedNext).toBe(expandedNext);
   });
 
   it("clearThreadUi removes visit state for deleted threads", () => {

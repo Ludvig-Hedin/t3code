@@ -24,6 +24,8 @@ const TUNNEL_ENABLE_CHANNEL = "desktop:tunnel-enable";
 const TUNNEL_DISABLE_CHANNEL = "desktop:tunnel-disable";
 const KEEP_AWAKE_SET_CHANNEL = "desktop:keep-awake-set";
 const TUNNEL_STATUS_CHANNEL = "tunnel:status";
+const DOWNLOAD_URL_CHANNEL = "desktop:download-url";
+const WRITE_IMAGE_TO_CLIPBOARD_CHANNEL = "desktop:write-image-to-clipboard";
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   getWsUrl: () => {
@@ -85,6 +87,11 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   checkForUpdate: () => ipcRenderer.invoke(UPDATE_CHECK_CHANNEL),
   downloadUpdate: () => ipcRenderer.invoke(UPDATE_DOWNLOAD_CHANNEL),
   installUpdate: () => ipcRenderer.invoke(UPDATE_INSTALL_CHANNEL),
+  // Triggers the OS save-file dialog; main process calls webContents.downloadURL to bypass renderer CORS.
+  downloadUrl: (url: string) => ipcRenderer.invoke(DOWNLOAD_URL_CHANNEL, url),
+  // Fetches image via main-process net.fetch (no CORS) and writes it to the system clipboard.
+  writeImageToClipboard: (url: string) =>
+    ipcRenderer.invoke(WRITE_IMAGE_TO_CLIPBOARD_CHANNEL, url),
   onUpdateState: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
       if (typeof state !== "object" || state === null) return;

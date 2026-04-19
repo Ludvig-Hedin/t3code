@@ -906,6 +906,19 @@ const make = Effect.fn("make")(function* () {
       activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
     const missingTurnForActiveTurn = activeTurnId !== null && eventTurnId === undefined;
 
+    // Once a session has reached a terminal state (stopped/closed/error), any
+    // `session.state.changed(running|waiting)` or `turn.started` events
+    // arriving afterwards are stale — they come from buffered SDK messages
+    // drained after `stopSessionInternal`. Applying them would flip the UI
+    // back to "running" and cause the stop-button flicker and sidebar spinner
+    // that doesn't clear. A genuine new session goes through `session.started`
+    // which resets status to "ready" first.
+    const currentSessionStatus = thread.session?.status ?? null;
+    const sessionIsTerminal =
+      currentSessionStatus === "stopped" ||
+      currentSessionStatus === "interrupted" ||
+      currentSessionStatus === "error";
+
     const shouldApplyThreadLifecycle = (() => {
       if (!STRICT_PROVIDER_LIFECYCLE_GUARD) {
         return true;
@@ -916,7 +929,18 @@ const make = Effect.fn("make")(function* () {
         case "session.started":
         case "thread.started":
           return true;
+        case "session.state.changed": {
+          const nextStatus = orchestrationSessionStatusFromRuntimeState(event.payload.state);
+          // Block stale running-state upgrades when the session is already
+          // terminal. `ready` is still allowed so a restarted session can
+          // progress; it would normally be preceded by `session.started`.
+          if (sessionIsTerminal && (nextStatus === "running" || nextStatus === "starting")) {
+            return false;
+          }
+          return true;
+        }
         case "turn.started":
+          if (sessionIsTerminal) return false;
           return !conflictsWithActiveTurn;
         case "turn.completed":
           if (conflictsWithActiveTurn || missingTurnForActiveTurn) {

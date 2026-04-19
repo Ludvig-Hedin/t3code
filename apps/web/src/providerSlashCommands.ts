@@ -155,6 +155,8 @@ export const PROVIDER_SLASH_COMMANDS: Record<ProviderKind, readonly ProviderSlas
   codex: CODEX_COMMANDS,
   claudeAgent: CLAUDE_AGENT_COMMANDS,
   gemini: GEMINI_COMMANDS,
+  // cursor support is planned, but there are no provider-specific slash commands yet
+  cursor: [],
   // opencode uses pass-through commands — populated server-side when available
   opencode: [],
   // ollama is a local provider with no CLI slash commands

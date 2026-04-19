@@ -222,6 +222,75 @@ function extractDescriptionFromJson(text: string): string | null {
   return null;
 }
 
+/** Attempt to extract the `subagent_type` field from a JSON string. */
+function extractSubagentTypeFromJson(text: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "subagent_type" in parsed) {
+      const raw = (parsed as Record<string, unknown>)["subagent_type"];
+      if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+    }
+  } catch {
+    const match = /"subagent_type"\s*:\s*"([^"]+)"/.exec(text);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+/** Attempt to extract the `prompt` field from a JSON string. */
+function extractPromptFromJson(text: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "prompt" in parsed) {
+      const raw = (parsed as Record<string, unknown>)["prompt"];
+      if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+    }
+  } catch {
+    // Capture the full JSON string token (quotes included) so escapes are interpreted by JSON.parse.
+    const match = /"prompt"\s*:\s*("(?:[^"\\]|\\.)*")/.exec(text);
+    if (match?.[1]) {
+      try {
+        const parsed: unknown = JSON.parse(`[${match[1]}]`);
+        if (Array.isArray(parsed) && parsed.length === 1 && typeof parsed[0] === "string") {
+          const s = parsed[0].trim();
+          if (s.length > 0) return s;
+        }
+      } catch {
+        // ignore — treat as unparsable
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Convert a subagent_type slug ("general-purpose", "brand-voice:content-generation")
+ * to a readable title ("General Purpose", "Brand Voice – Content Generation").
+ */
+export function formatSubagentType(slug: string): string {
+  return slug
+    .split(":")
+    .map((part) =>
+      part
+        .split("-")
+        .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+        .join(" "),
+    )
+    .join(" – ");
+}
+
+/** Parse the sub-agent's type slug from the label or detail JSON. */
+export function parseSubAgentType(label: string, detail?: string): string | null {
+  return (
+    extractSubagentTypeFromJson(label) ?? (detail ? extractSubagentTypeFromJson(detail) : null)
+  );
+}
+
+/** Parse the sub-agent's prompt body (the instructions) from label or detail. */
+export function parseSubAgentPrompt(label: string, detail?: string): string | null {
+  return extractPromptFromJson(label) ?? (detail ? extractPromptFromJson(detail) : null);
+}
+
 /**
  * Extracts a clean description from a sub-agent label or its detail string.
  *
@@ -277,6 +346,7 @@ export function parseSkillName(label: string): string {
   // Convert slug-style (dashes) to Title Case: "code-review" → "Code Review"
   return namePart
     .split("-")
+    .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }

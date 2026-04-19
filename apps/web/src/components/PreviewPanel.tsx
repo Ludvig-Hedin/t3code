@@ -376,7 +376,7 @@ function PreviewPanelInner({ projectId, onDetach }: PreviewPanelProps) {
         <p className="max-w-xs text-xs leading-relaxed">
           {detectionStatus === "error"
             ? "Could not scan this project. Check that the server is running."
-            : 'Add a package.json with a "dev" script, a manage.py, or a Cargo.toml to get started.'}
+            : 'Add a package.json with a "dev" script, a manage.py, or a Cargo.toml to get started. You can also drop a .md, .html, or .tsx file in the project root to preview it instantly.'}
         </p>
       </div>
     );
@@ -489,23 +489,101 @@ function PreviewPanelInner({ projectId, onDetach }: PreviewPanelProps) {
             // a static spinner with no information.
             <StartupLogView lines={activeLogs} appLabel={activeApp.label} />
           ) : activeSession?.status === "error" ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3">
-              <p className="text-sm font-medium text-destructive">
-                Failed to start {activeApp.label}
-              </p>
-              {activeSession.errorMessage && (
-                <p className="max-w-xs text-center text-xs text-muted-foreground">
-                  {activeSession.errorMessage}
-                </p>
-              )}
-              <Button variant="outline" size="sm" onClick={() => handleStart(activeApp)}>
-                Retry
-              </Button>
+            // Error state: pinned header + scrollable process output so the user can
+            // see exactly why the process failed without opening an external terminal.
+            <div className="flex h-full flex-col overflow-hidden">
+              <div className="flex shrink-0 items-center gap-2 border-b border-destructive/20 bg-destructive/5 px-4 py-2">
+                <span className="size-1.5 shrink-0 rounded-full bg-destructive" />
+                <span className="min-w-0 flex-1 text-xs font-medium text-destructive">
+                  Failed to start {activeApp.label}
+                  {activeSession.errorMessage && (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      — {activeSession.errorMessage.split("\n")[0]}
+                    </span>
+                  )}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 shrink-0 px-2 text-xs"
+                  onClick={() => handleStart(activeApp)}
+                >
+                  Retry
+                </Button>
+              </div>
+
+              {/* Error detail area — three cases ordered by information richness */}
+              <div className="min-h-0 flex-1 overflow-y-auto bg-background p-3 font-mono text-xs">
+                {activeLogs.length > 0 ? (
+                  // Live output received during the session — most complete view
+                  activeLogs.map((line, i) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <div key={i} className="whitespace-pre-wrap break-all leading-5 text-foreground">
+                      {line}
+                    </div>
+                  ))
+                ) : activeSession.errorMessage &&
+                  activeSession.errorMessage.includes("\n") ? (
+                  // No live logs but server captured output in the process buffer —
+                  // show it in full so the user gets the same context they'd have
+                  // seen in a terminal (exit code + last output block).
+                  <pre className="whitespace-pre-wrap break-all text-foreground">
+                    {activeSession.errorMessage}
+                  </pre>
+                ) : (
+                  // Nothing captured at all — give actionable diagnostic hints
+                  // rather than just echoing the exit code back at the user.
+                  <div className="space-y-3 font-sans text-xs text-muted-foreground">
+                    <p>
+                      No output was captured from the process. The process may have exited
+                      immediately before any output was flushed.
+                    </p>
+                    <p>
+                      Command:{" "}
+                      <code className="rounded bg-muted px-1 font-mono text-foreground">
+                        {activeApp.command}
+                      </code>
+                    </p>
+                    <div>
+                      <p className="mb-1 font-medium text-foreground">Common causes:</p>
+                      <ul className="ml-4 list-disc space-y-1">
+                        <li>
+                          <code className="rounded bg-muted px-0.5 font-mono text-foreground">
+                            {activeApp.command.split(" ")[0]}
+                          </code>{" "}
+                          is not installed or not in{" "}
+                          <code className="rounded bg-muted px-0.5 font-mono">PATH</code>
+                        </li>
+                        <li>Dependencies not installed — run the install command first</li>
+                        <li>Port already in use by another process</li>
+                        <li>Missing required environment variables</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
+            // Stopped or no session yet.
             <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-              <MonitorPlayIcon className="size-8 opacity-40" />
-              <p className="text-sm">Press ▶ to start {activeApp.label}</p>
+              {activeApp.command.startsWith("preview-file ") && !activeSession ? (
+                // Standalone file previews (markdown, HTML, TSX, etc.) auto-start on
+                // selection — show a brief spinner while the HTTP server is created
+                // (typically resolves in < 200 ms).
+                <>
+                  <Loader2Icon className="size-6 animate-spin opacity-60" />
+                  <p className="text-sm">Loading preview…</p>
+                </>
+              ) : (
+                <>
+                  <MonitorPlayIcon className="size-8 opacity-40" />
+                  <p className="text-sm">
+                    {activeApp.command.startsWith("preview-file ")
+                      ? `Click ▶ to preview ${activeApp.label}`
+                      : `Press ▶ to start ${activeApp.label}`}
+                  </p>
+                </>
+              )}
             </div>
           )
         ) : (

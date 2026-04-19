@@ -446,6 +446,68 @@ describe("ProviderModelPicker", () => {
     }
   });
 
+  it('dispatches ("manifest", "auto") when the top-level Auto item is clicked in the unlocked picker', async () => {
+    // Starting state: user is in a fresh draft thread with a default provider/model.
+    // Clicking the top-level "Auto" entry must route through the manifest short-circuit
+    // in handleModelChange — otherwise resolveSelectableModel returns null (manifest has
+    // no registered SelectableModelOptions) and the click is silently dropped.
+    const mounted = await mountPicker({
+      provider: "codex",
+      model: "gpt-5-codex",
+      lockedProvider: null,
+    });
+
+    try {
+      await page.getByRole("button").click();
+      await page.getByRole("menuitem", { name: "Auto" }).click();
+
+      expect(mounted.onProviderModelChange).toHaveBeenCalledWith("manifest", "auto");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it('dispatches ("manifest", "auto") from the locked-provider path Auto footer', async () => {
+    // In an active thread, the provider is locked. The picker still surfaces an "Auto"
+    // footer (except when the lock is already manifest) so users can switch to auto-routing
+    // mid-thread. This guards the same short-circuit against regressions in the locked path.
+    const mounted = await mountPicker({
+      provider: "claudeAgent",
+      model: "claude-opus-4-6",
+      lockedProvider: "claudeAgent",
+    });
+
+    try {
+      await page.getByRole("button").click();
+      await page.getByRole("menuitem", { name: "Auto" }).click();
+
+      expect(mounted.onProviderModelChange).toHaveBeenCalledWith("manifest", "auto");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it('renders the trigger label as "Auto" when the current selection is manifest/auto', async () => {
+    // The manifest provider has no registered SelectableModelOption, so the picker must
+    // hard-code the "Auto" label instead of falling through to the raw "auto" slug.
+    const mounted = await mountPicker({
+      provider: "manifest",
+      model: "auto",
+      lockedProvider: null,
+    });
+
+    try {
+      const button = document.querySelector("button");
+      if (!(button instanceof HTMLButtonElement)) {
+        throw new Error("Expected picker trigger button to be rendered.");
+      }
+      expect(button.textContent ?? "").toContain("Auto");
+      expect(button.textContent ?? "").not.toContain("auto-auto");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("dispatches the canonical slug when a Gemini preview model is selected", async () => {
     const mounted = await mountPicker({
       provider: "gemini",

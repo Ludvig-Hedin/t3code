@@ -57,9 +57,22 @@ import { EditorId } from "./editor";
 import { ServerSettings, ServerSettingsPatch } from "./settings";
 import { ServerTranscribeAudioInput, ServerTranscribeAudioResult } from "./transcription";
 
+export type ContextMenuIcon =
+  | "archive"
+  | "copy"
+  | "delete"
+  | "folder"
+  | "mail"
+  | "pencil"
+  | "pin"
+  | "search"
+  | "settings"
+  | "trash";
+
 export interface ContextMenuItem<T extends string = string> {
   id: T;
   label: string;
+  icon?: ContextMenuIcon;
   destructive?: boolean;
   disabled?: boolean;
 }
@@ -166,6 +179,10 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  /** Triggers the native OS save-file dialog to download a URL (bypasses renderer CORS). */
+  downloadUrl?: (url: string) => Promise<void>;
+  /** Fetches a URL via the main process (no CORS) and writes it to the system clipboard. */
+  writeImageToClipboard?: (url: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface NativeApi {

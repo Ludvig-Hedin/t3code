@@ -10,6 +10,10 @@ export interface ProcessRunOptions {
   outputMode?: "error" | "truncate" | undefined;
   /** Called synchronously right after spawn, before any I/O. Use to hold a reference for killing. */
   onSpawn?: (child: ChildProcessHandle) => void;
+  /** Called for each stdout chunk before aggregation/truncation. */
+  onStdoutChunk?: (chunk: string) => void;
+  /** Called for each stderr chunk before aggregation/truncation. */
+  onStderrChunk?: (chunk: string) => void;
 }
 
 export interface ProcessRunResult {
@@ -186,6 +190,17 @@ export async function runProcess(
       const chunkBuffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
       const text = chunkBuffer.toString();
       const byteLength = chunkBuffer.length;
+      try {
+        if (stream === "stdout") {
+          options.onStdoutChunk?.(text);
+        } else {
+          options.onStderrChunk?.(text);
+        }
+      } catch (error) {
+        return error instanceof Error
+          ? error
+          : new Error(`Failed while handling ${stream} for ${commandLabel(command, args)}.`);
+      }
       if (stream === "stdout") {
         if (outputMode === "truncate") {
           const appended = appendChunkWithinLimit(stdout, stdoutBytes, chunkBuffer, maxBufferBytes);

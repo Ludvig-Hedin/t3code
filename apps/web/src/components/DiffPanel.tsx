@@ -753,7 +753,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                     className={cn(
                       "max-h-[72vh] rounded-md border border-border/70 bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground/90",
                       diffWordWrap
-                        ? "overflow-auto whitespace-pre-wrap wrap-break-word"
+                        ? "overflow-auto whitespace-pre-wrap wrap-anywhere"
                         : "overflow-auto",
                     )}
                   >
@@ -928,7 +928,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                     className={cn(
                       "max-h-[72vh] rounded-md border border-border/70 bg-background/70 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground/90",
                       diffWordWrap
-                        ? "overflow-auto whitespace-pre-wrap wrap-break-word"
+                        ? "overflow-auto whitespace-pre-wrap wrap-anywhere"
                         : "overflow-auto",
                     )}
                   >

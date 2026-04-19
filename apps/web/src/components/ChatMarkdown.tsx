@@ -200,7 +200,7 @@ function MarkdownCodeBlock({ code, language, children, onRunInTerminal }: Markdo
   const showRunButton = onRunInTerminal != null && SHELL_LANGUAGES.has(language);
 
   return (
-    <div className="chat-markdown-codeblock">
+    <div className="chat-markdown-codeblock leading-snug">
       {/* Action buttons — always visible, positioned top-right of the code card */}
       <div className="chat-markdown-codeblock-actions">
         {showRunButton && (

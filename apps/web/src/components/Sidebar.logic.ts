@@ -332,10 +332,15 @@ export function resolveThreadStatusPill(input: {
   }
 
   if (thread.session?.status === "running") {
+    // Neutral gray for "Working" so that when this pill surfaces at the
+    // collapsed-project level (shown as a dot) it stays consistent with the
+    // gray per-thread spinner. The spinner itself is the primary activity
+    // hint on expanded threads; the label/dot rendering is suppressed in the
+    // thread row (see Sidebar.tsx) to avoid showing "Working" twice.
     return {
       label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
+      colorClass: "text-muted-foreground",
+      dotClass: "bg-muted-foreground/60",
       pulse: true,
     };
   }

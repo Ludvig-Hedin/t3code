@@ -23,6 +23,7 @@ function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Pr
 function MenuPopup({
   children,
   className,
+  contentClassName,
   sideOffset = 4,
   align = "center",
   alignOffset,
@@ -35,6 +36,8 @@ function MenuPopup({
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
+  /** Extra classes applied to the inner content wrapper (overrides defaults like p-1, overflow-y-auto). */
+  contentClassName?: string;
 }) {
   return (
     <MenuPrimitive.Portal>
@@ -55,7 +58,14 @@ function MenuPopup({
           data-slot="menu-popup"
           {...props}
         >
-          <div className="max-h-(--available-height) w-full overflow-y-auto p-1">{children}</div>
+          <div
+            className={cn(
+              "max-h-(--available-height) w-full overflow-y-auto p-1",
+              contentClassName,
+            )}
+          >
+            {children}
+          </div>
         </MenuPrimitive.Popup>
       </MenuPrimitive.Positioner>
     </MenuPrimitive.Portal>

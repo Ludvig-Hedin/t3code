@@ -1,5 +1,18 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 
+const CONTEXT_MENU_ICON_GLYPHS: Record<string, string> = {
+  archive: "🗄",
+  copy: "⧉",
+  delete: "🗑",
+  folder: "📁",
+  mail: "✉",
+  pencil: "✎",
+  pin: "📌",
+  search: "⌕",
+  settings: "⚙",
+  trash: "🗑",
+};
+
 /**
  * Imperative DOM-based context menu for non-Electron environments.
  * Shows a positioned dropdown and returns a promise that resolves
@@ -42,7 +55,16 @@ export function showContextMenuFallback<T extends string>(
     for (const item of items) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.textContent = item.label;
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      btn.appendChild(label);
+      if (item.icon) {
+        const icon = document.createElement("span");
+        icon.textContent = CONTEXT_MENU_ICON_GLYPHS[item.icon] ?? "•";
+        icon.setAttribute("aria-hidden", "true");
+        icon.className = "text-[10px] leading-none text-muted-foreground/70";
+        btn.insertBefore(icon, label);
+      }
       const isDestructiveAction = item.destructive === true || item.id === "delete";
       const isDisabled = item.disabled === true;
       btn.disabled = isDisabled;

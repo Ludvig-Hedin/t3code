@@ -212,19 +212,20 @@ export function resolveComposerSelectedProvider(input: {
   draftActiveProvider: ProviderKind | null;
   threadProvider: ProviderKind | null;
 }): ProviderKind {
+  // Composer draft explicitly switched to Auto (manifest). Honour it even when the
+  // manifest provider row is disabled in the server snapshot — otherwise
+  // deriveEffectiveComposerModelState keeps indexing the draft by the locked
+  // provider and the picker appears to ignore Auto (see ProviderModelPicker).
+  if (input.draftActiveProvider === "manifest") {
+    return "manifest";
+  }
+
   const unlockedSelectedProvider = resolveSelectableProvider(
     input.providers,
     input.draftActiveProvider ?? input.threadProvider ?? "codex",
   );
   if (input.lockedProvider === null) {
     return unlockedSelectedProvider;
-  }
-
-  if (
-    input.draftActiveProvider === "manifest" &&
-    resolveSelectableProvider(input.providers, "manifest") === "manifest"
-  ) {
-    return "manifest";
   }
 
   return input.lockedProvider;

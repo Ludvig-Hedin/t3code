@@ -9,7 +9,9 @@ type Platform = { os: "mac" | "win" | "linux"; label: string; arch?: "arm64" | "
 /** Chrome/Safari on Apple Silicon still report "Intel Mac OS X" in `userAgent`; use Client Hints when available. */
 async function resolveMacArch(): Promise<"arm64" | "x64" | null> {
   const nav = navigator as Navigator & {
-    userAgentData?: { getHighEntropyValues?: (hints: string[]) => Promise<{ architecture?: string }> };
+    userAgentData?: {
+      getHighEntropyValues?: (hints: string[]) => Promise<{ architecture?: string }>;
+    };
   };
   try {
     const values = await nav.userAgentData?.getHighEntropyValues?.(["architecture"]);
@@ -42,9 +44,7 @@ function pickAsset(
     const preferred = assets.find((a) => a.name.endsWith(`-${platform.arch}.dmg`));
     // Rosetta: arm64 Macs can run x64 builds; never serve arm64 DMG as fallback for x64 users.
     const secondary =
-      platform.arch === "arm64"
-        ? assets.find((a) => a.name.endsWith("-x64.dmg"))
-        : undefined;
+      platform.arch === "arm64" ? assets.find((a) => a.name.endsWith("-x64.dmg")) : undefined;
     return (preferred ?? secondary)?.browser_download_url ?? null;
   }
   if (platform.os === "linux") {

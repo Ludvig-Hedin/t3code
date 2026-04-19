@@ -1,9 +1,96 @@
 # Changelog
 
+## [2026-04-19] [Fix] Early-reject unsupported Cursor model selections; restore image fallback; protect code spans in previews
+
+- **Cursor model-selection guard:** Removed `cursor` from the orchestration/runtime model-selection decode path and the matching settings patch schema so unsupported Cursor turns fail at validation time instead of starting and crashing later with `ProviderUnsupportedError`. This deliberately does **not** change the separate in-progress Cursor provider implementation.
+- **Image clipboard fallback:** Browser image copy in `ChatView.tsx` once again falls back to copying the image URL when canvas/clipboard image writes fail (common for cross-origin assets or missing `ClipboardItem` support), while keeping the native Electron clipboard path unchanged.
+- **Markdown preview correctness:** `StandalonePreviewRenderer.ts` now tokenizes inline code spans before applying emphasis/link transforms, so literals like `` `*x*` `` and `` `[link](https://example.com)` `` stay literal in standalone markdown previews. Added focused regression coverage.
+- **Files:** `packages/contracts/src/orchestration.ts`, `packages/contracts/src/settings.ts`, `packages/contracts/src/orchestration.test.ts`, `apps/web/src/components/ChatView.tsx`, `apps/server/src/preview/StandalonePreviewRenderer.ts`, `apps/server/src/preview/StandalonePreviewRenderer.test.ts`
+
+## [2026-04-18] [Fix] Diff stats now show thread-specific checkpoint changes instead of all working-tree changes
+
+- **Root cause 1:** `ChatView.tsx` passed `gitStatusQuery.data?.workingTree.insertions/deletions` (raw git working-tree stats — ALL uncommitted files in the repo) to the `ChatHeader` diff toggle button. This caused the `+X/-Y` label to reflect every uncommitted file in the project, not just what the active thread changed.
+- **Fix 1:** Added a `threadDiffStat` memo that merges per-file additions/deletions across all `turnDiffSummaries` (keyed by file path to avoid double-counting files touched in multiple turns). The ChatHeader now receives these thread-checkpoint-based stats.
+- **Root cause 2:** `resolveLatestTurnDiffStat` in `store.ts` only read the LATEST turn's checkpoint diff files, so the sidebar badge showed only the most-recent turn's impact.
+- **Fix 2:** Rewrote `resolveLatestTurnDiffStat` to aggregate ALL turns' file changes (merged by path), giving the sidebar badge a true cumulative thread total.
+- **Files:** `apps/web/src/components/ChatView.tsx`, `apps/web/src/store.ts`
+
+## [2026-04-18] [UX] Sidebar: single gray spinner replaces blue spinner + "Working" text + blue dot
+
+- **Reported problem:** When a thread was running, the sidebar row showed three redundant indicators at once — a blue `LoaderCircleIcon`, a blue `bg-sky-500` dot, and the text label "Working". User wants a single, muted gray spinner.
+- **Fix:** `ThreadWorkingSpinner` now uses `text-muted-foreground/80`, and the row JSX suppresses `ThreadStatusLabel` when the status is `"Working"` (the spinner alone communicates the state). `resolveThreadStatusPill` also returns neutral gray `colorClass` / `dotClass` so the collapsed-project dot stays consistent.
+- **Also added:** `reports/provider-freeze-investigation.md` documenting why Claude/Codex turns appear to "freeze after ~2 minutes" and a proposed three-layer backend fix (idle-event watchdog + stream timeout + Stalled pill). Not yet implemented — awaiting sign-off on thresholds because changes affect provider-lifecycle semantics.
+- **Files:** `apps/web/src/components/Sidebar.tsx`, `apps/web/src/components/Sidebar.logic.ts`, `reports/provider-freeze-investigation.md`
+
+## [2026-04-18] [UX] Work log file edits now show real file paths instead of generic “File change”
+
+- **Root cause:** File-write rows in `WorkEntryRow.tsx` always rendered their primary label from `entry.label`, and the Claude/Codex runtime normalizers often use the generic title `File change` there. Even when the payload already contained structured tool detail or extracted changed-file paths, the UI ignored it and showed `Wrote File change`.
+- **Fix:** File-write rows now prefer structured file-change detail (`Edit`, `Write`, `MultiEdit`, etc.) and fall back to the first extracted changed file when the provider label is generic. The existing extra-file badges continue to show additional touched files.
+- **Files:** `apps/web/src/components/chat/WorkEntryRow.tsx`, `apps/web/src/components/chat/WorkEntryRow.test.tsx`
+
+## [2026-04-18] [Fix] Preview panel: clear error logs, improved markdown rendering, smarter standalone UX
+
+- **Root cause (process stderr/stdout not shown):** The error state in `PreviewPanel.tsx` only displayed the generic `errorMessage` string and ignored the `activeLogs` store slice, so users did not see the process output (`activeLogs` holds captured stdout/stderr lines from the failed process).
+- **Fix (frontend):** Error state is now a two-section layout — a compact pinned header (red dot + "Failed to start X · exit code 1" + Retry) + a full-height scrollable terminal showing all captured logs. When no logs were captured (process failed to spawn), a diagnostic message names the missing command.
+- **Fix (server):** `PreviewServerManager.ts` now buffers the last 50 stdout+stderr lines per session. On non-zero exit, the last 20 non-empty lines are embedded in `errorMessage` so clients that reload the page (and miss the live event stream) still get actionable context.
+- **Fix (standalone UX):** Standalone file previews (markdown, HTML, TSX, DOCX) auto-start immediately on selection. The brief window before the HTTP server is ready now shows "Loading preview…" with a spinner instead of the confusing "Press ▶ to start" message. After a manual stop, the label changes to "Click ▶ to preview {label}".
+- **Fix (markdown renderer):** `StandalonePreviewRenderer.ts` `renderMarkdownToHtml` upgraded from a minimal stub to a proper renderer — now supports: inline code/bold/italic/links, fenced code blocks with language class, numbered lists, blockquotes, h4 headings, horizontal rules. CSS improved to GitHub-style with dark mode support.
+- **Files:** `apps/web/src/components/PreviewPanel.tsx`, `apps/server/src/preview/Layers/PreviewServerManager.ts`, `apps/server/src/preview/StandalonePreviewRenderer.ts`
+
+## [2026-04-17] [Fix] Chat Stop no longer leaves the composer stuck on “working”
+
+- **Root cause:** After `thread.turn-interrupt-requested`, the client could mark the turn interrupted while `thread.session-set` still reported `running`, so `derivePhase` kept the send/stop UI in the running state. Separately, the store ignored interrupt events when `latestTurn` lagged behind `session.activeTurnId`, so the local turn state never flipped to interrupted.
+- **Fix:** `derivePhase` treats an interrupted `latestTurn` that matches `activeTurnId` as ready; the interrupt reducer applies when the session’s active turn matches even if `latestTurn` is stale; Stop prefers the running `latestTurn` id when dispatching interrupt.
+- **Files:** `apps/web/src/session-logic.ts`, `apps/web/src/store.ts`, `apps/web/src/components/ChatView.tsx`, tests in `session-logic.test.ts` and `store.test.ts`
+
+## [2026-04-17] [Fix] Auto (manifest) model selection updates the composer again
+
+- **Root cause:** Choosing **Auto** stored `manifest` / `auto` on the composer draft, but when the manifest provider row was **disabled** in the server snapshot, `resolveComposerSelectedProvider` kept the locked thread provider. `deriveEffectiveComposerModelState` then read the draft using that provider key, so the picker never showed Auto. Separately, `resolveAppModelSelection` could fold manifest into another provider and resolve `"auto"` against the wrong model list.
+- **Fix:** Treat `draftActiveProvider === "manifest"` as authoritative for the composer, and resolve manifest models without mapping through `resolveSelectableProvider`.
+- **Files:** `apps/web/src/components/ChatView.logic.ts`, `apps/web/src/modelSelection.ts`, tests in `ChatView.logic.test.ts` and `modelSelection.test.ts`
+
+## [2026-04-17] [Fix] ChatView restores missing active-agent status import
+
+- **Root cause:** `apps/web/src/components/ChatView.tsx` called `deriveActiveAgentStatus(...)` in a `useMemo`, but the helper was not imported from `apps/web/src/session-logic.ts`. That caused a runtime `ReferenceError` as soon as the chat view mounted.
+- **Fix:** Restored the import so the active agent status banner can compute normally again.
+- **Files:** `apps/web/src/components/ChatView.tsx`
+
+## [2026-04-17] [UX] Humanize chat tool-call entries with clean/raw toggle
+
+- **Chat timeline:** Added `humanizeToolDetail` so work-log tool calls render readable summaries like file reads, greps, web lookups, and delegated agent work instead of raw JSON by default.
+- **Work log controls:** Added a per-header `Raw` / `Clean` toggle that switches the shared `toolCallDisplayStyle` setting in place.
+- **Settings:** Added an Appearance toggle for clean tool-call display so users can choose readable summaries or verbose raw payloads as their default.
+- **Path display:** File-related work-log rows now relativize workspace paths instead of showing absolute paths when possible.
+- **Tests:** Added dedicated coverage for tool-detail humanization, malformed payload fallback, truncation, and path relativization.
+- **Files:** `apps/web/src/components/chat/humanizeToolDetail.ts`, `apps/web/src/components/chat/humanizeToolDetail.test.ts`, `apps/web/src/components/chat/WorkEntryRow.tsx`, `apps/web/src/components/chat/MessagesTimeline.tsx`, `apps/web/src/components/ChatView.tsx`, `apps/web/src/components/settings/SettingsPanels.tsx`
+
+## [2026-04-17] [Chore] Tests, contracts, desktop build script, and Codex env action
+
+- **Session tests:** `deriveActiveAgentStatus` quiet/stalled examples now use `it(...)` titles that match the real elapsed times (20s and 50s).
+- **Contracts:** Removed the runtime `message` getter from `PromptImprovementError`; the web prompt improver reads `detail` via `Schema.is(PromptImprovementError)`.
+- **Desktop artifact script:** Bun store traversal wraps filesystem calls in `try/catch` (warn and continue); scoped package paths under the store use `@scope/name` from the first two path segments.
+- **Codex environment:** The action that runs `bun run dist:desktop:dmg` is labeled **Build DMG** with a **package** icon.
+- **Note:** `ChatHeader` / `PopoutChatHeader` no longer contain `executionStatusTone` UI (badge removed earlier); `WsPromptImproveRpc` is already listed in `WsRpcGroup.make()` after `WsServerTranscribeAudioRpc`.
+- **Files:** `apps/web/src/session-logic.test.ts`, `apps/web/src/hooks/usePromptImprover.ts`, `packages/contracts/src/promptImprovement.ts`, `scripts/build-desktop-artifact.ts`, `.codex/environments/environment.toml`
+
+## [2026-04-17] [Chore] Onboarding: remove Features step; confirm provider-level import already in place
+
+- **Step numbering:** `FeatureTourStep` was planned as step 4 in a 5-step flow but was never integrated into `OnboardingSheet.tsx`. The flow remains 4 steps: Providers → Mobile → Git → Import.
+- **Dead code:** `FeatureTourStep.tsx` is no longer wired to any route — delete manually or it will be cleaned on the next pass.
+- **Comments fixed:** `useOnboarding.ts` and `ImportChatsFlow.tsx` header comments updated from "5-step / step 5 / select projects" to "4-step / step 4 / select providers".
+- **Import step:** Already implements provider-level selection (`groupByProvider`, per-provider checkboxes, total thread count badge, "All"/"None" bulk controls). Removed unused `FolderIcon` import left over from an older per-project design.
+- **Files:** `apps/web/src/hooks/useOnboarding.ts`, `apps/web/src/components/onboarding/ImportChatsFlow.tsx`
+
+## [2026-04-17] [Fix] Prompt improvement no longer fails on Codex JSON schema validation
+
+- **Root cause:** The server asked Codex to return structured prompt-improvement JSON with optional top-level fields (`improvedPrompt`, `error`, `message`). Current Codex CLI structured-output validation rejects that schema before generation starts because every declared property must appear in the top-level `required` array.
+- **Fix:** Switched the raw prompt-improvement model output to a fully required shape: `kind`, `improvedPrompt`, and `message`. Updated both Codex and Claude text-generation adapters to branch on `kind`, and added a regression test that locks the emitted JSON schema to the required-key form.
+- **Files:** `apps/server/src/git/Prompts.ts`, `apps/server/src/git/Layers/CodexTextGeneration.ts`, `apps/server/src/git/Layers/ClaudeTextGeneration.ts`, `apps/server/src/git/Prompts.test.ts`
+
 ## [2026-04-13] [Fix] Chat turns now surface quiet/stalled execution and always expose stop
 
 - **Root cause:** The chat UI only knew whether a session was generically `running`; it did not distinguish between active visible progress, expected waiting, or silence after the provider/CLI stopped emitting events. That made long tool runs and broken streams look identical to users. The stop action also lived primarily in the composer footer, so it was not reliably visible in every layout.
-- **Fix:** Added client-side liveness classification from orchestration activity timestamps so running turns now surface as `working`, `waiting`, `quiet`, or `stalled`. The main header and popout header now show a persistent execution badge plus a stop button, keeping interruption available even when the composer controls are out of view.
+- **Fix:** Added client-side liveness classification from orchestration activity timestamps so running turns now surface as `working`, `waiting`, `quiet`, or `stalled`. Kept the execution badge in the main header and popout header, but left the red composer stop button as the single visible interrupt control.
 - **Files:** `apps/web/src/session-logic.ts`, `apps/web/src/session-logic.test.ts`, `apps/web/src/components/ChatView.tsx`, `apps/web/src/components/chat/ChatHeader.tsx`, `apps/web/src/components/chat/PopoutChatHeader.tsx`
 
 ## [2026-04-13] [Chore] Rebuilt prod/dev brand rasters from `assets/new` logos

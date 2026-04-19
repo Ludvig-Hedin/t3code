@@ -301,13 +301,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               {isGemini ? (
                 <>
                   <MenuDivider />
-                  <MenuItem onSelect={openCustomModelDialog}>Custom model...</MenuItem>
+                  <MenuItem onClick={openCustomModelDialog}>Custom model...</MenuItem>
                 </>
               ) : null}
               {props.lockedProvider !== "manifest" ? (
                 <>
                   <MenuDivider />
-                  <MenuItem key="manifest" onSelect={() => handleModelChange("manifest", "auto")}>
+                  <MenuItem key="manifest" onClick={() => handleModelChange("manifest", "auto")}>
                     <AutoIcon
                       aria-hidden="true"
                       className={cn(
@@ -334,13 +334,41 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 const liveProvider = props.providers
                   ? getProviderSnapshot(props.providers, option.value)
                   : undefined;
+                // Manifest "Auto" renders as a direct top-level item — always clickable
+                // regardless of provider status. Auto-routing will fail gracefully at
+                // runtime with a clear error if no connected provider is available.
+                // This keeps the unlocked path consistent with the locked-provider path
+                // (lines 307-328) where "Auto" is always selectable.
+                if (option.value === "manifest") {
+                  const isActive = props.provider === "manifest";
+                  return (
+                    <MenuItem
+                      key={option.value}
+                      onClick={() => handleModelChange("manifest", "auto")}
+                    >
+                      <OptionIcon
+                        aria-hidden="true"
+                        className={cn(
+                          "size-4 shrink-0",
+                          isActive ? "text-foreground/80" : "text-muted-foreground/85",
+                        )}
+                      />
+                      <span className={cn(isActive ? "font-medium" : undefined)}>
+                        {option.label}
+                      </span>
+                      {isActive && (
+                        <CheckIcon aria-hidden="true" className="ms-auto size-3.5 shrink-0" />
+                      )}
+                    </MenuItem>
+                  );
+                }
                 if (liveProvider && liveProvider.status !== "ready") {
                   // Ollama is a local server — show a direct download link rather than CLI install steps
                   if (option.value === "ollama") {
                     return (
                       <MenuItem
                         key={option.value}
-                        onSelect={() => {
+                        onClick={() => {
                           window.open("https://ollama.com/download", "_blank");
                         }}
                       >
@@ -367,7 +395,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     return (
                       <MenuItem
                         key={option.value}
-                        onSelect={() => {
+                        onClick={() => {
                           setSetupDialog({
                             providerId: option.value,
                             providerLabel: option.label,
@@ -396,7 +424,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     return (
                       <MenuItem
                         key={option.value}
-                        onSelect={() => {
+                        onClick={() => {
                           setSetupDialog({
                             providerId: option.value,
                             providerLabel: option.label,
@@ -442,32 +470,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     </MenuItem>
                   );
                 }
-                // Manifest "Auto" renders as a direct top-level item — no submenu needed
-                // because there is only one logical model ("auto"). One click selects it.
-                if (option.value === "manifest") {
-                  const isActive = props.provider === "manifest";
-                  return (
-                    <MenuItem
-                      key={option.value}
-                      onSelect={() => handleModelChange("manifest", "auto")}
-                    >
-                      <OptionIcon
-                        aria-hidden="true"
-                        className={cn(
-                          "size-4 shrink-0",
-                          isActive ? "text-foreground/80" : "text-muted-foreground/85",
-                        )}
-                      />
-                      <span className={cn(isActive ? "font-medium" : undefined)}>
-                        {option.label}
-                      </span>
-                      {isActive && (
-                        <CheckIcon aria-hidden="true" className="ms-auto size-3.5 shrink-0" />
-                      )}
-                    </MenuItem>
-                  );
-                }
-
                 // OpenCode gets a dedicated search bar so users can filter its large model list
                 if (option.value === "opencode") {
                   return (
@@ -561,7 +563,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                         {option.value === "gemini" ? (
                           <>
                             <MenuDivider />
-                            <MenuItem onSelect={openCustomModelDialog}>Custom model...</MenuItem>
+                            <MenuItem onClick={openCustomModelDialog}>Custom model...</MenuItem>
                           </>
                         ) : null}
                         {/* Ollama-specific actions: pull a new model or quit the local server */}
@@ -569,7 +571,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                           <>
                             <MenuDivider />
                             <MenuItem
-                              onSelect={() => {
+                              onClick={() => {
                                 setIsPullModelDialogOpen(true);
                                 setIsMenuOpen(false);
                               }}
@@ -578,7 +580,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                             </MenuItem>
                             {props.onOllamaQuitServer ? (
                               <MenuItem
-                                onSelect={() => {
+                                onClick={() => {
                                   props.onOllamaQuitServer?.();
                                   setIsMenuOpen(false);
                                 }}

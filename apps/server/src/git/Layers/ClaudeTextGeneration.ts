@@ -358,20 +358,17 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
       modelSelection: input.modelSelection,
     });
 
-    if (
-      typeof generated.improvedPrompt === "string" &&
-      generated.improvedPrompt.trim().length > 0
-    ) {
-      return {
-        kind: "improved",
-        improvedPrompt: generated.improvedPrompt.trim(),
-      } satisfies PromptImprovementGenerationResult;
-    }
-
-    if (generated.error === "too_vague") {
+    if (generated.kind === "improved") {
+      if (generated.improvedPrompt.trim().length > 0) {
+        return {
+          kind: "improved",
+          improvedPrompt: generated.improvedPrompt.trim(),
+        } satisfies PromptImprovementGenerationResult;
+      }
+    } else {
       return {
         kind: "too_vague",
-        message: generated.message?.trim() || "Prompt is too vague to improve meaningfully.",
+        message: generated.message.trim() || "Prompt is too vague to improve meaningfully.",
       } satisfies PromptImprovementGenerationResult;
     }
 

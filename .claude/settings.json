@@ -10,6 +10,16 @@
             "statusMessage": "Showing diff…"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/humanize-bash.py",
+            "statusMessage": "Translating command…"
+          }
+        ]
       }
     ],
     "SessionStart": [

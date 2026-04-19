@@ -605,6 +605,49 @@ describe("incremental orchestration updates", () => {
     });
   });
 
+  it("applies interrupt when latestTurn lags behind session.activeTurnId", () => {
+    const previousTurnId = TurnId.makeUnsafe("turn-1");
+    const activeTurnId = TurnId.makeUnsafe("turn-2");
+    const state = makeState(
+      makeThread({
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          providerName: "codex",
+          runtimeMode: "full-access",
+          provider: "codex",
+          status: "running",
+          orchestrationStatus: "running",
+          activeTurnId,
+          createdAt: "2026-02-27T00:00:00.000Z",
+          updatedAt: "2026-02-27T00:00:00.000Z",
+          lastError: null,
+        },
+        latestTurn: {
+          turnId: previousTurnId,
+          state: "completed",
+          requestedAt: "2026-02-27T00:00:00.000Z",
+          startedAt: "2026-02-27T00:00:00.000Z",
+          completedAt: "2026-02-27T00:00:01.000Z",
+          assistantMessageId: null,
+        },
+      }),
+    );
+
+    const next = applyOrchestrationEvent(
+      state,
+      makeEvent("thread.turn-interrupt-requested", {
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        turnId: activeTurnId,
+        createdAt: "2026-02-27T00:00:02.000Z",
+      }),
+    );
+
+    expect(next.threads[0]?.latestTurn).toMatchObject({
+      turnId: activeTurnId,
+      state: "interrupted",
+    });
+  });
+
   it("does not regress latestTurn when an older turn diff completes late", () => {
     const state = makeState(
       makeThread({

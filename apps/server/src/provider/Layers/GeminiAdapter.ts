@@ -39,6 +39,272 @@ interface GeminiSessionState {
 const PROVIDER = "gemini" as const satisfies ProviderKind;
 const GEMINI_AUTO_ACCEPT_PROMPT_INPUT = `${"y\n".repeat(32)}`;
 
+interface GeminiStreamState {
+  buffer: string;
+  assistantResponse: string;
+  sawStructuredOutput: boolean;
+  errorMessage?: string;
+  usage?: Record<string, unknown>;
+  modelUsage?: Record<string, unknown>;
+  toolNames: Map<string, string>;
+}
+
+interface GeminiStreamConsumeContext {
+  readonly threadId: ThreadId;
+  readonly turnId: TurnId;
+  readonly emitEvent: (event: ProviderRuntimeEvent) => void;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asNonNegativeInt(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.floor(value);
+}
+
+function summarizeGeminiDetail(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    const json = JSON.stringify(value);
+    return json.length > 400 ? `${json.slice(0, 397)}...` : json;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildGeminiUsageSnapshot(
+  stats: Record<string, unknown>,
+): { usage: Record<string, unknown>; modelUsage?: Record<string, unknown> } | undefined {
+  const usedTokens = asNonNegativeInt(stats.total_tokens);
+  if (usedTokens === undefined) {
+    return undefined;
+  }
+
+  const inputTokens = asNonNegativeInt(stats.input_tokens);
+  const cachedInputTokens = asNonNegativeInt(stats.cached);
+  const outputTokens = asNonNegativeInt(stats.output_tokens);
+  const toolUses = asNonNegativeInt(stats.tool_calls);
+  const durationMs = asNonNegativeInt(stats.duration_ms);
+  const modelUsage = asRecord(stats.models);
+
+  return {
+    usage: {
+      usedTokens,
+      totalProcessedTokens: usedTokens,
+      ...(inputTokens !== undefined ? { inputTokens, lastInputTokens: inputTokens } : {}),
+      ...(cachedInputTokens !== undefined
+        ? { cachedInputTokens, lastCachedInputTokens: cachedInputTokens }
+        : {}),
+      ...(outputTokens !== undefined ? { outputTokens, lastOutputTokens: outputTokens } : {}),
+      lastUsedTokens: usedTokens,
+      ...(toolUses !== undefined ? { toolUses } : {}),
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    },
+    ...(modelUsage ? { modelUsage } : {}),
+  };
+}
+
+export function createGeminiStreamState(): GeminiStreamState {
+  return {
+    buffer: "",
+    assistantResponse: "",
+    sawStructuredOutput: false,
+    toolNames: new Map(),
+  };
+}
+
+function processGeminiStreamLine(
+  line: string,
+  state: GeminiStreamState,
+  context: GeminiStreamConsumeContext,
+): void {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) {
+    return;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return;
+  }
+
+  const payload = asRecord(parsed);
+  if (!payload) {
+    return;
+  }
+  state.sawStructuredOutput = true;
+
+  const eventType = asString(payload.type);
+  if (!eventType) {
+    return;
+  }
+
+  switch (eventType) {
+    case "message": {
+      if (payload.role !== "assistant") {
+        return;
+      }
+      const content = asString(payload.content) ?? "";
+      if (content.length === 0) {
+        return;
+      }
+      const delta =
+        payload.delta === true
+          ? content
+          : content.startsWith(state.assistantResponse)
+            ? content.slice(state.assistantResponse.length)
+            : content;
+      if (delta.length === 0) {
+        return;
+      }
+      state.assistantResponse += delta;
+      context.emitEvent(
+        makeThreadEvent(
+          "content.delta",
+          context.threadId,
+          {
+            streamKind: "assistant_text",
+            delta,
+          },
+          context.turnId,
+        ),
+      );
+      return;
+    }
+
+    case "tool_use": {
+      const toolId = asString(payload.tool_id);
+      const toolName = asString(payload.tool_name) ?? "Gemini tool";
+      if (!toolId) {
+        return;
+      }
+      state.toolNames.set(toolId, toolName);
+      context.emitEvent(
+        makeThreadEvent(
+          "item.started",
+          context.threadId,
+          {
+            itemType: "dynamic_tool_call",
+            status: "inProgress",
+            title: toolName,
+            ...(summarizeGeminiDetail(payload.parameters)
+              ? { detail: summarizeGeminiDetail(payload.parameters) }
+              : {}),
+            data: payload,
+          },
+          context.turnId,
+        ),
+      );
+      return;
+    }
+
+    case "tool_result": {
+      const toolId = asString(payload.tool_id);
+      if (!toolId) {
+        return;
+      }
+      const status = asString(payload.status);
+      context.emitEvent(
+        makeThreadEvent(
+          "item.completed",
+          context.threadId,
+          {
+            itemType: "dynamic_tool_call",
+            status: status === "success" ? "completed" : "failed",
+            title: state.toolNames.get(toolId) ?? "Gemini tool",
+            ...(status && status !== "success" ? { detail: status } : {}),
+            data: payload,
+          },
+          context.turnId,
+        ),
+      );
+      return;
+    }
+
+    case "result": {
+      const stats = asRecord(payload.stats);
+      if (stats) {
+        const usageSnapshot = buildGeminiUsageSnapshot(stats);
+        if (usageSnapshot) {
+          state.usage = usageSnapshot.usage;
+          state.modelUsage = usageSnapshot.modelUsage;
+          context.emitEvent(
+            makeThreadEvent("thread.token-usage.updated", context.threadId, {
+              usage: usageSnapshot.usage,
+            }),
+          );
+        }
+      }
+      if (payload.status !== "success") {
+        state.errorMessage = asString(payload.status) ?? "Gemini CLI reported a failed result.";
+      }
+      return;
+    }
+
+    case "error": {
+      const message =
+        asString(payload.message) ??
+        summarizeGeminiDetail(payload.error) ??
+        "Gemini CLI reported an error.";
+      state.errorMessage = message;
+      context.emitEvent(
+        makeThreadEvent("runtime.error", context.threadId, {
+          message,
+          class: "provider_error",
+          detail: payload,
+        }),
+      );
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+export function consumeGeminiStreamText(
+  chunk: string,
+  state: GeminiStreamState,
+  context: GeminiStreamConsumeContext,
+): void {
+  state.buffer += chunk;
+  const lines = state.buffer.split(/\r?\n/);
+  state.buffer = lines.pop() ?? "";
+
+  for (const line of lines) {
+    processGeminiStreamLine(line, state, context);
+  }
+}
+
+export function flushGeminiStreamText(
+  state: GeminiStreamState,
+  context: GeminiStreamConsumeContext,
+): void {
+  if (state.buffer.trim().length === 0) {
+    state.buffer = "";
+    return;
+  }
+  processGeminiStreamLine(state.buffer, state, context);
+  state.buffer = "";
+}
+
 /**
  * SIGTERM a child process handle, silently ignoring errors in case it has
  * already exited. Defined as a plain function (not inside an Effect.gen) to
@@ -256,6 +522,10 @@ export const GeminiAdapterLive = Layer.effect(
           ),
         );
 
+        const emitEventSync = (event: ProviderRuntimeEvent): void => {
+          Effect.runSync(emitEvent(event));
+        };
+        const streamState = createGeminiStreamState();
         const execution = yield* Effect.promise(() =>
           runProcess(
             "gemini",
@@ -264,9 +534,9 @@ export const GeminiAdapterLive = Layer.effect(
               prompt,
               "--model",
               model,
-              // Use text format: simpler to parse, avoids JSON schema drift between CLI versions
+              // Use Gemini's JSONL stream so Bird Code can surface live text and tool activity.
               "--output-format",
-              "text",
+              "stream-json",
               // Auto-approve all tool actions — without this the CLI hangs waiting for
               // interactive approval that can never arrive (stdin is closed by processRunner)
               "--yolo",
@@ -282,23 +552,39 @@ export const GeminiAdapterLive = Layer.effect(
               onSpawn: (child) => {
                 activeProcessHandles.set(turnId, child);
               },
+              onStdoutChunk: (chunk) => {
+                consumeGeminiStreamText(chunk, streamState, {
+                  threadId: input.threadId,
+                  turnId,
+                  emitEvent: emitEventSync,
+                });
+              },
             },
           ),
         );
         // Process has exited — remove the handle regardless of outcome
         activeProcessHandles.delete(turnId);
+        flushGeminiStreamText(streamState, {
+          threadId: input.threadId,
+          turnId,
+          emitEvent: emitEventSync,
+        });
 
         const interrupted = yield* Ref.get(sessionsRef).pipe(
           Effect.map(
             (sessions) => sessions.get(input.threadId)?.interruptedTurns.has(turnId) ?? false,
           ),
         );
-        const parsed = yield* Effect.promise(() => readCliResponse(execution.stdout));
+        const parsed = streamState.sawStructuredOutput
+          ? { response: streamState.assistantResponse, error: streamState.errorMessage }
+          : yield* Effect.promise(() => readCliResponse(execution.stdout));
         const response = parsed.response.trim();
+        const stderrMessage = execution.stderr.trim();
+        const errorMessage = parsed.error ?? (stderrMessage.length > 0 ? stderrMessage : undefined);
         const turnState: GeminiTurnState =
           interrupted || execution.signal !== null
             ? "interrupted"
-            : execution.code === 0 && !parsed.error
+            : execution.code === 0 && !errorMessage
               ? "completed"
               : "failed";
 
@@ -314,28 +600,16 @@ export const GeminiAdapterLive = Layer.effect(
             ),
           );
         } else {
-          if (response.length > 0) {
-            yield* emitEvent(
-              makeThreadEvent(
-                "content.delta",
-                input.threadId,
-                {
-                  streamKind: "assistant_text",
-                  delta: response,
-                },
-                turnId,
-              ),
-            );
-          }
+          // content.delta is now emitted live via stdout stream
           yield* emitEvent(
             makeThreadEvent(
               "turn.completed",
               input.threadId,
               {
                 state: turnState,
-                ...(execution.code !== 0
-                  ? { errorMessage: parsed.error ?? execution.stderr.trim() }
-                  : {}),
+                ...(streamState.usage ? { usage: streamState.usage } : {}),
+                ...(streamState.modelUsage ? { modelUsage: streamState.modelUsage } : {}),
+                ...(turnState === "failed" && errorMessage ? { errorMessage } : {}),
               },
               turnId,
             ),

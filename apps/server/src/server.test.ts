@@ -32,6 +32,12 @@ import { deriveServerPaths, ServerConfig } from "./config.ts";
 import { makeRoutesLayer } from "./server.ts";
 import { resolveAttachmentRelativePath } from "./attachmentPaths.ts";
 import {
+  A2aAgentCardService,
+  type A2aAgentCardServiceShape,
+} from "./a2a/Services/A2aAgentCardService.ts";
+import { A2aClientService, type A2aClientServiceShape } from "./a2a/Services/A2aClientService.ts";
+import { A2aTaskService, type A2aTaskServiceShape } from "./a2a/Services/A2aTaskService.ts";
+import {
   CheckpointDiffQuery,
   type CheckpointDiffQueryShape,
 } from "./checkpointing/Services/CheckpointDiffQuery.ts";
@@ -153,6 +159,9 @@ const buildAppUnderTest = (options?: {
     serverLifecycleEvents?: Partial<ServerLifecycleEventsShape>;
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     providerService?: Partial<ProviderServiceShape>;
+    a2aAgentCardService?: Partial<A2aAgentCardServiceShape>;
+    a2aTaskService?: Partial<A2aTaskServiceShape>;
+    a2aClientService?: Partial<A2aClientServiceShape>;
   };
 }) =>
   Effect.gen(function* () {
@@ -191,167 +200,203 @@ const buildAppUnderTest = (options?: {
     const appLayer = HttpRouter.serve(makeRoutesLayer, {
       disableListenLog: true,
       disableLogger: true,
-    }).pipe(
-      Layer.provide(
-        Layer.mock(Keybindings)({
-          streamChanges: Stream.empty,
-          ...options?.layers?.keybindings,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ProviderRegistry)({
-          getProviders: Effect.succeed([]),
-          refresh: () => Effect.succeed([]),
-          streamChanges: Stream.empty,
-          ...options?.layers?.providerRegistry,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ServerSettingsService)({
-          start: Effect.void,
-          ready: Effect.void,
-          getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
-          updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
-          streamChanges: Stream.empty,
-          ...options?.layers?.serverSettings,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(Open)({
-          ...options?.layers?.open,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(GitCore)({
-          ...options?.layers?.gitCore,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(GitManager)({
-          ...options?.layers?.gitManager,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ProjectSetupScriptRunner)({
-          runForThread: () => Effect.succeed({ status: "no-script" as const }),
-          ...options?.layers?.projectSetupScriptRunner,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(TerminalManager)({
-          ...options?.layers?.terminalManager,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(OrchestrationEngineService)({
-          getReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
-          readEvents: () => Stream.empty,
-          dispatch: () => Effect.succeed({ sequence: 0 }),
-          streamDomainEvents: Stream.empty,
-          ...options?.layers?.orchestrationEngine,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ProjectionSnapshotQuery)({
-          getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
-          ...options?.layers?.projectionSnapshotQuery,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(CheckpointDiffQuery)({
-          getTurnDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
-            }),
-          getFullThreadDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
-            }),
-          ...options?.layers?.checkpointDiffQuery,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ServerLifecycleEvents)({
-          publish: (event) => Effect.succeed({ ...(event as any), sequence: 1 }),
-          snapshot: Effect.succeed({ sequence: 0, events: [] }),
-          stream: Stream.empty,
-          ...options?.layers?.serverLifecycleEvents,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ServerRuntimeStartup)({
-          awaitCommandReady: Effect.void,
-          markHttpListening: Effect.void,
-          enqueueCommand: (effect) => effect,
-          ...options?.layers?.serverRuntimeStartup,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ProviderService)({
-          startSession: () => Effect.die(new Error("not implemented in test")),
-          sendTurn: () => Effect.die(new Error("not implemented in test")),
-          interruptTurn: () => Effect.void,
-          respondToRequest: () => Effect.void,
-          respondToUserInput: () => Effect.void,
-          stopSession: () => Effect.void,
-          listSessions: () => Effect.succeed([]),
-          getCapabilities: () => Effect.die(new Error("not implemented in test")),
-          rollbackConversation: () => Effect.void,
-          getRateLimits: () => Effect.succeed([]),
-          refreshRateLimits: () => Effect.void,
-          streamEvents: Stream.empty,
-          ...options?.layers?.providerService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(TranscriptionService)({
-          transcribeAudio: () =>
-            Effect.fail(
-              new TranscriptionError({
-                code: "unavailable",
-                message: "Transcription is not configured in tests.",
+    })
+      .pipe(
+        Layer.provide(
+          Layer.succeed(A2aAgentCardService, {
+            list: () => Effect.succeed([]),
+            get: vi.fn(),
+            register: vi.fn(),
+            remove: vi.fn(),
+            discover: vi.fn(),
+            getOwnCard: vi.fn(),
+            ...options?.layers?.a2aAgentCardService,
+          } satisfies A2aAgentCardServiceShape),
+        ),
+        Layer.provide(
+          Layer.succeed(A2aTaskService, {
+            handleInboundMessage: vi.fn(),
+            getTask: vi.fn(),
+            listTasks: () => Effect.succeed([]),
+            cancelTask: vi.fn(),
+            streamEvents: Stream.empty,
+            ...options?.layers?.a2aTaskService,
+          } satisfies A2aTaskServiceShape),
+        ),
+        Layer.provide(
+          Layer.succeed(A2aClientService, {
+            discover: vi.fn(),
+            sendMessage: vi.fn(),
+            sendMessageStream: () => Stream.empty,
+            getTask: vi.fn(),
+            cancelTask: vi.fn(),
+            ...options?.layers?.a2aClientService,
+          } satisfies A2aClientServiceShape),
+        ),
+        Layer.provide(
+          Layer.mock(Keybindings)({
+            streamChanges: Stream.empty,
+            ...options?.layers?.keybindings,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ProviderRegistry)({
+            getProviders: Effect.succeed([]),
+            refresh: () => Effect.succeed([]),
+            streamChanges: Stream.empty,
+            ...options?.layers?.providerRegistry,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ServerSettingsService)({
+            start: Effect.void,
+            ready: Effect.void,
+            getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+            updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
+            streamChanges: Stream.empty,
+            ...options?.layers?.serverSettings,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(Open)({
+            ...options?.layers?.open,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(GitCore)({
+            ...options?.layers?.gitCore,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(GitManager)({
+            ...options?.layers?.gitManager,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ProjectSetupScriptRunner)({
+            runForThread: () => Effect.succeed({ status: "no-script" as const }),
+            ...options?.layers?.projectSetupScriptRunner,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(TerminalManager)({
+            ...options?.layers?.terminalManager,
+          }),
+        ),
+      )
+      .pipe(
+        Layer.provide(
+          Layer.mock(OrchestrationEngineService)({
+            getReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
+            readEvents: () => Stream.empty,
+            dispatch: () => Effect.succeed({ sequence: 0 }),
+            streamDomainEvents: Stream.empty,
+            ...options?.layers?.orchestrationEngine,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ProjectionSnapshotQuery)({
+            getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
+            ...options?.layers?.projectionSnapshotQuery,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(CheckpointDiffQuery)({
+            getTurnDiff: () =>
+              Effect.succeed({
+                threadId: defaultThreadId,
+                fromTurnCount: 0,
+                toTurnCount: 0,
+                diff: "",
               }),
-            ),
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(SkillService)({
-          list: Effect.succeed([]),
-          save: () => Effect.die(new Error("not implemented in test")),
-          remove: () => Effect.die(new Error("not implemented in test")),
-          generate: () => Effect.die(new Error("not implemented in test")),
-        }),
-      ),
-      Layer.provide(
-        // Mem0Service is no-op in tests — no API key is provided
-        Layer.mock(Mem0Service)({
-          defaultUserId: "test-user",
-          search: () => Effect.succeed([]),
-          add: () => Effect.void,
-        }),
-      ),
-      Layer.provide(
-        // PreviewServerManager is a no-op stub in tests — no dev servers are spawned
-        Layer.mock(PreviewServerManager)({
-          detectApps: () => Effect.succeed([]),
-          startApp: () => Effect.die(new Error("not implemented in test")),
-          stopApp: () => Effect.void,
-          getSession: () => null,
-          getSessions: () => [],
-          updateApp: () => Effect.die(new Error("not implemented in test")),
-          getApps: () => [],
-          streamEvents: () => Stream.empty,
-        }),
-      ),
-      Layer.provide(workspaceAndProjectServicesLayer),
-      Layer.provide(layerConfig),
-    );
+            getFullThreadDiff: () =>
+              Effect.succeed({
+                threadId: defaultThreadId,
+                fromTurnCount: 0,
+                toTurnCount: 0,
+                diff: "",
+              }),
+            ...options?.layers?.checkpointDiffQuery,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ServerLifecycleEvents)({
+            publish: (event) => Effect.succeed({ ...(event as any), sequence: 1 }),
+            snapshot: Effect.succeed({ sequence: 0, events: [] }),
+            stream: Stream.empty,
+            ...options?.layers?.serverLifecycleEvents,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ServerRuntimeStartup)({
+            awaitCommandReady: Effect.void,
+            markHttpListening: Effect.void,
+            enqueueCommand: (effect) => effect,
+            ...options?.layers?.serverRuntimeStartup,
+          }),
+        ),
+      )
+      .pipe(
+        Layer.provide(
+          Layer.mock(ProviderService)({
+            startSession: () => Effect.die(new Error("not implemented in test")),
+            sendTurn: () => Effect.die(new Error("not implemented in test")),
+            interruptTurn: () => Effect.void,
+            respondToRequest: () => Effect.void,
+            respondToUserInput: () => Effect.void,
+            stopSession: () => Effect.void,
+            listSessions: () => Effect.succeed([]),
+            getCapabilities: () => Effect.die(new Error("not implemented in test")),
+            rollbackConversation: () => Effect.void,
+            getRateLimits: () => Effect.succeed([]),
+            refreshRateLimits: () => Effect.void,
+            streamEvents: Stream.empty,
+            ...options?.layers?.providerService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(TranscriptionService)({
+            transcribeAudio: () =>
+              Effect.fail(
+                new TranscriptionError({
+                  code: "unavailable",
+                  message: "Transcription is not configured in tests.",
+                }),
+              ),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(SkillService)({
+            list: Effect.succeed([]),
+            save: () => Effect.die(new Error("not implemented in test")),
+            remove: () => Effect.die(new Error("not implemented in test")),
+            generate: () => Effect.die(new Error("not implemented in test")),
+          }),
+        ),
+        Layer.provide(
+          // Mem0Service is no-op in tests — no API key is provided
+          Layer.mock(Mem0Service)({
+            defaultUserId: "test-user",
+            search: () => Effect.succeed([]),
+            add: () => Effect.void,
+          }),
+        ),
+        Layer.provide(
+          // PreviewServerManager is a no-op stub in tests — no dev servers are spawned
+          Layer.mock(PreviewServerManager)({
+            detectApps: () => Effect.succeed([]),
+            startApp: () => Effect.die(new Error("not implemented in test")),
+            stopApp: () => Effect.void,
+            getSession: () => null,
+            getSessions: () => [],
+            updateApp: () => Effect.die(new Error("not implemented in test")),
+            getApps: () => [],
+            streamEvents: () => Stream.empty,
+          }),
+        ),
+        Layer.provide(workspaceAndProjectServicesLayer),
+        Layer.provide(layerConfig),
+      ) as Layer.Layer<never, never, never>;
 
     yield* Layer.build(appLayer);
     return config;

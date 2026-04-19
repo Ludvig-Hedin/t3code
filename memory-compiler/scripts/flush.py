@@ -16,6 +16,7 @@ import os
 os.environ["CLAUDE_INVOKED_BY"] = "memory_flush"
 
 import asyncio
+import hashlib
 import json
 import logging
 import sys
@@ -61,12 +62,39 @@ def _extract_subprocess_meta(exc: BaseException) -> dict:
     return out
 
 
+def _context_log_fingerprint(context: str) -> tuple[str, int]:
+    """SHA256 hex and byte length for logs without embedding raw conversation (PII/secrets)."""
+    raw = context.encode("utf-8", errors="replace")
+    return hashlib.sha256(raw).hexdigest(), len(raw)
+
+
+def _sanitize_paths_for_log(text: str) -> str:
+    """Strip machine-specific absolute paths from traceback/log text before persisting."""
+    if not text:
+        return text
+    # Replace repo root first so paths under $HOME/.../memory-compiler become <repo>/...
+    # (doing home-first would turn them into ~/... and leave the full tree after ~).
+    try:
+        text = text.replace(str(ROOT.resolve()), "<repo>")
+    except Exception:
+        pass
+    try:
+        home_resolved = str(Path.home().resolve())
+        text = text.replace(home_resolved, "~")
+        home_raw = str(Path.home())
+        if home_raw != home_resolved:
+            text = text.replace(home_raw, "~")
+    except Exception:
+        pass
+    return text
+
+
 def format_flush_error(exc: BaseException) -> str:
     """Rich FLUSH_ERROR line for daily logs and log file (timestamp + traceback + subprocess hints)."""
     ts = datetime.now(timezone.utc).isoformat()
     import traceback
 
-    tb = traceback.format_exc()
+    tb = _sanitize_paths_for_log(traceback.format_exc())
     meta = _extract_subprocess_meta(exc)
     meta_bits = ""
     if meta:
@@ -179,12 +207,15 @@ respond with exactly: FLUSH_OK
 
             err_line = format_flush_error(e)
             last_error = err_line
+            ctx_hash, ctx_len = _context_log_fingerprint(context)
             logging.error(
-                "Agent SDK error (attempt %d/%d): %s\n%s",
+                "Agent SDK error (attempt %d/%d): %s\ncontext_sha256=%s context_len=%d\n%s",
                 attempt,
                 _FLUSH_MAX_ATTEMPTS,
                 err_line,
-                traceback.format_exc(),
+                ctx_hash,
+                ctx_len,
+                _sanitize_paths_for_log(traceback.format_exc()),
             )
             if attempt < _FLUSH_MAX_ATTEMPTS:
                 delay = _FLUSH_BACKOFF_SEC[
@@ -194,6 +225,12 @@ respond with exactly: FLUSH_OK
                     logging.info("Flush retry in %ds", delay)
                     await asyncio.sleep(delay)
 
+    logging.critical(
+        "FLUSH_PERSISTENT_FAILURE: Exhausted %d flush attempts; operators were NOT notified "
+        "automatically — manual intervention may be required. Last error line: %s",
+        _FLUSH_MAX_ATTEMPTS,
+        last_error or "<none>",
+    )
     return last_error or "FLUSH_ERROR: unknown failure after retries"
 
 

@@ -169,6 +169,11 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
   const projectApps = new Map<string, PreviewApp[]>();
   // projectId -> manual overrides (appId -> partial PreviewApp patch)
   const manualOverrides = new Map<string, Map<string, Partial<PreviewApp>>>();
+  // Buffer recent stdout + stderr per session for error diagnostics.
+  // When a process exits with a non-zero code, the last captured lines are
+  // embedded in errorMessage so clients that missed the live stream (e.g. after
+  // a page refresh) still get actionable context.
+  const outputBuffers = new Map<string, string[]>();
   // Global broadcast PubSub — all subscribers receive every event and filter by projectId.
   // PubSub (unlike Queue) is a multi-consumer broadcast primitive, so two simultaneous
   // browser tabs each get the full event stream rather than splitting it.
@@ -421,6 +426,7 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
           if (existing) {
             tryKill(existing.process);
             runningSessions.delete(key);
+            outputBuffers.delete(key); // discard stale buffer from prior run
           }
         });
 
@@ -456,6 +462,11 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         const rl = readline.createInterface({ input: child.stdout! });
         rl.on("line", (line) => {
           emitEvent({ type: "log", appId, projectId: pid, line, stream: "stdout" });
+          // Buffer recent output so we can include it in errorMessage on crash
+          const buf = outputBuffers.get(key) ?? [];
+          buf.push(line);
+          if (buf.length > 50) buf.shift(); // keep last 50 lines
+          outputBuffers.set(key, buf);
           // Only detect port once (when port is still null)
           const current = runningSessions.get(key);
           if (current && current.session.port === null) {
@@ -470,22 +481,62 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         const rlErr = readline.createInterface({ input: child.stderr! });
         rlErr.on("line", (line) => {
           emitEvent({ type: "log", appId, projectId: pid, line, stream: "stderr" });
+          // Buffer recent stderr — errors almost always surface here
+          const buf = outputBuffers.get(key) ?? [];
+          buf.push(line);
+          if (buf.length > 50) buf.shift(); // keep last 50 lines
+          outputBuffers.set(key, buf);
         });
 
-        // Handle process spawn error (e.g. command not found)
+        // Handle process spawn error (e.g. command not found / ENOENT)
         child.on("error", (err) => {
           updateSessionStatus(key, { status: "error", errorMessage: err.message });
         });
 
-        // Handle process exit — mark as error unless already set to error
-        child.on("close", (code) => {
+        // Coordinate exit handling across three async events to guarantee the
+        // output buffer is fully populated before we read it.
+        //
+        // readline emits 'line' events up to its own 'close' event. In some
+        // Node.js versions the readline 'close' fires AFTER child.on('close'),
+        // meaning the buffer would be empty if we read it from child.on('close')
+        // directly. Waiting for all three events avoids this race.
+        let stdoutReadlineClosed = false;
+        let stderrReadlineClosed = false;
+        let childCloseCode: number | null | undefined = undefined; // undefined = not yet fired
+
+        const maybeEmitCrash = () => {
+          if (!stdoutReadlineClosed || !stderrReadlineClosed || childCloseCode === undefined)
+            return;
           const current = runningSessions.get(key);
           if (current && current.session.status !== "error") {
-            updateSessionStatus(key, {
-              status: "error",
-              errorMessage: `Process exited with code ${code ?? "unknown"}`,
-            });
+            const buf = outputBuffers.get(key) ?? [];
+            const recentOutput = buf
+              .slice(-20)
+              .filter((l) => l.trim().length > 0)
+              .join("\n");
+            const baseMessage = `Process exited with code ${childCloseCode ?? "unknown"}`;
+            const errorMessage =
+              recentOutput.length > 0
+                ? `${baseMessage}\n\nLast output:\n${recentOutput}`
+                : baseMessage;
+            updateSessionStatus(key, { status: "error", errorMessage });
+            outputBuffers.delete(key); // free memory after crash is captured
           }
+        };
+
+        child.on("close", (code) => {
+          childCloseCode = code;
+          maybeEmitCrash();
+        });
+
+        rl.on("close", () => {
+          stdoutReadlineClosed = true;
+          maybeEmitCrash();
+        });
+
+        rlErr.on("close", () => {
+          stderrReadlineClosed = true;
+          maybeEmitCrash();
         });
 
         // Emit initial "starting" status event
@@ -513,6 +564,7 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         killProcess(existing.process);
         updateSessionStatus(key, { status: "stopped", port: null });
         runningSessions.delete(key);
+        outputBuffers.delete(key); // clean up output buffer on explicit stop
       }),
 
     getSession: (projectId, appId) => {

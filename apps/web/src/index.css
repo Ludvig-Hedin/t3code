@@ -52,6 +52,12 @@
   }
 }
 
+/* Chat user bubbles: break long unbroken tokens (overflow-wrap:anywhere; Tailwind break-words uses break-word only). */
+.wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* Custom font size / family from user appearance settings */
 :root {
   font-size: var(--t3-ui-font-size, 14px);
@@ -71,7 +77,8 @@ samp {
 }
 
 /* Pointer cursor mode — applied via .pointer-cursors class on <html> */
-.pointer-cursors button,
+/* Sidebar resize rail uses cursor-col-resize / cursor-pointer from the component */
+.pointer-cursors button:not([data-slot="sidebar-rail"]),
 .pointer-cursors [role="button"],
 .pointer-cursors a,
 .pointer-cursors label,
@@ -376,8 +383,7 @@ label:has(> select#reasoning-effort) select {
   border: none;
   background: transparent;
   padding: 0;
-  line-height: 1.5;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
 }
 
 .chat-markdown .chat-markdown-codeblock {

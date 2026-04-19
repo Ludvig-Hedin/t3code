@@ -8,7 +8,7 @@
 
 **Architecture:**
 
-- **Word breaking**: Replace non-existent `wrap-break-word` utility with proper Tailwind `break-words` or add CSS class with `overflow-wrap: anywhere`.
+- **Word breaking**: Replace non-existent `wrap-break-word` with a custom `.wrap-anywhere` utility in `index.css` (`overflow-wrap: anywhere; word-break: break-word;`) so long unbroken tokens break as intended (Tailwind `break-words` alone does not set `overflow-wrap: anywhere`).
 - **Dark mode visibility**: Increase user message bubble background opacity in dark mode from 4% to 12-15% for better contrast while staying subtle.
 - **Image save/copy**: Add right-click context menu via `onContextMenu` handler, plus two action buttons (Copy, Save) in the modal footer. Use Clipboard API for copy and native download for save.
 
@@ -32,51 +32,21 @@
 
 - Modify: `apps/web/src/components/chat/MessagesTimeline.tsx:835-926` (UserMessageBody & related)
 
-**Context:** The `UserMessageBody` component renders user text with `wrap-break-word` class (line 883, 911, 922), but this class doesn't exist in Tailwind or custom CSS. Single words break mid-word when they exceed the bubble width. Need to ensure `overflow-wrap: anywhere` and `word-break: break-word` are applied.
+**Context:** The `UserMessageBody` component used `wrap-break-word`, which is not a Tailwind or project utility. We need `overflow-wrap: anywhere` and `word-break: break-word` so very long unbroken strings stay inside the bubble.
 
-**Solution:** Replace the non-existent `wrap-break-word` class with `break-words` (Tailwind's standard word-break utility).
+**Solution:** Add `.wrap-anywhere` in `apps/web/src/index.css` with `overflow-wrap: anywhere; word-break: break-word;`, then use the `wrap-anywhere` class on every `UserMessageBody` text wrapper (and remove `wrap-break-word`). Tailwind `break-words` maps to `overflow-wrap: break-word`, not `anywhere`, so the custom class is required for this behavior.
 
 - [ ] **Step 1: Locate the UserMessageBody component**
 
 Open `apps/web/src/components/chat/MessagesTimeline.tsx` and find the `UserMessageBody` component starting around line 835.
 
-- [ ] **Step 2: Replace wrap-break-word with break-words**
+- [ ] **Step 2: Add CSS and replace class names**
 
-In the `UserMessageBody` component, update all three occurrences of `wrap-break-word` to `break-words`:
-
-**Line 883 (first terminal context case):**
-
-```tsx
-// OLD
-<div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-normal text-foreground">
-
-// NEW
-<div className="break-words whitespace-pre-wrap font-mono text-sm leading-normal text-foreground">
-```
-
-**Line 911 (second terminal context case):**
-
-```tsx
-// OLD
-<div className="wrap-break-word whitespace-pre-wrap font-mono text-xs leading-normal text-foreground">
-
-// NEW
-<div className="break-words whitespace-pre-wrap font-mono text-xs leading-normal text-foreground">
-```
-
-**Line 922 (non-terminal context case):**
-
-```tsx
-// OLD
-<div className="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-normal text-foreground">
-
-// NEW
-<div className="break-words whitespace-pre-wrap font-mono text-xs leading-normal text-foreground">
-```
+Define `.wrap-anywhere` in `index.css`, then replace each `wrap-break-word` on user text containers with `wrap-anywhere` (three places in `UserMessageBody`).
 
 - [ ] **Step 3: Verify the changes**
 
-Open the Chat UI in a browser and send a single long word (e.g., "supercalifragilisticexpialidocious") as a user message. Verify it breaks at word boundaries, not mid-word.
+Open the Chat UI in a browser and send a single long word (e.g., "supercalifragilisticexpialidocious") as a user message. Verify it breaks mid-word to prevent overflow rather than letting the word extend past the bubble, and confirm the wrappers use the `wrap-anywhere` class (which applies `overflow-wrap: anywhere`).
 
 ---
 
@@ -96,10 +66,10 @@ Open the Chat UI in a browser and send a single long word (e.g., "supercalifragi
 Open `apps/web/src/index.css` and locate the dark mode theme section (around line 126-153). Find line 136:
 
 ```css
-// OLD
+/* OLD */
 --secondary: --alpha(var(--color-white) / 4%);
 
-// NEW
+/* NEW */
 --secondary: --alpha(var(--color-white) / 12%);
 ```
 
@@ -164,13 +134,55 @@ Before the JSX return statement in ChatView (around line 5466), add a handler fu
 ```tsx
 const handleCopyImage = async () => {
   if (!expandedImageItem) return;
+  const hasClipboardWrite = typeof navigator.clipboard?.write === "function";
+  const hasClipboardWriteText = typeof navigator.clipboard?.writeText === "function";
+  if (!window.isSecureContext || (!hasClipboardWrite && !hasClipboardWriteText)) {
+    toastManager.add({
+      type: "error",
+      title: "Clipboard not available",
+      description: "Copy needs a secure page and clipboard permission.",
+    });
+    return;
+  }
+  const copyUrlWithFeedback = async (description: string) => {
+    if (typeof navigator.clipboard?.writeText !== "function") {
+      toastManager.add({
+        type: "error",
+        title: "Could not copy",
+        description: "Clipboard does not support copying text on this page.",
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(expandedImageItem.src);
+      toastManager.add({ type: "info", title: "Image link copied", description });
+    } catch {
+      toastManager.add({
+        type: "error",
+        title: "Could not copy",
+        description: "Clipboard permission was denied.",
+      });
+    }
+  };
   try {
     const response = await fetch(expandedImageItem.src);
+    if (response.type === "opaque" || !response.ok) {
+      await copyUrlWithFeedback(
+        "Could not read the image bytes (cross-origin or network). Copied the image URL instead.",
+      );
+      return;
+    }
     const blob = await response.blob();
-    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-    // Optional: show toast notification
-  } catch (error) {
-    console.error("Failed to copy image:", error);
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+      toastManager.add({ type: "success", title: "Image copied to clipboard" });
+    } catch {
+      await copyUrlWithFeedback(
+        "Could not copy image data to the clipboard. Copied the image URL instead.",
+      );
+    }
+  } catch {
+    await copyUrlWithFeedback("Could not load the image. Copied the image URL instead.");
   }
 };
 ```
@@ -180,14 +192,41 @@ const handleCopyImage = async () => {
 Add a handler function to save the image locally:
 
 ```tsx
-const handleSaveImage = () => {
+const handleSaveImage = async () => {
   if (!expandedImageItem) return;
-  const link = document.createElement("a");
-  link.href = expandedImageItem.src;
-  link.download = expandedImageItem.name || "image";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const parsed = new URL(expandedImageItem.src, window.location.href);
+  const downloadName = expandedImageItem.name || "image";
+  if (parsed.origin === window.location.origin) {
+    const link = document.createElement("a");
+    link.href = expandedImageItem.src;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+  let objectUrl: string | undefined;
+  try {
+    const response = await fetch(expandedImageItem.src);
+    if (!response.ok) throw new Error("fetch failed");
+    const blob = await response.blob();
+    objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch {
+    toastManager.add({
+      type: "error",
+      title: "Could not save image",
+      description: "Cross-origin download blocked. Try opening the image in a new tab.",
+    });
+    window.open(expandedImageItem.src, "_blank", "noopener");
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
 };
 ```
 
@@ -237,7 +276,7 @@ Replace the image and filename display section (lines 5494-5516) with updated co
   <img
     src={expandedImageItem.src}
     alt={expandedImageItem.name}
-    className="max-h-[86vh] max-w-[92vw] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl flex-shrink"
+    className="max-h-[86vh] max-w-[92vw] shrink-0 select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
     draggable={false}
     onContextMenu={(e) => {
       // Allow native browser context menu with "Save image" and "Copy image"
@@ -310,4 +349,4 @@ If the app supports image galleries (multiple images), verify the Copy and Save 
 - [x] **No placeholders:** All code blocks are complete with exact class names, function signatures, and implementation details.
 - [x] **Type consistency:** Function names (`handleCopyImage`, `handleSaveImage`) and UI pattern (Button with icons) match existing codebase conventions.
 - [x] **Icon availability:** `CopyIcon` and `DownloadIcon` are standard Lucide React icons, confirmed used elsewhere in codebase.
-- [x] **No breaking changes:** All modifications are additive or replacements of non-functional code (`wrap-break-word` class that wasn't working).
+- [x] **No breaking changes:** All modifications are additive or replacements of non-functional code (`wrap-break-word` replaced by `.wrap-anywhere`).

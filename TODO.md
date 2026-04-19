@@ -13,6 +13,7 @@
 - [x] Import conversations: provider import scan + execute HTTP routes + setup guide button
 - [x] Import conversations HTTP calls now resolve the server URL explicitly, so onboarding and settings do not accidentally hit the Vite HTML fallback
 - [x] Setup guide moved to General settings tab
+- [x] Changed-files boxes now collapse by default, with a Display setting to opt back into auto-open
 - [x] iOS companion app (`apps/mobile`) with QR-first pairing, thread list, chat, diff review, approvals, device management
 - [x] Preview panel: tabbed side panel with live web preview and mobile webview relay
 - [x] Automations manager and Gemini rate limits

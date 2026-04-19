@@ -8,10 +8,10 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   EventId,
   MessageId,
-  ProjectId,
-  ProviderKind,
   ThreadId,
   ModelSelection,
+  NonA2aProviderKind,
+  ProjectId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
@@ -40,7 +40,7 @@ const PROJECT_ID = asProjectId("project-1");
 const THREAD_ID = ThreadId.makeUnsafe("thread-1");
 const FIXTURE_TURN_ID = "fixture-turn";
 const APPROVAL_REQUEST_ID = asApprovalRequestId("req-approval-1");
-type IntegrationProvider = ProviderKind;
+type IntegrationProvider = NonA2aProviderKind;
 
 function nowIso() {
   return new Date().toISOString();
@@ -107,7 +107,7 @@ function withRealCodexHarness<A, E>(
 const seedProjectAndThread = (harness: OrchestrationIntegrationHarness) =>
   Effect.gen(function* () {
     const createdAt = nowIso();
-    const provider = harness.adapterHarness?.provider ?? "codex";
+    const provider = (harness.adapterHarness?.provider ?? "codex") as IntegrationProvider;
     const defaultModel = DEFAULT_MODEL_BY_PROVIDER[provider];
 
     yield* harness.engine.dispatch({

@@ -5,7 +5,7 @@ tags: [zustand, react, performance, state-management]
 sources:
   - "daily/2026-04-12.md"
 created: 2026-04-12
-updated: 2026-04-12
+updated: 2026-04-13
 ---
 
 # Zustand Selector Reference Stability and Object.is Equality
@@ -82,6 +82,19 @@ Safe selector operations:
 - Accessing properties: `state.foo.bar`
 - Primitive returns: `state.count > 0`
 - Object literals created fresh: `{...state}` (considered safe because the reference instability happens before the store selector layer)
+
+### The `useShallow` Trap
+
+Zustand's `useShallow` wrapper performs shallow comparison instead of `Object.is`. However, combining `useShallow` with `.filter()` is a documented anti-pattern that still causes reference instability:
+
+```javascript
+// ❌ STILL WRONG - useShallow doesn't help with .filter()
+const activeProjects = useStore(useShallow((state) => state.projects.filter((p) => p.active)));
+```
+
+`useShallow` compares the _output_ of the selector shallowly, but `.filter()` creates a new array every time. Even shallow comparison of two different array references returns "not equal" because the outer reference is new. The `useShallow` wrapper is designed for selecting multiple properties as an object (`{a: state.a, b: state.b}`), not for stabilizing derived arrays.
+
+Additionally, combining `useShallow` + `.filter()` with `null → undefined` type coercion (from upstream data transformations) compounds the problem: the type change makes shallow comparison detect differences even when data is semantically identical.
 
 ## Debugging Infinite Re-render Loops
 

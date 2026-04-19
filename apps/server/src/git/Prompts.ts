@@ -213,9 +213,9 @@ export interface PromptImprovementPromptInput {
 
 /** Raw LLM output shape for prompt improvement. */
 export const PromptImprovementOutputSchema = Schema.Struct({
-  improvedPrompt: Schema.optional(Schema.String),
-  error: Schema.optional(Schema.String),
-  message: Schema.optional(Schema.String),
+  kind: Schema.Union([Schema.Literal("improved"), Schema.Literal("too_vague")]),
+  improvedPrompt: Schema.String,
+  message: Schema.String,
 });
 
 export function buildPromptImprovementPrompt(input: PromptImprovementPromptInput) {
@@ -243,8 +243,9 @@ export function buildPromptImprovementPrompt(input: PromptImprovementPromptInput
     "- Structure complex tasks with numbered steps when helpful.",
     "- Keep the improved prompt concise — do not pad it.",
     "- Write in the same natural voice as the original (imperative, first-person, etc.).",
-    '- If the prompt is too vague to improve meaningfully, return JSON: {"error":"too_vague","message":"<brief reason>"}',
-    '- Otherwise return JSON: {"improvedPrompt":"<rewritten prompt>"}',
+    "- Return JSON with exactly these keys: kind, improvedPrompt, message.",
+    '- If the prompt is too vague to improve meaningfully, return JSON: {"kind":"too_vague","improvedPrompt":"","message":"<brief reason>"}',
+    '- Otherwise return JSON: {"kind":"improved","improvedPrompt":"<rewritten prompt>","message":""}',
     instructionsSection,
     conversationSection,
   ]

@@ -4,7 +4,7 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-12"
+updated: "2026-04-18"
 ---
 
 # Build Log
@@ -109,6 +109,14 @@ updated: "2026-04-12"
 - Added entries: [[concepts/rpc-layer-expansion-pattern]], [[connections/git-operations-edge-cases]], [[connections/provider-config-extends-adapter]], [[connections/race-condition-and-detached-processes]]
 - Summary: Final completeness pass comparing canonical articles on disk against index entries. Found 4 articles that existed from prior compilation passes but were missed during the index consolidation at 23:00. Index now contains 23 concept articles and 9 connection articles for 2026-04-12 topics (plus 14 concepts and 5 connections from 2026-04-09). Total: 51 indexed articles. ~50 orphan duplicate files remain on disk in concepts/ and connections/ — recommend `lint.py` cleanup pass to remove files not referenced by index.
 
+## [2026-04-13T11:43:44-05:00] compile | daily/2026-04-09.md (no-op)
+
+- Source: daily/2026-04-09.md
+- Status: SKIPPED — already fully compiled on 2026-04-09 across 2 passes
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. All knowledge from both sessions (20:01 memory compiler integration, 22:17 A2A protocol integration) was already extracted into 14 concept articles and 5 connection articles during original compilation passes. Index entries verified present. No new knowledge to extract.
+
 ## [2026-04-12T20:49:00+02:00] compile | daily/2026-04-12.md (no-op)
 
 - Source: daily/2026-04-12.md
@@ -116,3 +124,101 @@ updated: "2026-04-12"
 - Articles created: (none)
 - Articles updated: (none)
 - Summary: Re-compilation triggered. All 12 substantive sessions from 2026-04-12 were already fully compiled across 8 prior passes. Two new entries found: (1) Session 20:37 — trivial, no knowledge. (2) Session 20:49 — incomplete voice transcription brainstorming for chat input; established project uses Lexical-based `ComposerPromptEditor` + Effect framework, but user has not yet answered first clarifying question (STT backend: local Whisper vs Apple Speech vs pluggable abstraction). No decisions, lessons, or patterns to extract until brainstorming progresses. Will compile when daily log gains substantive new sessions.
+
+## [2026-04-13T11:50:00+02:00] compile | daily/2026-04-12.md (no-op)
+
+- Source: daily/2026-04-12.md
+- Status: SKIPPED — already fully compiled (confirmed)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested via continued session. Verified against index.md (51 total entries: 23 concepts + 9 connections for 2026-04-12 topics) and log.md (8+ prior compilation passes plus 2 prior no-op confirmations). All substantive sessions remain fully covered. Voice transcription brainstorming (session 20:49) still incomplete — no new decisions or patterns to extract. Knowledge base is current for daily/2026-04-12.md.
+
+## [2026-04-13T18:00:00+02:00] cleanup | orphan deduplication
+
+- Source: knowledge/concepts/, knowledge/connections/, knowledge/index.md
+- Status: COMPLETE — orphan files removed
+- Articles created: (none)
+- Articles updated: (none)
+- Files deleted: 53 (42 orphan concepts + 11 orphan connections)
+- Summary: Removed 53 orphan duplicate article files left behind by 8+ overlapping compilation passes on daily/2026-04-12.md. These files were never referenced in index.md (the canonical index). After cleanup: 37 concept files and 14 connection files remain on disk, matching the 51 entries in the index exactly. Examples of duplicates removed: 7 variants of git-branch-resolution, 6 variants of zustand-selector-stability, 6 variants of react-hydration, 4 variants of process-serialization. No data was lost — each orphan was a near-duplicate of a canonical article already in the index.
+
+## [2026-04-13T18:30:00+02:00] compile | daily/2026-04-12.md (no-op)
+
+- Source: daily/2026-04-12.md
+- Status: SKIPPED — already fully compiled and deduplicated
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested in continued session. Verified against index.md (51 entries: 37 concepts + 14 connections across both daily logs) and log.md (8 compilation passes + 3 prior no-op confirmations + 1 orphan cleanup). All substantive sessions from 2026-04-12 are fully covered. Two uncompiled sessions remain ineligible: (1) Session 20:37 — trivial, no knowledge content. (2) Session 20:49 — voice transcription brainstorming still incomplete, no decisions or patterns to extract. Knowledge base is current.
+
+## [2026-04-17T12:21:26-05:00] compile | daily/2026-04-13.md
+
+- Source: daily/2026-04-13.md
+- Articles created: (none — articles were created by a prior partial compilation but never indexed)
+- Articles indexed: [[concepts/rendering-pipeline-specificity-ordering]], [[concepts/meta-provider-status-semantics]], [[concepts/dynamic-wizard-step-filtering]], [[concepts/tool-call-humanization-pattern]], [[concepts/effect-layer-composition-ordering]], [[concepts/null-undefined-type-coercion-bugs]], [[connections/silent-type-changes-cascade-failures]]
+- Articles updated: [[concepts/model-selection-ui-pattern]] (added daily/2026-04-13.md as source for manifest provider rendering order bug)
+- Duplicates identified (kept on disk, not indexed): conditional-check-ordering-render-pipelines.md, conditional-rendering-order-in-pipelines.md (dupes of rendering-pipeline-specificity-ordering); dynamic-wizard-step-navigation.md, wizard-step-filtering-navigation-sync.md (dupes of dynamic-wizard-step-filtering); tool-call-display-humanization.md (dupe of tool-call-humanization-pattern)
+- Summary: Daily log 2026-04-13 covered 3 substantive sessions: (1) Provider picker rendering order bug — manifest/auto provider intercepted by generic `status !== "ready"` guard before reaching specialized rendering; fix was reordering checks. (2) Onboarding wizard step-skipping — `shouldShowTeamStep` filtering desynchronized navigation index from step indicators. (3) Tool call humanization — transformed raw JSON tool calls into inline muted summaries with Lucide icons, toggleable via settings. All articles existed on disk from prior partial compilation but were never added to the index. This pass completes the indexing and adds 4 concept entries + 1 connection from 2026-04-13, plus 2 concepts + 1 connection from 2026-04-12 that were also unindexed. Total index: 58 entries (44 concepts + 14 connections → now 15 connections).
+
+## [2026-04-17T19:30:00+02:00] compile | daily/2026-04-17.md (no-op)
+
+- Source: daily/2026-04-17.md
+- Status: SKIPPED — insufficient knowledge content
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Daily log contains one trivial session: removing a status badge rendering block from ChatHeader.tsx. No new patterns, architectural decisions, debugging insights, or non-obvious relationships to extract. Two memory flushes returned FLUSH_OK. The optional dead-prop cleanup noted (executionStatusLabel/Detail/Tone props left wired but unused) is standard practice and does not warrant a wiki article.
+
+## [2026-04-17T21:00:00+02:00] compile | daily/2026-04-17.md (no-op, confirmed)
+
+- Source: daily/2026-04-17.md
+- Status: SKIPPED — confirmed insufficient knowledge content
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. Daily log 2026-04-17 contains only: (1) Two FLUSH_OK memory flushes with no content. (2) One trivial session removing a status badge rendering block from ChatHeader.tsx (lines 117-141 deleted, imports retained as still used elsewhere, dead prop wiring left intact). No concepts, patterns, debugging insights, connections, or architectural decisions warrant extraction. The knowledge base remains current at 58 indexed articles (44 concepts + 14 connections) across daily logs 2026-04-09, 2026-04-12, and 2026-04-13.
+
+## [2026-04-17T12:22:45-05:00] compile | daily/2026-04-13.md (supplementary)
+
+- Source: daily/2026-04-13.md
+- Articles created: [[connections/silent-rendering-bugs-from-conditional-pipelines]]
+- Index fixes: Changed canonical tool-call article reference from tool-call-humanization-pattern → tool-call-display-humanization; added new connection entry
+- Duplicates identified for cleanup (5 orphan files): conditional-check-ordering-render-pipelines, conditional-rendering-order-in-pipelines, dynamic-wizard-step-navigation, wizard-step-filtering-navigation-sync, tool-call-humanization-pattern
+- Summary: Supplementary pass on daily/2026-04-13.md following partial compilation at 2026-04-17T12:21:26. Created 1 new connection article linking the provider-picker rendering-order bug and the wizard step-filtering bug as instances of the same "silent conditional pipeline" pattern — both produce no errors but render wrong visual state due to evaluation ordering. Fixed index reference to use tool-call-display-humanization (more comprehensive article) as canonical instead of tool-call-humanization-pattern. Identified 5 orphan duplicate files for future lint cleanup. Total index: 59 entries (44 concepts + 15 connections).
+
+## [2026-04-17T21:30:00+02:00] compile | daily/2026-04-17.md (final no-op)
+
+- Source: daily/2026-04-17.md
+- Status: SKIPPED — no extractable knowledge (3rd confirmation)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Manual compilation pass requested. Daily log 2026-04-17 contains: (1) Two FLUSH_OK memory flushes. (2) One trivial session removing an execution status badge from ChatHeader.tsx (rendering block at lines 117-141 deleted; imports retained as used elsewhere; dead prop wiring left intact as harmless). No concepts, patterns, debugging insights, or connections warrant extraction. Knowledge base remains at 59 indexed articles (44 concepts + 15 connections) across daily logs 2026-04-09, 2026-04-12, and 2026-04-13.
+
+## [2026-04-18T11:50:04-05:00] compile | daily/2026-04-17.md
+
+- Source: daily/2026-04-17.md
+- Articles created: [[concepts/flush-pipeline-failure-modes]]
+- Articles updated: [[concepts/memory-compiler-three-stage-pipeline]] (added failure modes section and daily/2026-04-17.md as source)
+- Summary: Prior compilation passes (3 no-ops) only evaluated the two trivial sessions and FLUSH_OK entries. The full daily log contains ~20 FLUSH_ERROR entries from 19:53–21:14 showing the claude_agent_sdk query() function failing consecutively with "Command failed with exit code 1." This reveals operational resilience gaps in the flush pipeline: no exponential backoff, no circuit breaker, opaque error messages, and no failure-state tracking. Created one new concept article documenting the failure pattern and recommended improvements. Updated the pipeline article with a Failure Modes subsection. Total index: 60 entries (45 concepts + 15 connections).
+
+## [2026-04-18T11:53:33-05:00] compile | daily/2026-04-18.md
+
+- Source: daily/2026-04-18.md
+- Articles created: [[concepts/standalone-to-workspace-package-migration]], [[concepts/ai-context-content-prioritization]], [[concepts/feature-parity-side-by-side-verification]], [[concepts/project-instructions-ipc-pipeline]], [[connections/memory-compiler-tool-to-integration-evolution]]
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (added daily/2026-04-18.md as source; noted intermittent failures on 2026-04-18 suggesting transient root cause)
+- Summary: Daily log 2026-04-18 documented a comprehensive session refactoring the memory-compiler from a standalone CLI tool into a workspace package and integrating it with the t3code editor's AI context system. Key concepts extracted: (1) Standalone-to-workspace migration pattern — library-first API design, barrel exports, incremental restructuring with TypeCheck verification. (2) AI context content prioritization — what information is useful in system prompts (project identity > coding standards > architecture > file structure), auto-extraction from package.json and filesystem, noise filtering. (3) Feature parity side-by-side verification — running old and new implementations on same input catches gaps unit tests miss. (4) Project instructions IPC pipeline — compiled memory feeds into editor AI via settings → IPC → system prompt, auto-compiles on project open. Connection article links these four concepts as stages of tool maturity evolution: CLI → library → integration. Also updated flush-pipeline-failure-modes with 2026-04-18 intermittent errors (2 failures interspersed with successes, suggesting transient cause). Total index: 65 entries (49 concepts + 16 connections).
+
+## [2026-04-18T18:54:00+02:00] compile | daily/2026-04-18.md (canonical article consolidation)
+
+- Source: daily/2026-04-18.md
+- Articles created: [[concepts/standalone-to-workspace-package-refactoring]], [[concepts/feature-parity-verification-pattern]], [[concepts/project-instructions-injection-pipeline]], [[connections/memory-compiler-and-ai-context-pipeline]]
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (added 2026-04-18 intermittent failures section and source), [[concepts/memory-compiler-three-stage-pipeline]] (added package refactoring section, editor integration, and daily/2026-04-18.md source), [[concepts/ai-context-content-prioritization]] (added project-instructions-injection-pipeline to Related Concepts)
+- Index fixes: Corrected slug references from prior partial compilation (standalone-to-workspace-package-migration → standalone-to-workspace-package-refactoring, feature-parity-side-by-side-verification → feature-parity-verification-pattern, project-instructions-ipc-pipeline → project-instructions-injection-pipeline, memory-compiler-tool-to-integration-evolution → memory-compiler-and-ai-context-pipeline)
+- Orphans from prior compilation: standalone-to-workspace-package-migration.md, feature-parity-side-by-side-verification.md, project-instructions-ipc-pipeline.md, memory-compiler-tool-to-integration-evolution.md (may exist on disk from prior pass, recommend lint cleanup)
+- Summary: Canonical compilation of daily/2026-04-18.md replacing prior partial compilation's slug-mismatched articles. 4 new articles created with comprehensive content: (1) Standalone-to-workspace-package-refactoring — 8-step pattern for converting CLI tools to monorepo packages with programmatic APIs, tsx runtime switch, and phased migration. (2) Feature-parity-verification-pattern — side-by-side old/new comparison catches behavioral gaps that TypeScript compilation misses; multiple rounds typically needed. (3) Project-instructions-injection-pipeline — settings → IPC → AI chat → system prompt; memory compiler hooks into existing storage layer. (4) Connection linking compiler, content prioritization, and injection pipeline as interdependent parts of AI context system. 3 existing articles updated with 2026-04-18 content. Total index: 65 entries (49 concepts + 16 connections).
+
+## [2026-04-18T23:35:00+02:00] compile | daily/2026-04-18.md (no-op + orphan cleanup)
+
+- Source: daily/2026-04-18.md
+- Status: SKIPPED — already fully compiled across 2 prior passes (11:53:33 and 18:54:00)
+- Articles created: (none)
+- Articles updated: (none)
+- Orphan files replaced with redirect stubs (9 files): standalone-to-workspace-package-migration.md, feature-parity-side-by-side-verification.md, project-instructions-ipc-pipeline.md, memory-compiler-tool-to-integration-evolution.md, tool-call-humanization-pattern.md, conditional-check-ordering-render-pipelines.md, conditional-rendering-order-in-pipelines.md, dynamic-wizard-step-navigation.md, wizard-step-filtering-navigation-sync.md
+- Summary: Re-compilation requested. All knowledge from daily/2026-04-18.md was already extracted into 4 concept articles (standalone-to-workspace-package-refactoring, ai-context-content-prioritization, feature-parity-verification-pattern, project-instructions-injection-pipeline), 1 connection article (memory-compiler-and-ai-context-pipeline), and 2 article updates (flush-pipeline-failure-modes, memory-compiler-three-stage-pipeline) during prior passes. Maintenance: replaced 9 orphan duplicate files from prior compilation passes (4 from 2026-04-18 first pass with wrong slugs, 5 from 2026-04-13 compilation) with redirect stubs pointing to canonical articles. Total index: 65 entries (49 concepts + 16 connections), unchanged.

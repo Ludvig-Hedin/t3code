@@ -16,52 +16,213 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
+/** Allow only safe link targets: http(s), mailto, or scheme-less relative URLs. */
+function isSafeMarkdownHref(href: string): boolean {
+  const trimmed = href.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  if (trimmed.startsWith("//")) {
+    return false;
+  }
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(trimmed);
+  if (!schemeMatch) {
+    return true;
+  }
+  const scheme = schemeMatch[1]!.toLowerCase();
+  return scheme === "http" || scheme === "https" || scheme === "mailto";
+}
+
+/**
+ * Render inline markdown formatting: inline code, bold, italic, links.
+ *
+ * Operates on already-HTML-escaped text to prevent XSS while still allowing
+ * the safe inline tags we insert (<code>, <strong>, <em>, <a>).
+ * Processing order: inline code first (protects its contents from other rules).
+ */
+function renderInline(raw: string): string {
+  const renderInlineText = (value: string): string => {
+    const escaped = escapeHtml(value);
+
+    return (
+      escaped
+        // Bold: **text** or __text__
+        .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/__([^_\n]+)__/g, "<strong>$1</strong>")
+        // Italic: *text* (single star, not double)
+        .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+        // Links: [label](url) — label/href are HTML-escaped from the step above; validate href scheme
+        .replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, (fullMatch, label: string, href: string) => {
+          if (!isSafeMarkdownHref(href)) {
+            return fullMatch;
+          }
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        })
+    );
+  };
+
+  const parts: string[] = [];
+  let cursor = 0;
+  const codeSpanPattern = /`([^`\n]+)`/g;
+
+  for (const match of raw.matchAll(codeSpanPattern)) {
+    const matchIndex = match.index ?? 0;
+    if (matchIndex > cursor) {
+      parts.push(renderInlineText(raw.slice(cursor, matchIndex)));
+    }
+    parts.push(`<code>${escapeHtml(match[1] ?? "")}</code>`);
+    cursor = matchIndex + match[0].length;
+  }
+
+  if (cursor < raw.length) {
+    parts.push(renderInlineText(raw.slice(cursor)));
+  }
+
+  return parts.length > 0 ? parts.join("") : renderInlineText(raw);
+}
+
 function renderMarkdownToHtml(markdown: string): string {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const parts: string[] = [];
-  let inList = false;
 
-  const closeList = () => {
-    if (!inList) return;
+  let inUl = false; // inside <ul>
+  let inOl = false; // inside <ol>
+  let inCodeBlock = false; // inside fenced ``` block
+  let codeBlockLang = "";
+  const codeBlockLines: string[] = [];
+  let inBlockquote = false;
+  const blockquoteLines: string[] = [];
+
+  const closeUl = (): void => {
+    if (!inUl) return;
     parts.push("</ul>");
-    inList = false;
+    inUl = false;
+  };
+  const closeOl = (): void => {
+    if (!inOl) return;
+    parts.push("</ol>");
+    inOl = false;
+  };
+  const closeLists = (): void => {
+    closeUl();
+    closeOl();
+  };
+  const closeBlockquote = (): void => {
+    if (!inBlockquote) return;
+    const inner = blockquoteLines.map((l) => `<p>${renderInline(l)}</p>`).join("\n");
+    parts.push(`<blockquote>${inner}</blockquote>`);
+    blockquoteLines.length = 0;
+    inBlockquote = false;
   };
 
   for (const line of lines) {
     const trimmed = line.trimEnd();
-    if (trimmed.startsWith("# ")) {
-      closeList();
-      parts.push(`<h1>${escapeHtml(trimmed.slice(2).trim())}</h1>`);
+
+    // --- Fenced code blocks (``` lang) ---
+    if (trimmed.startsWith("```")) {
+      if (inCodeBlock) {
+        // Closing fence
+        const langClass = codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : "";
+        parts.push(`<pre><code${langClass}>${escapeHtml(codeBlockLines.join("\n"))}</code></pre>`);
+        codeBlockLines.length = 0;
+        codeBlockLang = "";
+        inCodeBlock = false;
+      } else {
+        // Opening fence — flush any open blocks first
+        closeLists();
+        closeBlockquote();
+        inCodeBlock = true;
+        codeBlockLang = trimmed.slice(3).trim();
+      }
       continue;
     }
-    if (trimmed.startsWith("## ")) {
-      closeList();
-      parts.push(`<h2>${escapeHtml(trimmed.slice(3).trim())}</h2>`);
+
+    if (inCodeBlock) {
+      codeBlockLines.push(line); // preserve original indentation inside code blocks
+      continue;
+    }
+
+    // --- Blockquote (> text) ---
+    if (trimmed.startsWith("> ")) {
+      closeLists();
+      inBlockquote = true;
+      blockquoteLines.push(trimmed.slice(2));
+      continue;
+    }
+    if (inBlockquote) {
+      closeBlockquote();
+    }
+
+    // --- Headings ---
+    if (trimmed.startsWith("#### ")) {
+      closeLists();
+      parts.push(`<h4>${renderInline(trimmed.slice(5).trim())}</h4>`);
       continue;
     }
     if (trimmed.startsWith("### ")) {
-      closeList();
-      parts.push(`<h3>${escapeHtml(trimmed.slice(4).trim())}</h3>`);
+      closeLists();
+      parts.push(`<h3>${renderInline(trimmed.slice(4).trim())}</h3>`);
       continue;
     }
-    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-      if (!inList) {
-        parts.push("<ul>");
-        inList = true;
-      }
-      parts.push(`<li>${escapeHtml(trimmed.slice(2).trim())}</li>`);
+    if (trimmed.startsWith("## ")) {
+      closeLists();
+      parts.push(`<h2>${renderInline(trimmed.slice(3).trim())}</h2>`);
+      continue;
+    }
+    if (trimmed.startsWith("# ")) {
+      closeLists();
+      parts.push(`<h1>${renderInline(trimmed.slice(2).trim())}</h1>`);
       continue;
     }
 
-    closeList();
+    // --- Horizontal rule (---, ***, ___) ---
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      closeLists();
+      parts.push("<hr />");
+      continue;
+    }
+
+    // --- Unordered list (- or *) ---
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      closeOl();
+      if (!inUl) {
+        parts.push("<ul>");
+        inUl = true;
+      }
+      parts.push(`<li>${renderInline(trimmed.slice(2).trim())}</li>`);
+      continue;
+    }
+
+    // --- Ordered list (1. item) ---
+    const olMatch = /^\d+\.\s+(.+)/.exec(trimmed);
+    if (olMatch) {
+      closeUl();
+      if (!inOl) {
+        parts.push("<ol>");
+        inOl = true;
+      }
+      parts.push(`<li>${renderInline(olMatch[1]!)}</li>`);
+      continue;
+    }
+
+    closeLists();
+
+    // --- Empty line → paragraph break ---
     if (trimmed.length === 0) {
       parts.push('<div class="spacer"></div>');
-    } else {
-      parts.push(`<p>${escapeHtml(trimmed)}</p>`);
+      continue;
     }
+
+    parts.push(`<p>${renderInline(trimmed)}</p>`);
   }
 
-  closeList();
+  // Close any blocks that were still open at end-of-file
+  closeLists();
+  closeBlockquote();
+  if (inCodeBlock && codeBlockLines.length > 0) {
+    const langClass = codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : "";
+    parts.push(`<pre><code${langClass}>${escapeHtml(codeBlockLines.join("\n"))}</code></pre>`);
+  }
 
   return `<!doctype html>
 <html lang="en">
@@ -74,15 +235,59 @@ function renderMarkdownToHtml(markdown: string): string {
       body {
         margin: 0;
         padding: 32px;
-        font: 16px/1.6 system-ui, sans-serif;
-        max-width: 900px;
+        font: 16px/1.7 system-ui, -apple-system, sans-serif;
+        max-width: 860px;
+        color: #1a1a1a;
       }
-      h1, h2, h3 { line-height: 1.2; }
+      @media (prefers-color-scheme: dark) {
+        body { color: #e0e0e0; background: #0d1117; }
+        hr { border-color: #30363d; }
+        blockquote { border-color: #30363d; color: #8b949e; }
+        code { background: #161b22; color: #e6edf3; }
+        pre { background: #161b22; }
+        pre code { background: none; }
+        a { color: #58a6ff; }
+        h1, h2 { border-color: #21262d; }
+      }
+      h1, h2, h3, h4 { line-height: 1.25; margin: 1.5em 0 0.5em; font-weight: 600; }
+      h1 { font-size: 2em; border-bottom: 1px solid #d0d7de; padding-bottom: 0.3em; }
+      h2 { font-size: 1.5em; border-bottom: 1px solid #d0d7de; padding-bottom: 0.3em; }
+      h3 { font-size: 1.25em; }
+      h4 { font-size: 1em; }
+      p { margin: 0.75em 0; }
+      a { color: #0969da; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      ul, ol { padding-left: 2em; margin: 0.5em 0; }
+      li { margin: 0.25em 0; }
+      hr { border: none; border-top: 1px solid #d0d7de; margin: 1.5em 0; }
+      blockquote {
+        margin: 0.75em 0;
+        padding: 0 1em;
+        border-left: 4px solid #d0d7de;
+        color: #656d76;
+      }
+      blockquote p { margin: 0.25em 0; }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.875em;
+        background: #f6f8fa;
+        padding: 0.2em 0.4em;
+        border-radius: 4px;
+      }
       pre {
-        white-space: pre-wrap;
-        word-break: break-word;
+        background: #f6f8fa;
+        padding: 1em;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin: 1em 0;
       }
-      .spacer { height: 1rem; }
+      pre code {
+        background: none;
+        padding: 0;
+        font-size: 0.875em;
+        white-space: pre;
+      }
+      .spacer { height: 0.5em; }
     </style>
   </head>
   <body>

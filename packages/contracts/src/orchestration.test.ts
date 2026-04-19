@@ -148,6 +148,30 @@ it.effect("decodes gemini default model selections", () =>
   }),
 );
 
+it.effect("rejects cursor model selections until the runtime adapter exists", () =>
+  Effect.gen(function* () {
+    const result = yield* Effect.exit(
+      decodeThreadTurnStartCommand({
+        type: "thread.turn.start",
+        commandId: "cmd-turn-cursor",
+        threadId: "thread-1",
+        message: {
+          messageId: "msg-cursor",
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        modelSelection: {
+          provider: "cursor",
+          model: "composer-2-fast",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    assert.strictEqual(result._tag, "Failure");
+  }),
+);
+
 it.effect("rejects command fields that become empty after trim", () =>
   Effect.gen(function* () {
     const result = yield* Effect.exit(

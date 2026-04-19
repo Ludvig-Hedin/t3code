@@ -212,6 +212,20 @@ describe("resolveComposerSelectedProvider", () => {
     ).toBe("manifest");
   });
 
+  it("honours a manifest draft when manifest is disabled in the provider snapshot", () => {
+    const providersManifestOff = providers.map((p) =>
+      p.provider === "manifest" ? { ...p, enabled: false } : p,
+    );
+    expect(
+      resolveComposerSelectedProvider({
+        providers: providersManifestOff,
+        lockedProvider: "codex",
+        draftActiveProvider: "manifest",
+        threadProvider: "codex",
+      }),
+    ).toBe("manifest");
+  });
+
   it("keeps the locked provider for non-manifest draft selections", () => {
     expect(
       resolveComposerSelectedProvider({

@@ -21,6 +21,7 @@ interface PersistedUiState {
   projectOrderCwds?: string[];
   pinnedToSidebarThreadIds?: string[];
   pinnedToProjectThreadIds?: string[];
+  changedFilesExpandedByThreadId?: Record<string, boolean>;
 }
 
 export interface UiProjectState {
@@ -30,6 +31,7 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
+  changedFilesExpandedByThreadId: Record<string, boolean>;
 }
 
 export interface UiPreviewState {
@@ -59,6 +61,7 @@ const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
+  changedFilesExpandedByThreadId: {},
   // Preview state is session-only — intentionally not persisted to localStorage
   previewOpen: false,
   previewDetached: false,
@@ -106,6 +109,7 @@ function readPersistedState(): UiState {
       ...initialState,
       pinnedToSidebarThreadIds: persistedPinnedToSidebarThreadIds,
       pinnedToProjectThreadIds: persistedPinnedToProjectThreadIds,
+      changedFilesExpandedByThreadId: parsed.changedFilesExpandedByThreadId ?? {},
     };
   } catch {
     return initialState;
@@ -149,6 +153,7 @@ function persistState(state: UiState): void {
         projectOrderCwds,
         pinnedToSidebarThreadIds: state.pinnedToSidebarThreadIds.map(String),
         pinnedToProjectThreadIds: state.pinnedToProjectThreadIds.map(String),
+        changedFilesExpandedByThreadId: state.changedFilesExpandedByThreadId,
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -452,6 +457,23 @@ export function setProjectOrder(state: UiState, ids: ProjectId[]): UiState {
   return { ...state, projectOrder: ids };
 }
 
+export function setChangedFilesExpanded(
+  state: UiState,
+  threadId: ThreadId,
+  expanded: boolean,
+): UiState {
+  if (state.changedFilesExpandedByThreadId[threadId] === expanded) {
+    return state;
+  }
+  return {
+    ...state,
+    changedFilesExpandedByThreadId: {
+      ...state.changedFilesExpandedByThreadId,
+      [threadId]: expanded,
+    },
+  };
+}
+
 interface UiStateStore extends UiState {
   syncProjects: (projects: readonly SyncProjectInput[]) => void;
   syncThreads: (threads: readonly SyncThreadInput[]) => void;
@@ -466,6 +488,7 @@ interface UiStateStore extends UiState {
   unpinFromSidebar: (threadId: ThreadId) => void;
   pinToProject: (threadId: ThreadId) => void;
   unpinFromProject: (threadId: ThreadId) => void;
+  setChangedFilesExpanded: (threadId: ThreadId, expanded: boolean) => void;
   setPreviewOpen: (open: boolean) => void;
   setPreviewDetached: (detached: boolean) => void;
   setPreviewFloatingBounds: (bounds: { x: number; y: number; w: number; h: number } | null) => void;
@@ -490,6 +513,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   unpinFromSidebar: (threadId) => set((state) => unpinFromSidebar(state, threadId)),
   pinToProject: (threadId) => set((state) => pinToProject(state, threadId)),
   unpinFromProject: (threadId) => set((state) => unpinFromProject(state, threadId)),
+  setChangedFilesExpanded: (threadId, expanded) =>
+    set((state) => setChangedFilesExpanded(state, threadId, expanded)),
   setPreviewOpen: (open) => set((state) => ({ ...state, previewOpen: open })),
   setPreviewDetached: (detached) => set((state) => ({ ...state, previewDetached: detached })),
   setPreviewFloatingBounds: (bounds) =>

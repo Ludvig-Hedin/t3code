@@ -9,4 +9,10 @@ describe("ClientSettingsSchema", () => {
 
     expect(decoded.autoSendVoiceTranscripts).toBe(false);
   });
+
+  it("defaults collapseChangedFilesByDefault to true", () => {
+    const decoded = Schema.decodeSync(ClientSettingsSchema)({});
+
+    expect(decoded.collapseChangedFilesByDefault).toBe(true);
+  });
 });

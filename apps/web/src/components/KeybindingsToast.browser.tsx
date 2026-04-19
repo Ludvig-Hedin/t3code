@@ -72,6 +72,7 @@ function createBaseServerConfig(): ServerConfig {
         codex: { enabled: true, binaryPath: "", homePath: "", customModels: [] },
         claudeAgent: { enabled: true, binaryPath: "", customModels: [] },
         gemini: { enabled: true, binaryPath: "", customModels: [] },
+        cursor: { enabled: true, binaryPath: "", customModels: [] },
         opencode: { enabled: true, binaryPath: "", customModels: [] },
         ollama: { enabled: true, baseUrl: "http://localhost:11434" },
         manifest: { enabled: true, baseUrl: "", apiKey: "" },

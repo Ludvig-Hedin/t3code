@@ -34,8 +34,7 @@ export const PROVIDER_OPTIONS: Array<{
   { value: "gemini", label: "Gemini", available: true },
   { value: "opencode", label: "OpenCode", available: true },
   { value: "ollama", label: "Ollama", available: true },
-  // cursor is coming soon — not yet available in the picker
-  { value: "cursor", label: "Cursor", available: false },
+  { value: "cursor", label: "Cursor", available: true },
 ];
 
 export interface WorkLogEntry {
@@ -1076,9 +1075,33 @@ export function inferCheckpointTurnCountByTurnId(
   return result;
 }
 
-export function derivePhase(session: ThreadSession | null): SessionPhase {
+export function derivePhase(
+  session: ThreadSession | null,
+  latestTurn?: OrchestrationLatestTurn | null,
+): SessionPhase {
   if (!session || session.status === "closed") return "disconnected";
   if (session.status === "connecting") return "connecting";
+
+  // `thread.turn-interrupt-requested` can mark `latestTurn` interrupted before
+  // `thread.session-set` catches up. Without this, Stop leaves the composer in
+  // a permanent "running" state even though the turn is already interrupted.
+  if (
+    session.status === "running" &&
+    latestTurn?.state === "interrupted" &&
+    session.activeTurnId !== undefined &&
+    latestTurn.turnId === session.activeTurnId
+  ) {
+    return "ready";
+  }
+
+  // Defense-in-depth against the stop-button flicker: a session can briefly
+  // report status="running" with no activeTurnId if a stale SDK event slips
+  // through after `session.exited` cleared the turn. Treat that as ready so
+  // the composer doesn't flip back to showing the stop button.
+  if (session.status === "running" && session.activeTurnId === undefined) {
+    return "ready";
+  }
+
   if (session.status === "running") return "running";
   return "ready";
 }

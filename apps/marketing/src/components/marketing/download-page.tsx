@@ -21,7 +21,9 @@ function resolveAssetHrefs(release: {
     ["x86_64.AppImage", ["x64.AppImage", "x86_64.AppImage"]],
   ];
   for (const [key, suffixes] of pairs) {
-    const match = (release.assets ?? []).find((a) => suffixes.some((s) => a.name.endsWith(`-${s}`)));
+    const match = (release.assets ?? []).find((a) =>
+      suffixes.some((s) => a.name.endsWith(`-${s}`)),
+    );
     next[key] = match?.browser_download_url ?? RELEASES_URL;
   }
   return next;

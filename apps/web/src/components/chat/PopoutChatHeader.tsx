@@ -58,12 +58,7 @@ export interface PopoutChatHeaderProps {
   previewAvailable: boolean;
   previewOpen: boolean;
   hasRunningPreviewApp: boolean;
-  executionStatusLabel: string | null;
-  executionStatusDetail: string | null;
-  executionStatusTone: "neutral" | "warning" | "danger";
-  canStopExecution: boolean;
   onTogglePreview: () => void;
-  onStopExecution: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
@@ -72,6 +67,8 @@ export interface PopoutChatHeaderProps {
   onToggleDiff: () => void;
   /** Close this popout window. */
   onClose: () => void;
+  turnRunning: boolean;
+  onInterruptTurn: () => void;
 }
 
 /**
@@ -104,15 +101,12 @@ function SecondaryControls({
   | "previewAvailable"
   | "previewOpen"
   | "hasRunningPreviewApp"
-  | "executionStatusLabel"
-  | "executionStatusDetail"
-  | "executionStatusTone"
-  | "canStopExecution"
   | "onTogglePreview"
-  | "onStopExecution"
   | "onToggleTerminal"
   | "onToggleDiff"
   | "onClose"
+  | "turnRunning"
+  | "onInterruptTurn"
 >) {
   return (
     <>
@@ -163,12 +157,7 @@ export const PopoutChatHeader = memo(function PopoutChatHeader({
   previewAvailable,
   previewOpen,
   hasRunningPreviewApp,
-  executionStatusLabel,
-  executionStatusDetail,
-  executionStatusTone,
-  canStopExecution,
   onTogglePreview,
-  onStopExecution,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -176,6 +165,8 @@ export const PopoutChatHeader = memo(function PopoutChatHeader({
   onToggleTerminal,
   onToggleDiff,
   onClose,
+  turnRunning,
+  onInterruptTurn,
 }: PopoutChatHeaderProps) {
   const navigate = useNavigate();
 
@@ -251,47 +242,6 @@ export const PopoutChatHeader = memo(function PopoutChatHeader({
 
       {/* ── Right: controls + close ──────────────────────────────────────── */}
       <div className="flex shrink-0 items-center gap-1">
-        {executionStatusLabel ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <div
-                  className={
-                    executionStatusTone === "danger"
-                      ? "max-w-[10rem] truncate rounded-md border border-amber-500/60 bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-700"
-                      : executionStatusTone === "warning"
-                        ? "max-w-[10rem] truncate rounded-md border border-sky-500/60 bg-sky-500/10 px-2 py-1 text-[10px] font-medium text-sky-700"
-                        : "max-w-[10rem] truncate rounded-md border border-border px-2 py-1 text-[10px] font-medium text-muted-foreground"
-                  }
-                />
-              }
-            >
-              {executionStatusLabel}
-            </TooltipTrigger>
-            {executionStatusDetail ? (
-              <TooltipPopup side="bottom">{executionStatusDetail}</TooltipPopup>
-            ) : null}
-          </Tooltip>
-        ) : null}
-        {canStopExecution ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  aria-label="Stop active turn"
-                  className="shrink-0 border-rose-500/40 px-2 text-rose-600 hover:border-rose-500 hover:bg-rose-500/10 hover:text-rose-700"
-                  onClick={onStopExecution}
-                >
-                  <SquareIcon className="size-3 fill-current" />
-                </Button>
-              }
-            />
-            <TooltipPopup side="bottom">Interrupt the active turn</TooltipPopup>
-          </Tooltip>
-        ) : null}
         {/*
          * Secondary controls — shown inline when the container is ≥ 560 px.
          * display:contents makes the wrapper invisible to layout while still
@@ -302,6 +252,26 @@ export const PopoutChatHeader = memo(function PopoutChatHeader({
             <SecondaryControls {...secondaryProps} />
           </div>
         )}
+
+        {turnRunning ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  aria-label="Stop generation"
+                  className="shrink-0 border-rose-500/35 text-rose-600 hover:bg-rose-500/10"
+                  onClick={onInterruptTurn}
+                >
+                  <SquareIcon className="size-3 fill-current" />
+                </Button>
+              }
+            />
+            <TooltipPopup side="bottom">Stop generation</TooltipPopup>
+          </Tooltip>
+        ) : null}
 
         {/* Preview toggle — always visible */}
         <Tooltip>

@@ -52,6 +52,12 @@ describe("modelSelection", () => {
     );
   });
 
+  it('keeps manifest model as "auto" even when manifest is absent from the provider snapshot', () => {
+    expect(resolveAppModelSelection("manifest", DEFAULT_UNIFIED_SETTINGS, PROVIDERS, "auto")).toBe(
+      "auto",
+    );
+  });
+
   it("keeps Gemini text-generation settings on the requested model", () => {
     expect(
       resolveAppModelSelectionState(

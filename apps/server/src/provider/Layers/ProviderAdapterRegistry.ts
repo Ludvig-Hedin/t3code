@@ -18,6 +18,7 @@ import {
 import { A2aAdapter } from "../Services/A2aAdapter.ts";
 import { ClaudeAdapter } from "../Services/ClaudeAdapter.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
+import { CursorAdapter } from "../Services/CursorAdapter.ts";
 import { GeminiAdapter } from "../Services/GeminiAdapter.ts";
 import { ManifestAdapter } from "../Services/ManifestAdapter.ts";
 import { OllamaAdapter } from "../Services/OllamaAdapter.ts";
@@ -36,6 +37,7 @@ const makeProviderAdapterRegistry = Effect.fn("makeProviderAdapterRegistry")(fun
       : [
           yield* CodexAdapter,
           yield* ClaudeAdapter,
+          yield* CursorAdapter,
           yield* GeminiAdapter,
           yield* OpenCodeAdapter,
           yield* OllamaAdapter,

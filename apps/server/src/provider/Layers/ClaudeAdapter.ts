@@ -50,14 +50,17 @@ import {
   Cause,
   DateTime,
   Deferred,
+  Duration,
   Effect,
   Exit,
   FileSystem,
   Fiber,
   Layer,
+  Option,
   Queue,
   Random,
   Ref,
+  Schedule,
   Stream,
 } from "effect";
 
@@ -146,6 +149,7 @@ interface ClaudeSessionContext {
   readonly promptQueue: Queue.Queue<PromptQueueItem>;
   readonly query: ClaudeQueryRuntime;
   streamFiber: Fiber.Fiber<void, Error> | undefined;
+  watchdogFiber: Fiber.Fiber<void, never> | undefined;
   readonly startedAt: string;
   readonly basePermissionMode: PermissionMode | undefined;
   currentApiModelId: string | undefined;
@@ -163,7 +167,21 @@ interface ClaudeSessionContext {
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
   stopped: boolean;
+  // Millisecond epoch of the most recent SDK message or inbound event for this
+  // session. The watchdog uses it to detect a silent/stuck provider stream and
+  // force the session to terminate so the UI doesn't get stuck on "working".
+  lastActivityAtMs: number;
 }
+
+// If the Claude SDK stream emits nothing for this long while a turn is active,
+// the watchdog force-terminates the session. Picked as a conservative upper
+// bound — legit long-running tool calls still emit `tool_progress` updates.
+const WATCHDOG_STALL_THRESHOLD_MS = 10 * 60 * 1000;
+const WATCHDOG_POLL_INTERVAL_MS = 30 * 1000;
+// Max time we wait for the SDK's in-band interrupt to resolve before we
+// force-kill the session. If the subprocess is frozen, interrupt() can hang
+// indefinitely and block Stop entirely — this ensures Stop always succeeds.
+const INTERRUPT_TIMEOUT_MS = 5_000;
 
 interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
   readonly interrupt: () => Promise<void>;
@@ -2197,6 +2215,13 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
   ) {
+    // Once stopSessionInternal has flipped `stopped`, the stream fiber is being
+    // torn down but may still have a message in-flight from before the flag was
+    // set. Dropping it here prevents late `status` / buffered events from
+    // re-emitting `session.state.changed` → "running", which would resurrect
+    // the session client-side and cause the stop-button flicker.
+    if (context.stopped) return;
+    context.lastActivityAtMs = Date.now();
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
 
@@ -2304,6 +2329,12 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     yield* Queue.shutdown(context.promptQueue);
+
+    const watchdogFiber = context.watchdogFiber;
+    context.watchdogFiber = undefined;
+    if (watchdogFiber && watchdogFiber.pollUnsafe() === undefined) {
+      yield* Fiber.interrupt(watchdogFiber);
+    }
 
     const streamFiber = context.streamFiber;
     context.streamFiber = undefined;
@@ -2762,6 +2793,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         promptQueue,
         query: queryRuntime,
         streamFiber: undefined,
+        watchdogFiber: undefined,
         startedAt,
         basePermissionMode: permissionMode,
         currentApiModelId: apiModelId,
@@ -2776,6 +2808,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
         stopped: false,
+        lastActivityAtMs: Date.now(),
       };
       yield* Ref.set(contextRef, context);
       sessions.set(threadId, context);
@@ -2843,6 +2876,40 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           context.streamFiber = undefined;
         }
       });
+
+      // Inactivity watchdog: if the SDK stream goes silent for too long while
+      // a turn is still in flight, force-complete the turn and close the
+      // session. Without this, a frozen CLI subprocess would leave the UI
+      // stuck on "working" indefinitely.
+      const watchdogFiber = runFork(
+        Effect.repeat(
+          Effect.sync(() => {
+            if (context.stopped) return;
+            if (!context.turnState) return;
+            const idleMs = Date.now() - context.lastActivityAtMs;
+            if (idleMs < WATCHDOG_STALL_THRESHOLD_MS) return;
+            runFork(
+              Effect.gen(function* () {
+                if (context.stopped) return;
+                yield* emitRuntimeWarning(
+                  context,
+                  `Claude runtime stream idle for ${Math.round(idleMs / 1000)}s; forcing session to stop.`,
+                );
+                if (context.turnState) {
+                  yield* completeTurn(
+                    context,
+                    "failed",
+                    "Provider stream timed out — no activity from Claude for over 10 minutes.",
+                  );
+                }
+                yield* stopSessionInternal(context, { emitExitEvent: true });
+              }),
+            );
+          }),
+          Schedule.spaced(Duration.millis(WATCHDOG_POLL_INTERVAL_MS)),
+        ).pipe(Effect.asVoid, Effect.ignore),
+      );
+      context.watchdogFiber = watchdogFiber;
 
       return {
         ...session,
@@ -2947,10 +3014,45 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const interruptTurn: ClaudeAdapterShape["interruptTurn"] = Effect.fn("interruptTurn")(
     function* (threadId, _turnId) {
       const context = yield* requireSession(threadId);
-      yield* Effect.tryPromise({
-        try: () => context.query.interrupt(),
-        catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
-      });
+      // The SDK's in-band `interrupt()` can hang forever if the subprocess is
+      // frozen (no response from the CLI). Bound it so Stop always makes
+      // progress — if it times out, we fall through to stopSessionInternal
+      // which force-interrupts the stream fiber and closes the query.
+      // `timeoutOption` returns `Option.none()` on timeout without adding the
+      // TimeoutError to the error channel.
+      const interruptResult = yield* Effect.exit(
+        Effect.tryPromise({
+          try: () => context.query.interrupt(),
+          catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
+        }).pipe(Effect.timeoutOption(Duration.millis(INTERRUPT_TIMEOUT_MS))),
+      );
+      const timedOut = Exit.isSuccess(interruptResult) && Option.isNone(interruptResult.value);
+
+      // Claude's SDK can leave the underlying query in an unusable state after
+      // an interrupted turn. Recycling the live runtime forces the next user
+      // message onto a fresh resumable session instead of reusing a broken one.
+      if (context.turnState) {
+        if (Exit.isFailure(interruptResult)) {
+          yield* emitRuntimeWarning(
+            context,
+            "Claude interrupt failed; recycling the runtime instead.",
+            Cause.pretty(interruptResult.cause),
+          );
+        } else if (timedOut) {
+          yield* emitRuntimeWarning(
+            context,
+            `Claude interrupt did not respond within ${INTERRUPT_TIMEOUT_MS}ms; recycling the runtime instead.`,
+          );
+        }
+        yield* stopSessionInternal(context, {
+          emitExitEvent: true,
+        });
+        return;
+      }
+
+      if (Exit.isFailure(interruptResult)) {
+        return yield* Effect.failCause(interruptResult.cause);
+      }
     },
   );
 

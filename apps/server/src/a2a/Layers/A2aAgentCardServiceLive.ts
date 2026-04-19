@@ -407,8 +407,5 @@ const make = Effect.gen(function* () {
   } satisfies IA2aAgentCardService;
 });
 
-export const A2aAgentCardServiceLive: Layer.Layer<
-  A2aAgentCardService,
-  never,
-  SqlClient.SqlClient
-> = Layer.effect(A2aAgentCardService, make);
+export const A2aAgentCardServiceLive: Layer.Layer<A2aAgentCardService, never, SqlClient.SqlClient> =
+  Layer.effect(A2aAgentCardService, make);

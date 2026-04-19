@@ -11,7 +11,6 @@ import {
   type A2aAgentCard,
   type A2aAgentCardId,
   A2aClientError,
-  type A2aMessage,
   A2aServiceError,
   type A2aSseEvent,
   type A2aTask,
@@ -26,17 +25,16 @@ function newJsonRpcId(): string {
   return globalThis.crypto.randomUUID();
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 const make = Effect.gen(function* () {
   const agentCardService = yield* A2aAgentCardService;
 
   // ── Helpers ────────────────────────────────────────────────────────────
-
-  /** Resolve agent card URL from ID (looks up in DB). */
-  const resolveAgentUrl = (agentCardId: A2aAgentCardId) =>
-    Effect.gen(function* () {
-      const card = yield* agentCardService.get(agentCardId);
-      return card.url;
-    });
 
   /** Build auth headers based on agent card security schemes. */
   const buildAuthHeaders = (_card: A2aAgentCard): Record<string, string> => {
@@ -77,9 +75,12 @@ const make = Effect.gen(function* () {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const json = await response.json();
+        const json = asRecord(await response.json());
         if (json.error) {
-          throw new Error(`JSON-RPC error ${json.error.code}: ${json.error.message}`);
+          const error = asRecord(json.error);
+          throw new Error(
+            `JSON-RPC error ${String(error.code ?? "unknown")}: ${String(error.message ?? "unknown error")}`,
+          );
         }
         return json.result;
       },
@@ -118,7 +119,7 @@ const make = Effect.gen(function* () {
       const result = yield* sendJsonRpc(card.url, "message/send", params, authHeaders);
 
       // Parse result into A2aTask shape
-      const taskResult = result as Record<string, unknown>;
+      const taskResult = asRecord(result);
       const now = new Date().toISOString();
       return {
         id: (taskResult.id as A2aTaskId) || (crypto.randomUUID() as A2aTaskId),
@@ -149,10 +150,9 @@ const make = Effect.gen(function* () {
         }
 
         // Return a stream that connects to the SSE endpoint
-        return Stream.async<A2aSseEvent, A2aClientError | A2aServiceError>((emit) => {
-          const controller = new AbortController();
-
-          fetch(card.url, {
+        const controller = new AbortController();
+        const events = (async function* (): AsyncGenerator<A2aSseEvent> {
+          const response = await fetch(card.url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -166,59 +166,52 @@ const make = Effect.gen(function* () {
               params,
             }),
             signal: controller.signal,
-          })
-            .then(async (response) => {
-              if (!response.ok || !response.body) {
-                emit.fail(
-                  new A2aClientError({
-                    message: `SSE connection failed: HTTP ${response.status}`,
-                    url: card.url,
-                    statusCode: response.status,
-                  }),
-                );
-                return;
-              }
+          });
 
-              const reader = response.body.getReader();
-              const decoder = new TextDecoder();
-              let buffer = "";
+          if (!response.ok || !response.body) {
+            throw new A2aClientError({
+              message: `SSE connection failed: HTTP ${response.status}`,
+              url: card.url,
+              statusCode: response.status,
+            });
+          }
 
-              // eslint-disable-next-line no-constant-condition
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
+          try {
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-                for (const line of lines) {
-                  if (line.startsWith("data: ")) {
-                    try {
-                      const event = JSON.parse(line.slice(6)) as A2aSseEvent;
-                      emit.single(event);
-                    } catch {
-                      // Skip malformed SSE data lines
-                    }
-                  }
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  yield JSON.parse(line.slice(6)) as A2aSseEvent;
+                } catch {
+                  // Skip malformed SSE data lines
                 }
               }
+            }
+          } finally {
+            controller.abort();
+          }
+        })();
 
-              emit.end();
-            })
-            .catch((error) => {
-              if (controller.signal.aborted) return;
-              emit.fail(
-                new A2aClientError({
-                  message: `SSE stream error: ${error}`,
-                  url: card.url,
-                }),
-              );
-            });
-
-          // Cleanup on stream finalization
-          return Effect.sync(() => controller.abort());
-        });
+        return Stream.fromAsyncIterable(events, (error) =>
+          error instanceof A2aClientError
+            ? error
+            : new A2aClientError({
+                message: `SSE stream error: ${error instanceof Error ? error.message : String(error)}`,
+                url: card.url,
+              }),
+        );
       }),
     );
 
@@ -227,7 +220,7 @@ const make = Effect.gen(function* () {
       const card = yield* agentCardService.get(agentCardId);
       const authHeaders = buildAuthHeaders(card);
       const result = yield* sendJsonRpc(card.url, "tasks/get", { id: taskId }, authHeaders);
-      const taskResult = result as Record<string, unknown>;
+      const taskResult = asRecord(result);
       const now = new Date().toISOString();
       return {
         id: (taskResult.id as A2aTaskId) || taskId,
@@ -249,7 +242,7 @@ const make = Effect.gen(function* () {
       const card = yield* agentCardService.get(agentCardId);
       const authHeaders = buildAuthHeaders(card);
       const result = yield* sendJsonRpc(card.url, "tasks/cancel", { id: taskId }, authHeaders);
-      const taskResult = result as Record<string, unknown>;
+      const taskResult = asRecord(result);
       const now = new Date().toISOString();
       return {
         id: (taskResult.id as A2aTaskId) || taskId,

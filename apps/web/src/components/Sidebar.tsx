@@ -1,14 +1,22 @@
 import {
+  ArchiveIcon,
   ArrowUpDownIcon,
   ChevronRightIcon,
+  CodeIcon,
+  CopyIcon,
   EllipsisIcon,
   ExternalLinkIcon,
   FolderIcon,
+  FolderOpenIcon,
   GitPullRequestIcon,
+  HashIcon,
   LayoutGridIcon,
   LoaderCircleIcon,
+  MailIcon,
   PanelLeftIcon,
+  PencilIcon,
   PinIcon,
+  PinOffIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -16,6 +24,7 @@ import {
   SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
+  Trash2Icon,
   TriangleAlertIcon,
   ZapIcon,
 } from "lucide-react";
@@ -106,7 +115,16 @@ import {
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import { BirdLogomark } from "./BirdLogo";
-import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
+import {
+  Menu,
+  MenuGroup,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Popover, PopoverTrigger, PopoverPopup } from "./ui/popover";
 import { Checkbox } from "./ui/checkbox";
@@ -284,13 +302,18 @@ function ThreadUnreadCompletionDot() {
 }
 
 function ThreadWorkingSpinner() {
+  // User-facing change: switched from blue (sky-500) to a muted gray so the
+  // "Working" state reads as a neutral, low-chrome indicator. When this
+  // spinner is shown we also suppress the redundant "Working" text + blue dot
+  // below, keeping a single, gray spinner as the sole activity hint (matches
+  // the visual language of native Claude / Codex apps).
   return (
     <span
       aria-hidden="true"
       title="Working"
       className="inline-flex w-3.5 shrink-0 items-center justify-center"
     >
-      <LoaderCircleIcon className="size-3 animate-spin text-sky-500 dark:text-sky-300/90" />
+      <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground/80" />
     </span>
   );
 }
@@ -502,9 +525,12 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
               aria-hidden="true"
             />
           )}
-          {threadStatus && threadStatus.label !== "Completed" && (
-            <ThreadStatusLabel status={threadStatus} />
-          )}
+          {threadStatus &&
+            threadStatus.label !== "Completed" &&
+            // The "Working" state is already communicated by the gray
+            // ThreadWorkingSpinner above; rendering the text label + blue dot
+            // here as well was redundant ("Working" shown twice, blue dot + spinner).
+            threadStatus.label !== "Working" && <ThreadStatusLabel status={threadStatus} />}
           {props.renamingThreadId === thread.id ? (
             <input
               ref={(element) => {
@@ -1344,6 +1370,46 @@ export default function Sidebar() {
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
+
+  // UI-rendered context menu state — replaces native api.contextMenu.show() to support icons
+  type ContextMenuItemSpec = {
+    id: string;
+    label: string;
+    icon?: ReactNode;
+    destructive?: boolean;
+    separator?: boolean;
+  };
+  type ActiveContextMenu = {
+    items: ContextMenuItemSpec[];
+    position: { x: number; y: number };
+    resolve: (id: string | null) => void;
+  } | null;
+  const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu>(null);
+  const showContextMenu = useCallback(
+    (items: ContextMenuItemSpec[], position: { x: number; y: number }): Promise<string | null> =>
+      new Promise((resolve) => setActiveContextMenu({ items, position, resolve })),
+    [],
+  );
+  const contextMenuAnchor = useMemo(() => {
+    if (!activeContextMenu) return undefined;
+    const { x, y } = activeContextMenu.position;
+    return {
+      getBoundingClientRect: (): DOMRect =>
+        ({
+          x,
+          y,
+          width: 0,
+          height: 0,
+          top: y,
+          right: x,
+          bottom: y,
+          left: x,
+          toJSON() {
+            return {};
+          },
+        }) as DOMRect,
+    };
+  }, [activeContextMenu]);
   const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform);
   const platform = navigator.platform;
   // On mobile webview there is no native folder picker — use the path text input instead.
@@ -1777,30 +1843,36 @@ export default function Sidebar() {
   );
   const handleThreadContextMenu = useCallback(
     async (threadId: ThreadId, position: { x: number; y: number }) => {
-      const api = readNativeApi();
-      if (!api) return;
       const thread = sidebarThreadsById[threadId];
       if (!thread) return;
       const threadWorkspacePath =
         thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null;
       const isPinnedToSidebar = pinnedToSidebarThreadIds.includes(threadId);
       const isPinnedToProject = pinnedToProjectThreadIds.includes(threadId);
-      const clicked = await api.contextMenu.show(
+      const clicked = await showContextMenu(
         [
-          { id: "rename", label: "Rename thread" },
-          { id: "mark-unread", label: "Mark unread" },
+          { id: "rename", label: "Rename thread", icon: <PencilIcon /> },
+          { id: "mark-unread", label: "Mark unread", icon: <MailIcon /> },
           {
             id: isPinnedToSidebar ? "unpin-from-sidebar" : "pin-to-sidebar",
             label: isPinnedToSidebar ? "Unpin from sidebar" : "Pin to sidebar",
+            icon: isPinnedToSidebar ? <PinOffIcon /> : <PinIcon />,
           },
           {
             id: isPinnedToProject ? "unpin-from-project" : "pin-to-project",
             label: isPinnedToProject ? "Unpin from project" : "Pin to project",
+            icon: isPinnedToProject ? <PinOffIcon /> : <PinIcon />,
           },
-          { id: "archive", label: "Archive thread" },
-          { id: "copy-path", label: "Copy Path" },
-          { id: "copy-thread-id", label: "Copy Thread ID" },
-          { id: "delete", label: "Delete", destructive: true },
+          { id: "archive", label: "Archive thread", icon: <ArchiveIcon /> },
+          { id: "copy-path", label: "Copy Path", icon: <CopyIcon /> },
+          { id: "copy-thread-id", label: "Copy Thread ID", icon: <HashIcon /> },
+          {
+            id: "delete",
+            label: "Delete",
+            icon: <Trash2Icon />,
+            destructive: true,
+            separator: true,
+          },
         ],
         position,
       );
@@ -1854,7 +1926,7 @@ export default function Sidebar() {
       }
       if (clicked !== "delete") return;
       if (appSettings.confirmThreadDelete) {
-        const confirmed = await api.dialogs.confirm(
+        const confirmed = await readNativeApi()?.dialogs.confirm(
           [
             `Delete thread "${thread.title}"?`,
             "This permanently clears conversation history for this thread.",
@@ -1877,6 +1949,7 @@ export default function Sidebar() {
       pinnedToProjectThreadIds,
       pinnedToSidebarThreadIds,
       projectCwdById,
+      showContextMenu,
       sidebarThreadsById,
       attemptArchiveThread,
       unpinFromProject,
@@ -1886,16 +1959,20 @@ export default function Sidebar() {
 
   const handleMultiSelectContextMenu = useCallback(
     async (position: { x: number; y: number }) => {
-      const api = readNativeApi();
-      if (!api) return;
       const ids = [...selectedThreadIds];
       if (ids.length === 0) return;
       const count = ids.length;
 
-      const clicked = await api.contextMenu.show(
+      const clicked = await showContextMenu(
         [
-          { id: "mark-unread", label: `Mark unread (${count})` },
-          { id: "delete", label: `Delete (${count})`, destructive: true },
+          { id: "mark-unread", label: `Mark unread (${count})`, icon: <MailIcon /> },
+          {
+            id: "delete",
+            label: `Delete (${count})`,
+            icon: <Trash2Icon />,
+            destructive: true,
+            separator: true,
+          },
         ],
         position,
       );
@@ -1912,7 +1989,7 @@ export default function Sidebar() {
       if (clicked !== "delete") return;
 
       if (appSettings.confirmThreadDelete) {
-        const confirmed = await api.dialogs.confirm(
+        const confirmed = await readNativeApi()?.dialogs.confirm(
           [
             `Delete ${count} thread${count === 1 ? "" : "s"}?`,
             "This permanently clears conversation history for these threads.",
@@ -1934,6 +2011,7 @@ export default function Sidebar() {
       markThreadUnread,
       removeFromSelection,
       selectedThreadIds,
+      showContextMenu,
       sidebarThreadsById,
     ],
   );
@@ -2004,19 +2082,25 @@ export default function Sidebar() {
 
   const handleProjectContextMenu = useCallback(
     async (projectId: ProjectId, position: { x: number; y: number }) => {
-      const api = readNativeApi();
-      if (!api) return;
       const project = projects.find((entry) => entry.id === projectId);
       if (!project) return;
       const hasDesktopBridge = typeof window !== "undefined" && window.desktopBridge !== undefined;
 
-      const clicked = await api.contextMenu.show(
+      const clicked = await showContextMenu(
         [
-          { id: "rename", label: "Rename project" },
-          { id: "open-in-editor", label: "Open in editor" },
-          ...(hasDesktopBridge ? [{ id: "open-in-finder", label: "Open in Finder" }] : []),
-          { id: "copy-path", label: "Copy Project Path" },
-          { id: "delete", label: "Remove project", destructive: true },
+          { id: "rename", label: "Rename project", icon: <PencilIcon /> },
+          { id: "open-in-editor", label: "Open in editor", icon: <CodeIcon /> },
+          ...(hasDesktopBridge
+            ? [{ id: "open-in-finder", label: "Open in Finder", icon: <FolderOpenIcon /> }]
+            : []),
+          { id: "copy-path", label: "Copy Project Path", icon: <CopyIcon /> },
+          {
+            id: "delete",
+            label: "Remove project",
+            icon: <Trash2Icon />,
+            destructive: true,
+            separator: true,
+          },
         ],
         position,
       );
@@ -2031,6 +2115,8 @@ export default function Sidebar() {
         return;
       }
       if (clicked === "open-in-finder") {
+        const api = readNativeApi();
+        if (!api) return;
         try {
           await api.shell.openInFinder(project.cwd);
         } catch (error) {
@@ -2049,7 +2135,7 @@ export default function Sidebar() {
       if (clicked !== "delete") return;
       await removeProject(project);
     },
-    [copyPathToClipboard, openProjectInEditor, projects, removeProject],
+    [copyPathToClipboard, openProjectInEditor, projects, removeProject, showContextMenu],
   );
 
   const projectDnDSensors = useSensors(
@@ -3378,6 +3464,34 @@ export default function Sidebar() {
       )}
       {/* Search modal — rendered outside conditional blocks so it survives route changes */}
       <SearchModal open={searchOpen} onOpenChange={setSearchOpen} projects={projects} />
+      {/* UI-rendered context menu — positioned at cursor via virtual anchor, supports icons */}
+      <Menu
+        open={activeContextMenu !== null}
+        onOpenChange={(open) => {
+          if (!open && activeContextMenu) {
+            activeContextMenu.resolve(null);
+            setActiveContextMenu(null);
+          }
+        }}
+      >
+        <MenuPopup anchor={contextMenuAnchor} side="bottom" align="start" sideOffset={0}>
+          {activeContextMenu?.items.map((item) => (
+            <span key={item.id}>
+              {item.separator && <MenuSeparator />}
+              <MenuItem
+                variant={item.destructive ? "destructive" : "default"}
+                onClick={() => {
+                  activeContextMenu.resolve(item.id);
+                  setActiveContextMenu(null);
+                }}
+              >
+                {item.icon}
+                {item.label}
+              </MenuItem>
+            </span>
+          ))}
+        </MenuPopup>
+      </Menu>
     </>
   );
 }

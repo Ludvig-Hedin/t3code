@@ -21,6 +21,7 @@ import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionD
 import { ProviderSessionRuntimeRepositoryLive } from "./persistence/Layers/ProviderSessionRuntime";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
+import { CursorAdapterLive } from "./provider/Layers/CursorAdapter";
 import { GeminiAdapterLive } from "./provider/Layers/GeminiAdapter";
 import { ManifestAdapterLive } from "./provider/Layers/ManifestAdapter";
 import { OllamaAdapterLive } from "./provider/Layers/OllamaAdapter";
@@ -171,6 +172,7 @@ const ProviderLayerLive = Layer.unwrap(
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
+    const cursorAdapterLayer = CursorAdapterLive;
     const geminiAdapterLayer = GeminiAdapterLive;
     const ollamaAdapterLayer = OllamaAdapterLive;
     const openCodeAdapterLayer = OpenCodeAdapterLive;
@@ -181,6 +183,7 @@ const ProviderLayerLive = Layer.unwrap(
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
+      Layer.provide(cursorAdapterLayer),
       Layer.provide(geminiAdapterLayer),
       Layer.provide(ollamaAdapterLayer),
       Layer.provide(openCodeAdapterLayer),
@@ -195,6 +198,14 @@ const ProviderLayerLive = Layer.unwrap(
 );
 
 const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
+
+const CheckpointingServicesLive = CheckpointingLayerLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
+const OrchestrationServicesLive = OrchestrationLayerLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
 
 const GitLayerLive = Layer.empty.pipe(
   Layer.provideMerge(
@@ -229,20 +240,31 @@ const AuxiliaryServicesLive = Layer.mergeAll(
   TranscriptionServiceLive,
 );
 
+const A2aPersistenceBackedServicesLive = Layer.mergeAll(
+  A2aAgentCardServiceLive,
+  A2aTaskServiceLive,
+).pipe(Layer.provideMerge(PersistenceLayerLive));
+
+const A2aServicesLive = Layer.mergeAll(
+  A2aPersistenceBackedServicesLive,
+  A2aClientServiceLive.pipe(Layer.provideMerge(A2aPersistenceBackedServicesLive)),
+);
+
+const ProviderServicesLive = ProviderLayerLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+  Layer.provideMerge(A2aServicesLive),
+);
+
 const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   // Core Services
-  Layer.provideMerge(CheckpointingLayerLive),
+  Layer.provideMerge(CheckpointingServicesLive),
   Layer.provideMerge(GitLayerLive),
-  Layer.provideMerge(OrchestrationLayerLive),
-  // A2A services must be provided before ProviderLayerLive because
-  // A2aAdapterLive (inside ProviderLayerLive) depends on A2aClientService.
-  // Dependency chain: PersistenceLayerLive → A2aAgentCardServiceLive → A2aClientServiceLive → A2aAdapterLive
-  Layer.provideMerge(ProviderLayerLive),
-  Layer.provideMerge(A2aClientServiceLive),
-  Layer.provideMerge(A2aAgentCardServiceLive),
-  Layer.provideMerge(A2aTaskServiceLive),
-  Layer.provideMerge(TerminalLayerLive),
+  Layer.provideMerge(OrchestrationServicesLive),
   Layer.provideMerge(PersistenceLayerLive),
+  // A2A services must be available before ProviderLayerLive and HTTP routes.
+  Layer.provideMerge(A2aServicesLive),
+  Layer.provideMerge(ProviderServicesLive),
+  Layer.provideMerge(TerminalLayerLive),
   Layer.provideMerge(KeybindingsLive),
   Layer.provideMerge(ProviderRegistryLive),
   Layer.provideMerge(ServerSettingsLive),
@@ -276,7 +298,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   // requests are matched here rather than swallowed by the wildcard handler.
   websocketRpcRouteLayer,
   staticAndDevRouteLayer, // must remain last — wildcard catch-all
-);
+) as Layer.Layer<never, never, never>;
 
 export const makeServerLayer = Layer.unwrap(
   Effect.gen(function* () {

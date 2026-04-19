@@ -19,7 +19,8 @@ import {
   derivePendingApprovals,
   derivePendingUserInputs,
 } from "./session-logic";
-import { summarizeTurnDiffStats } from "./lib/turnDiffTree";
+// summarizeTurnDiffStats is intentionally not imported here — resolveLatestTurnDiffStat
+// uses a path-keyed merge instead to avoid double-counting files changed across turns.
 import { type ChatMessage, type Project, type SidebarThreadSummary, type Thread } from "./types";
 
 // ── State ────────────────────────────────────────────────────────────
@@ -239,20 +240,32 @@ function buildSidebarThreadSummary(thread: Thread): SidebarThreadSummary {
 }
 
 function resolveLatestTurnDiffStat(
-  thread: Pick<Thread, "latestTurn" | "turnDiffSummaries">,
+  thread: Pick<Thread, "turnDiffSummaries">,
 ): { additions: number; deletions: number } | null {
-  const latestTurnId = thread.latestTurn?.turnId ?? null;
-  const summaries =
-    latestTurnId === null
-      ? thread.turnDiffSummaries
-      : thread.turnDiffSummaries.filter((summary) => summary.turnId === latestTurnId);
-  const latestSummary = summaries.at(-1) ?? null;
-  if (!latestSummary) {
-    return null;
+  if (thread.turnDiffSummaries.length === 0) return null;
+
+  // Merge per-file stats across ALL turns in the thread so the sidebar badge
+  // shows the thread's cumulative net impact, not just the most-recent turn.
+  // Keyed by file path to avoid double-counting files touched in multiple turns.
+  const fileMap = new Map<string, { additions: number; deletions: number }>();
+  for (const summary of thread.turnDiffSummaries) {
+    for (const file of summary.files) {
+      const existing = fileMap.get(file.path) ?? { additions: 0, deletions: 0 };
+      fileMap.set(file.path, {
+        additions: existing.additions + (file.additions ?? 0),
+        deletions: existing.deletions + (file.deletions ?? 0),
+      });
+    }
   }
 
-  const stat = summarizeTurnDiffStats(latestSummary.files);
-  return stat.additions === 0 && stat.deletions === 0 ? null : stat;
+  let additions = 0;
+  let deletions = 0;
+  for (const stat of fileMap.values()) {
+    additions += stat.additions;
+    deletions += stat.deletions;
+  }
+
+  return additions === 0 && deletions === 0 ? null : { additions, deletions };
 }
 
 function sidebarThreadSummariesEqual(
@@ -817,22 +830,46 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
           return thread;
         }
         const latestTurn = thread.latestTurn;
-        if (latestTurn === null || latestTurn.turnId !== targetTurnId) {
-          return thread;
+        const sessionTargetsActiveTurn =
+          thread.session?.activeTurnId !== undefined &&
+          thread.session.activeTurnId === targetTurnId;
+
+        if (latestTurn !== null && latestTurn.turnId === targetTurnId) {
+          return {
+            ...thread,
+            latestTurn: buildLatestTurn({
+              previous: latestTurn,
+              turnId: targetTurnId,
+              state: "interrupted",
+              requestedAt: latestTurn.requestedAt,
+              startedAt: latestTurn.startedAt ?? event.payload.createdAt,
+              completedAt: latestTurn.completedAt ?? event.payload.createdAt,
+              assistantMessageId: latestTurn.assistantMessageId,
+            }),
+            updatedAt: event.occurredAt,
+          };
         }
-        return {
-          ...thread,
-          latestTurn: buildLatestTurn({
-            previous: latestTurn,
-            turnId: targetTurnId,
-            state: "interrupted",
-            requestedAt: latestTurn.requestedAt,
-            startedAt: latestTurn.startedAt ?? event.payload.createdAt,
-            completedAt: latestTurn.completedAt ?? event.payload.createdAt,
-            assistantMessageId: latestTurn.assistantMessageId,
-          }),
-          updatedAt: event.occurredAt,
-        };
+
+        if (
+          sessionTargetsActiveTurn &&
+          (latestTurn === null || latestTurn.turnId !== targetTurnId)
+        ) {
+          return {
+            ...thread,
+            latestTurn: buildLatestTurn({
+              previous: null,
+              turnId: targetTurnId,
+              state: "interrupted",
+              requestedAt: event.payload.createdAt,
+              startedAt: event.payload.createdAt,
+              completedAt: event.payload.createdAt,
+              assistantMessageId: null,
+            }),
+            updatedAt: event.occurredAt,
+          };
+        }
+
+        return thread;
       });
     }
 

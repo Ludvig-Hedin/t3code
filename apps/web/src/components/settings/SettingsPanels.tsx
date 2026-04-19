@@ -438,6 +438,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap
         ? ["Diff line wrapping"]
         : []),
+      ...(settings.collapseChangedFilesByDefault !==
+      DEFAULT_UNIFIED_SETTINGS.collapseChangedFilesByDefault
+        ? ["Changed files collapse"]
+        : []),
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
         : []),
@@ -464,6 +468,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       isGitWritingModelDirty,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
+      settings.collapseChangedFilesByDefault,
       settings.defaultProvider,
       settings.defaultThreadEnvMode,
       settings.diffWordWrap,
@@ -1044,6 +1049,34 @@ export function GeneralSettingsPanel() {
               checked={settings.diffWordWrap}
               onCheckedChange={(checked) => updateSettings({ diffWordWrap: Boolean(checked) })}
               aria-label="Wrap diff lines by default"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Collapse changed files by default"
+          description="Start the per-turn changed-files box collapsed unless you expand it manually."
+          resetAction={
+            settings.collapseChangedFilesByDefault !==
+            DEFAULT_UNIFIED_SETTINGS.collapseChangedFilesByDefault ? (
+              <SettingResetButton
+                label="changed files collapse"
+                onClick={() =>
+                  updateSettings({
+                    collapseChangedFilesByDefault:
+                      DEFAULT_UNIFIED_SETTINGS.collapseChangedFilesByDefault,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.collapseChangedFilesByDefault}
+              onCheckedChange={(checked) =>
+                updateSettings({ collapseChangedFilesByDefault: Boolean(checked) })
+              }
+              aria-label="Collapse changed files by default"
             />
           }
         />
@@ -2083,6 +2116,32 @@ export function AppearanceSettingsPanel() {
               checked={settings.usePointerCursors}
               onCheckedChange={(checked) => updateSettings({ usePointerCursors: Boolean(checked) })}
               aria-label="Pointer cursors"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Clean tool call display"
+          description="Show human-readable summaries instead of raw JSON for agent tool calls."
+          resetAction={
+            settings.toolCallDisplayStyle !== DEFAULT_UNIFIED_SETTINGS.toolCallDisplayStyle ? (
+              <SettingResetButton
+                label="tool call display"
+                onClick={() =>
+                  updateSettings({
+                    toolCallDisplayStyle: DEFAULT_UNIFIED_SETTINGS.toolCallDisplayStyle,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.toolCallDisplayStyle === "clean"}
+              onCheckedChange={(checked) =>
+                updateSettings({ toolCallDisplayStyle: checked ? "clean" : "verbose" })
+              }
+              aria-label="Clean tool call display"
             />
           }
         />

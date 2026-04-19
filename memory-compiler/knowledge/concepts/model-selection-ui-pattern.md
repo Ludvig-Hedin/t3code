@@ -5,7 +5,7 @@ tags: [ui-pattern, configuration, user-experience, model-selection]
 sources:
   - "daily/2026-04-12.md"
 created: 2026-04-12
-updated: 2026-04-12
+updated: 2026-04-13
 ---
 
 # Model Selection UI Pattern: Default Fallbacks and Provider-Specific Overrides

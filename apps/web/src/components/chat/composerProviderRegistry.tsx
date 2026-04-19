@@ -189,6 +189,12 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       />
     ),
   },
+  // cursor is not available yet in the picker, but the registry stays total for ProviderKind.
+  cursor: {
+    getState: (input) => getProviderStateFromCapabilities(input),
+    renderTraitsMenuContent: () => null,
+    renderTraitsPicker: () => null,
+  },
   // ollama shares the same capabilities-based state logic as opencode — no special traits
   ollama: {
     getState: (input) => getProviderStateFromCapabilities(input),

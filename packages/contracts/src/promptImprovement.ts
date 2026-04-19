@@ -25,8 +25,4 @@ export class PromptImprovementError extends Schema.TaggedErrorClass<PromptImprov
     detail: Schema.String,
     cause: Schema.optional(Schema.Defect),
   },
-) {
-  override get message(): string {
-    return this.detail;
-  }
-}
+) {}

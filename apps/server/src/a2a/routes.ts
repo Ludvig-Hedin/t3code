@@ -12,6 +12,7 @@
  *
  * @module a2a/routes
  */
+import { type A2aTaskId } from "@t3tools/contracts";
 import { Effect } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
@@ -54,7 +55,7 @@ function validateA2aAuth(
     return null;
   }
 
-  return HttpServerResponse.json(
+  return HttpServerResponse.jsonUnsafe(
     {
       jsonrpc: "2.0",
       id: null,
@@ -62,6 +63,66 @@ function validateA2aAuth(
     },
     { status: 401 },
   );
+}
+
+function asTaskId(value: unknown): A2aTaskId | undefined {
+  return typeof value === "string" && value.length > 0 ? (value as A2aTaskId) : undefined;
+}
+
+function asMessageParts(value: unknown): ReadonlyArray<
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "file";
+      readonly file: {
+        readonly name?: string | undefined;
+        readonly mimeType?: string | undefined;
+        readonly bytes?: string | undefined;
+        readonly uri?: string | undefined;
+      };
+    }
+  | { readonly type: "data"; readonly data: unknown }
+> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const validParts: Array<
+    | { readonly type: "text"; readonly text: string }
+    | {
+        readonly type: "file";
+        readonly file: {
+          readonly name?: string | undefined;
+          readonly mimeType?: string | undefined;
+          readonly bytes?: string | undefined;
+          readonly uri?: string | undefined;
+        };
+      }
+    | { readonly type: "data"; readonly data: unknown }
+  > = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+
+    const record = item as Record<string, unknown>;
+    if (record.type === "text" && typeof record.text === "string") {
+      validParts.push({ type: "text", text: record.text });
+    } else if (record.type === "file" && record.file && typeof record.file === "object") {
+      const fileRecord = record.file as Record<string, unknown>;
+      validParts.push({
+        type: "file",
+        file: {
+          name: typeof fileRecord.name === "string" ? fileRecord.name : undefined,
+          mimeType: typeof fileRecord.mimeType === "string" ? fileRecord.mimeType : undefined,
+          bytes: typeof fileRecord.bytes === "string" ? fileRecord.bytes : undefined,
+          uri: typeof fileRecord.uri === "string" ? fileRecord.uri : undefined,
+        },
+      });
+    } else if (record.type === "data" && "data" in record) {
+      validParts.push({ type: "data", data: record.data });
+    }
+  }
+
+  return validParts;
 }
 
 // ── Agent Card discovery endpoint ────────────────────────────────────────
@@ -73,7 +134,7 @@ export const a2aAgentCardRoute = HttpRouter.add(
     const cardServiceOption = yield* Effect.serviceOption(A2aAgentCardService);
     const cardService = cardServiceOption._tag === "Some" ? cardServiceOption.value : undefined;
     if (!cardService) {
-      return HttpServerResponse.json(
+      return HttpServerResponse.jsonUnsafe(
         {
           error: {
             code: -32603,
@@ -105,7 +166,7 @@ export const a2aAgentCardRoute = HttpRouter.add(
         : {}),
     };
 
-    return HttpServerResponse.json(specCard, {
+    return HttpServerResponse.jsonUnsafe(specCard, {
       status: 200,
       headers: {
         "Cache-Control": "public, max-age=300",
@@ -115,7 +176,7 @@ export const a2aAgentCardRoute = HttpRouter.add(
   }).pipe(
     Effect.catch((error) =>
       Effect.succeed(
-        HttpServerResponse.json(
+        HttpServerResponse.jsonUnsafe(
           { error: { code: -32603, message: String(error) } },
           { status: 500 },
         ),
@@ -141,7 +202,7 @@ export const a2aJsonRpcRoute = HttpRouter.add(
     const taskService = taskServiceOption._tag === "Some" ? taskServiceOption.value : undefined;
     const cardService = cardServiceOption._tag === "Some" ? cardServiceOption.value : undefined;
     if (!taskService || !cardService) {
-      return HttpServerResponse.json(
+      return HttpServerResponse.jsonUnsafe(
         {
           jsonrpc: "2.0",
           id: null,
@@ -154,7 +215,7 @@ export const a2aJsonRpcRoute = HttpRouter.add(
     // Parse request body — request.json is an Effect; failures exit as JSON-RPC parse error (-32700)
     const bodyExit = yield* Effect.exit(request.json);
     if (bodyExit._tag === "Failure") {
-      return HttpServerResponse.json(
+      return HttpServerResponse.jsonUnsafe(
         {
           jsonrpc: "2.0",
           id: null,
@@ -167,7 +228,7 @@ export const a2aJsonRpcRoute = HttpRouter.add(
 
     const rpc = body as { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
     if (rpc.jsonrpc !== "2.0" || !rpc.method) {
-      return HttpServerResponse.json(
+      return HttpServerResponse.jsonUnsafe(
         {
           jsonrpc: "2.0",
           id: rpc.id ?? null,
@@ -179,6 +240,8 @@ export const a2aJsonRpcRoute = HttpRouter.add(
 
     const params = (rpc.params || {}) as Record<string, unknown>;
 
+    const taskId = asTaskId(params.id);
+
     // Route to handler by method
     switch (rpc.method) {
       case "message/send": {
@@ -189,27 +252,42 @@ export const a2aJsonRpcRoute = HttpRouter.add(
           agentCardId: ownCard.id,
           message: {
             role: (message?.role as "user" | "agent") || "user",
-            parts: message?.parts || [{ type: "text" as const, text: String(params.text || "") }],
+            parts:
+              asMessageParts(message?.parts).length > 0
+                ? asMessageParts(message?.parts)
+                : [{ type: "text" as const, text: String(params.text || "") }],
           },
-          taskId: params.id as string | undefined,
+          ...(taskId ? { taskId } : {}),
         });
-        return HttpServerResponse.json(
+        return HttpServerResponse.jsonUnsafe(
           { jsonrpc: "2.0", id: rpc.id, result: task },
           { status: 200 },
         );
       }
 
       case "tasks/get": {
-        const task = yield* taskService.getTask(params.id as string);
-        return HttpServerResponse.json(
+        if (!taskId) {
+          return HttpServerResponse.jsonUnsafe(
+            { jsonrpc: "2.0", id: rpc.id, error: { code: -32602, message: "Missing task id" } },
+            { status: 400 },
+          );
+        }
+        const task = yield* taskService.getTask(taskId);
+        return HttpServerResponse.jsonUnsafe(
           { jsonrpc: "2.0", id: rpc.id, result: task },
           { status: 200 },
         );
       }
 
       case "tasks/cancel": {
-        const task = yield* taskService.cancelTask(params.id as string);
-        return HttpServerResponse.json(
+        if (!taskId) {
+          return HttpServerResponse.jsonUnsafe(
+            { jsonrpc: "2.0", id: rpc.id, error: { code: -32602, message: "Missing task id" } },
+            { status: 400 },
+          );
+        }
+        const task = yield* taskService.cancelTask(taskId);
+        return HttpServerResponse.jsonUnsafe(
           { jsonrpc: "2.0", id: rpc.id, result: task },
           { status: 200 },
         );
@@ -217,14 +295,14 @@ export const a2aJsonRpcRoute = HttpRouter.add(
 
       case "agent-card": {
         const card = yield* cardService.getOwnCard();
-        return HttpServerResponse.json(
+        return HttpServerResponse.jsonUnsafe(
           { jsonrpc: "2.0", id: rpc.id, result: card },
           { status: 200 },
         );
       }
 
       default:
-        return HttpServerResponse.json(
+        return HttpServerResponse.jsonUnsafe(
           {
             jsonrpc: "2.0",
             id: rpc.id,
@@ -236,7 +314,7 @@ export const a2aJsonRpcRoute = HttpRouter.add(
   }).pipe(
     Effect.catch((error) =>
       Effect.succeed(
-        HttpServerResponse.json(
+        HttpServerResponse.jsonUnsafe(
           {
             jsonrpc: "2.0",
             id: null,

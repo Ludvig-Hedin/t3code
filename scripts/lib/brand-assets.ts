@@ -1,3 +1,4 @@
+/** Paths under `assets/prod` / `assets/dev` are generated from `assets/new/logo-dark.png` (prod) and `assets/new/logo-light.png` (dev). */
 export const BRAND_ASSET_PATHS = {
   productionMacIconPng: "assets/prod/black-macos-1024.png",
   productionLinuxIconPng: "assets/prod/black-universal-1024.png",

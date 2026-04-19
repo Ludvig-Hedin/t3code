@@ -30,6 +30,7 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { FileDiffCard } from "./FileDiffCard";
 import { useFileDiff } from "../../hooks/useFileDiff";
+import { useSettings } from "../../hooks/useSettings";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   MAX_VISIBLE_WORK_LOG_ENTRIES,
@@ -45,7 +46,7 @@ import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
 } from "~/lib/terminalContext";
-import { type TimestampFormat } from "@t3tools/contracts/settings";
+import { type TimestampFormat, type ToolCallDisplayStyle } from "@t3tools/contracts/settings";
 import { formatTimestamp } from "../../timestampFormat";
 import {
   buildInlineTerminalContextText,
@@ -81,6 +82,8 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  toolCallDisplayStyle?: ToolCallDisplayStyle;
+  onToggleToolCallDisplayStyle?: () => void;
   /**
    * When provided, shell-type code blocks show a "Run in terminal" button that
    * calls this callback with the raw command string.
@@ -123,9 +126,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  toolCallDisplayStyle,
+  onToggleToolCallDisplayStyle,
   onRunInTerminal,
   onVirtualizerSnapshot,
 }: MessagesTimelineProps) {
+  const appSettings = useSettings();
+  const collapseChangedFilesByDefault = appSettings.collapseChangedFilesByDefault;
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null);
 
@@ -307,8 +314,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }));
   }, []);
 
-  // The most-recent checkpoint's turn count — that card auto-expands.
-  // All historical cards start collapsed.
+  // The most-recent checkpoint's turn count — whether it auto-expands depends
+  // on the "Collapse changed files by default" setting.
   const mostRecentCheckpointTurnCount = useMemo(() => {
     let max = -1;
     for (const summary of turnDiffSummaryByAssistantMessageId.values()) {
@@ -338,6 +345,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
               : groupedEntries;
           const hiddenCount = groupedEntries.length - visibleEntries.length;
+          const effectiveToolCallDisplayStyle = toolCallDisplayStyle ?? "clean";
 
           // Compute header stats and sections for sectioned rendering
           const headerStats = computeWorkLogHeaderStats(groupedEntries);
@@ -373,15 +381,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </p>
                   )}
                 </div>
-                {hasOverflow && (
-                  <button
-                    type="button"
-                    className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/75"
-                    onClick={() => onToggleWorkGroup(groupId)}
-                  >
-                    {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {onToggleToolCallDisplayStyle ? (
+                    <button
+                      type="button"
+                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/75"
+                      onClick={onToggleToolCallDisplayStyle}
+                    >
+                      {effectiveToolCallDisplayStyle === "verbose" ? "Clean" : "Raw"}
+                    </button>
+                  ) : null}
+                  {hasOverflow && (
+                    <button
+                      type="button"
+                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/50 transition-colors duration-150 hover:text-foreground/75"
+                      onClick={() => onToggleWorkGroup(groupId)}
+                    >
+                      {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Sectioned content */}
@@ -400,7 +419,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
                   // Tool section: render each entry with per-type styling
                   return section.entries.map((workEntry) => (
-                    <WorkEntryRow key={`work-row:${workEntry.id}`} entry={workEntry} />
+                    <WorkEntryRow
+                      key={`work-row:${workEntry.id}`}
+                      entry={workEntry}
+                      workspaceRoot={workspaceRoot}
+                      displayStyle={effectiveToolCallDisplayStyle}
+                    />
                   ));
                 })}
               </div>
@@ -418,53 +442,57 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <div className="flex justify-end">
               {/* Timestamp sits above the bubble, right-aligned, ~6px gap via mb-1.5 */}
-              <div className="group flex flex-col items-end">
-                <div className="relative max-w-[80%] rounded-2xl bg-secondary/50 px-3 py-2">
-                  {userImages.length > 0 && (
-                    <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-                      {userImages.map(
-                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                          <div
-                            key={image.id}
-                            className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                          >
-                            {image.previewUrl ? (
-                              <button
-                                type="button"
-                                className="h-full w-full cursor-zoom-in"
-                                aria-label={`Preview ${image.name}`}
-                                onClick={() => {
-                                  const preview = buildExpandedImagePreview(userImages, image.id);
-                                  if (!preview) return;
-                                  onImageExpand(preview);
-                                }}
-                              >
-                                <img
-                                  src={image.previewUrl}
-                                  alt={image.name}
-                                  className="h-full max-h-[220px] w-full object-cover"
-                                  onLoad={onTimelineImageLoad}
-                                  onError={onTimelineImageLoad}
-                                />
-                              </button>
-                            ) : (
-                              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                                {image.name}
-                              </div>
-                            )}
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  )}
-                  {(displayedUserMessage.visibleText.trim().length > 0 ||
-                    terminalContexts.length > 0) && (
+              {/* max-w-[80%] lives here so it's relative to the full-width flex row, not
+                  the content-sized group div — prevents short words from being broken */}
+              <div className="group flex flex-col items-end max-w-[80%]">
+                {/* bg uses explicit dark: opacity so the bubble is visible in dark mode
+                    (bg-secondary/50 collapsed to ~2% white which was nearly invisible) */}
+                {userImages.length > 0 && (
+                  <div className="mb-2 flex w-full flex-wrap justify-end gap-2 sm:max-w-[640px]">
+                    {userImages.map(
+                      (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                        <div
+                          key={image.id}
+                          className="overflow-hidden rounded-xl border border-border/80 bg-background/70"
+                        >
+                          {image.previewUrl ? (
+                            <button
+                              type="button"
+                              className="h-full w-full cursor-zoom-in"
+                              aria-label={`Preview ${image.name}`}
+                              onClick={() => {
+                                const preview = buildExpandedImagePreview(userImages, image.id);
+                                if (!preview) return;
+                                onImageExpand(preview);
+                              }}
+                            >
+                              <img
+                                src={image.previewUrl}
+                                alt={image.name}
+                                className="h-full max-h-[280px] w-auto object-cover"
+                                onLoad={onTimelineImageLoad}
+                                onError={onTimelineImageLoad}
+                              />
+                            </button>
+                          ) : (
+                            <div className="flex min-h-[36px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                              {image.name}
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
+                {(displayedUserMessage.visibleText.trim().length > 0 ||
+                  terminalContexts.length > 0) && (
+                  <div className="relative rounded-2xl bg-black/5 dark:bg-white/10 px-3 py-2">
                     <UserMessageBody
                       text={displayedUserMessage.visibleText}
                       terminalContexts={terminalContexts}
                     />
-                  )}
-                </div>
+                  </div>
+                )}
                 {/* Action buttons below bubble, only show on hover — prevents invisible space inside bubble */}
                 {(displayedUserMessage.copyText || canRevertAgentWork) && (
                   <div className="mt-1 flex items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
@@ -523,10 +551,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   if (checkpointFiles.length === 0) return null;
                   const allDirectoriesExpanded =
                     allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
-                  // Auto-expand the most-recently completed turn; collapse history
+                  // Only the most-recent checkpoint can auto-expand, and only
+                  // when the user has not opted into collapsing by default.
                   const isRecentTurn =
                     mostRecentCheckpointTurnCount != null &&
                     turnSummary.checkpointTurnCount === mostRecentCheckpointTurnCount;
+                  const defaultExpanded = isRecentTurn && !collapseChangedFilesByDefault;
                   return (
                     <ChangedFilesBox
                       key={`changed-files-box:${turnSummary.turnId}`}
@@ -534,7 +564,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       turnId={turnSummary.turnId}
                       files={checkpointFiles}
                       checkpointTurnCount={turnSummary.checkpointTurnCount}
-                      isRecentTurn={isRecentTurn}
+                      defaultExpanded={defaultExpanded}
                       allDirectoriesExpanded={allDirectoriesExpanded}
                       resolvedTheme={resolvedTheme}
                       onOpenTurnDiff={onOpenTurnDiff}
@@ -544,7 +574,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 })()}
                 {/* Model + timestamp meta row */}
                 <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                  <p className="text-[10px] text-muted-foreground/30">
+                  <p className="text-xs text-muted-foreground/50">
                     {formatMessageMeta(
                       row.message.createdAt,
                       row.message.streaming
@@ -699,9 +729,8 @@ const UserMessageTerminalContextInlineLabel = memo(
  * file changed in a turn.
  *
  * Behaviour:
- *  - `isRecentTurn = true`  → starts expanded so the diff is immediately visible.
- *  - `isRecentTurn = false` → starts collapsed with a "N files changed" summary
- *    header; the user clicks to expand.
+ *  - The parent decides the initial state from the user's settings.
+ *  - When expanded, the diff is fetched lazily on first open.
  *
  * The raw unified diff (needed to populate FileDiffCard lines) is fetched
  * lazily via useFileDiff the first time the card is opened.  Results are
@@ -710,12 +739,14 @@ const UserMessageTerminalContextInlineLabel = memo(
  * Fallback: even before the diff loads, each FileDiffCard shows the filename
  * and +/- stats from the checkpoint summary, so users always see something.
  */
+import { useUiStateStore } from "../../uiStateStore";
+
 const ChangedFilesBox = memo(function ChangedFilesBox(props: {
   threadId: ThreadId;
   turnId: TurnId;
   checkpointTurnCount: number | undefined;
   files: ReadonlyArray<import("../../types").TurnDiffFileChange>;
-  isRecentTurn: boolean;
+  defaultExpanded: boolean;
   allDirectoriesExpanded: boolean;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -726,13 +757,21 @@ const ChangedFilesBox = memo(function ChangedFilesBox(props: {
     turnId,
     checkpointTurnCount,
     files,
-    isRecentTurn,
+    defaultExpanded,
     resolvedTheme,
     onOpenTurnDiff,
   } = props;
 
-  // Recent turns start open; historical turns start collapsed.
-  const [isOpen, setIsOpen] = useState(isRecentTurn);
+  const persistedExpanded = useUiStateStore((s) => s.changedFilesExpandedByThreadId[threadId]);
+  const setPersistedExpanded = useUiStateStore((s) => s.setChangedFilesExpanded);
+
+  // Store state is the source of truth once the user has interacted with the box.
+  const isOpen = persistedExpanded ?? defaultExpanded;
+
+  const toggleOpen = useCallback(() => {
+    const next = !isOpen;
+    setPersistedExpanded(threadId, next);
+  }, [isOpen, threadId, setPersistedExpanded]);
 
   const changedFilesPanelId = useId();
   const changedFilesHeaderId = useId();
@@ -768,7 +807,7 @@ const ChangedFilesBox = memo(function ChangedFilesBox(props: {
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-md"
           aria-expanded={isOpen}
           aria-controls={changedFilesPanelId}
-          onClick={() => setIsOpen((v) => !v)}
+          onClick={toggleOpen}
         >
           <ChevronRightIcon
             className={cn(
@@ -819,7 +858,7 @@ const ChangedFilesBox = memo(function ChangedFilesBox(props: {
                   fileChange={fileChange}
                   parsedFile={parsedFile}
                   isLoading={isLoading && parsedFiles.length === 0}
-                  defaultExpanded={isRecentTurn}
+                  defaultExpanded={defaultExpanded}
                   resolvedTheme={resolvedTheme}
                   onViewFullDiff={() => onOpenTurnDiff(turnId, fileChange.path)}
                 />
@@ -880,7 +919,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-normal text-foreground">
+          <div className="wrap-anywhere whitespace-pre-wrap font-mono text-sm leading-normal text-foreground">
             {inlineNodes}
           </div>
         );
@@ -908,7 +947,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="wrap-break-word whitespace-pre-wrap font-mono text-xs leading-normal text-foreground">
+      <div className="wrap-anywhere whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {inlineNodes}
       </div>
     );
@@ -919,7 +958,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div className="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-normal text-foreground">
+    <div className="wrap-anywhere whitespace-pre-wrap font-mono text-xs leading-normal text-foreground">
       <UserMessageMarkdown text={props.text} />
     </div>
   );

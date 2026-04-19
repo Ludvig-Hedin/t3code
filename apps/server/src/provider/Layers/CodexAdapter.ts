@@ -22,7 +22,7 @@ import {
   TurnId,
   ProviderSendTurnInput,
 } from "@t3tools/contracts";
-import { Effect, FileSystem, Layer, Queue, Schema, ServiceMap, Stream } from "effect";
+import { Duration, Effect, FileSystem, Layer, Queue, Schema, ServiceMap, Stream } from "effect";
 
 import {
   ProviderAdapterProcessError,
@@ -1502,11 +1502,18 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     );
   });
 
+  // Bound the in-band interrupt so Stop always makes progress — a frozen Codex
+  // subprocess can leave `interruptTurn` hanging on the IPC round-trip, which
+  // would block the stop command indefinitely and keep the UI stuck on
+  // "working". On timeout `timeoutOption` returns `Option.none()` without
+  // adding errors to the channel, and we treat that as success so the caller
+  // can proceed with session cleanup; the dying session will be recycled on
+  // next start.
   const interruptTurn: CodexAdapterShape["interruptTurn"] = (threadId, turnId) =>
     Effect.tryPromise({
       try: () => manager.interruptTurn(threadId, turnId),
       catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
-    });
+    }).pipe(Effect.timeoutOption(Duration.seconds(5)), Effect.asVoid);
 
   const readThread: CodexAdapterShape["readThread"] = (threadId) =>
     Effect.tryPromise({

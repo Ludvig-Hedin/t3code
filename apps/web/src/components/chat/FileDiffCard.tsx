@@ -13,8 +13,8 @@
  * - Red/green line backgrounds are pure CSS — no library dependency.
  * - Syntax highlighting within lines is intentionally omitted for now
  *   (can be layered on with shiki later without touching this component).
- * - `defaultExpanded` is true for the most-recent completed turn so the user
- *   sees what just changed without clicking.  Historical turns start collapsed.
+ * - `defaultExpanded` comes from the parent timeline's default-open setting
+ *   for the most recent completed turn.
  * - The card is a controlled/uncontrolled hybrid: it defaults to
  *   `defaultExpanded` on mount but the user can toggle freely afterward.
  * - Diff lines are only fetched when the card is first opened (lazy via

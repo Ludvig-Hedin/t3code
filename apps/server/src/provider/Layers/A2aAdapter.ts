@@ -12,11 +12,8 @@ import type {
   ModelSelection,
   ProviderKind,
   ProviderRuntimeEvent,
-  ProviderSendTurnInput,
   ProviderSession,
-  ProviderSessionStartInput,
   ProviderTurnStartResult,
-  ProviderUserInputAnswers,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -106,9 +103,9 @@ export const A2aAdapterLive = Layer.effect(
 
         const sessionState: A2aSessionState = {
           session,
-          modelSelection: input.modelSelection,
           agentCardId,
           turns: [],
+          ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
         };
 
         yield* Ref.update(sessionsRef, (sessions) => {
@@ -120,6 +117,11 @@ export const A2aAdapterLive = Layer.effect(
         yield* emitEvent(
           makeThreadEvent("session.started", input.threadId, {
             message: "A2A agent session started.",
+          }),
+        );
+        yield* emitEvent(
+          makeThreadEvent("thread.started", input.threadId, {
+            providerThreadId: input.threadId,
           }),
         );
 
@@ -147,7 +149,7 @@ export const A2aAdapterLive = Layer.effect(
           makeThreadEvent(
             "turn.started",
             input.threadId,
-            { turnId, model: state.session.model || "a2a-agent" },
+            { model: state.session.model || "a2a-agent" },
             turnId,
           ),
         );
@@ -160,16 +162,30 @@ export const A2aAdapterLive = Layer.effect(
               role: "user",
               parts: [{ type: "text", text: userText }],
             },
-            taskId: state.activeTaskId,
+            ...(state.activeTaskId ? { taskId: state.activeTaskId } : {}),
           })
           .pipe(
             Effect.catch((err) =>
               Effect.gen(function* () {
                 yield* emitEvent(
                   makeThreadEvent(
-                    "turn.error",
+                    "runtime.error",
                     input.threadId,
-                    { turnId, error: String(err) },
+                    {
+                      message: err instanceof Error ? err.message : String(err),
+                      detail: err,
+                    },
+                    turnId,
+                  ),
+                );
+                yield* emitEvent(
+                  makeThreadEvent(
+                    "turn.completed",
+                    input.threadId,
+                    {
+                      state: "failed",
+                      errorMessage: err instanceof Error ? err.message : String(err),
+                    },
                     turnId,
                   ),
                 );
@@ -194,22 +210,16 @@ export const A2aAdapterLive = Layer.effect(
             .map((p) => p.text)
             .join("\n") || "";
 
-        // Emit assistant message
-        const messageId = globalThis.crypto.randomUUID();
-        yield* emitEvent(
-          makeThreadEvent(
-            "item.created",
-            input.threadId,
-            {
-              item: {
-                id: messageId,
-                type: "assistant_message",
-                content: responseText,
-              },
-            },
-            turnId,
-          ),
-        );
+        if (responseText.length > 0) {
+          yield* emitEvent(
+            makeThreadEvent(
+              "content.delta",
+              input.threadId,
+              { streamKind: "assistant_text", delta: responseText },
+              turnId,
+            ),
+          );
+        }
 
         // Update session state with the task ID for continuation
         yield* Ref.update(sessionsRef, (sessions) => {
@@ -226,9 +236,11 @@ export const A2aAdapterLive = Layer.effect(
         });
 
         // Emit turn completed
-        yield* emitEvent(makeThreadEvent("turn.completed", input.threadId, { turnId }, turnId));
+        yield* emitEvent(
+          makeThreadEvent("turn.completed", input.threadId, { state: "completed" }, turnId),
+        );
 
-        return { turnId } as ProviderTurnStartResult;
+        return { threadId: input.threadId, turnId } satisfies ProviderTurnStartResult;
       });
 
     const interruptTurn: A2aAdapterShape["interruptTurn"] = (threadId, _turnId) =>

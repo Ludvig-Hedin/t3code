@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Schema } from "effect";
+
+import { PromptImprovementError } from "@t3tools/contracts";
 
 import { getWsRpcClient } from "../wsRpcClient";
 import type { ChatMessage } from "../types";
@@ -118,6 +121,10 @@ export function usePromptImprover(input: {
       applyManagedPrompt(nextVersions[nextIndex] ?? result.improvedPrompt);
     } catch (cause) {
       if (requestIdRef.current !== requestId) {
+        return;
+      }
+      if (Schema.is(PromptImprovementError)(cause)) {
+        setError(cause.detail);
         return;
       }
       setError(cause instanceof Error ? cause.message : "Failed to improve the prompt.");

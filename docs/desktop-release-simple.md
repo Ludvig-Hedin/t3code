@@ -63,6 +63,20 @@ Use this to test a **local** `.dmg` / `.exe` / `.AppImage` before or instead of 
 
 3. **Find outputs** under the repo’s `release/` folder (installers and helper files).
 
+Packaged desktop builds now ship the server backend as a separate `backend-runtime`
+resource under the app bundle. That keeps the production child Node process on a
+real filesystem path instead of launching from `app.asar`, which avoids packaged-only
+module resolution failures.
+
+The packaged runtime also carries the server's required Bun dependency closure. If a
+local `.dmg` or `.zip` build ever opens to a blank window, check the logs first:
+
+- macOS: `~/.t3/userdata/logs/desktop-main.log` and `server-child.log`
+- Windows: `%APPDATA%\\t3\\userdata\\logs\\desktop-main.log` and `server-child.log`
+- Linux: `~/.config/t3/userdata/logs/desktop-main.log` and `server-child.log`
+
+Then verify the mounted app contains the packaged runtime (e.g., `Contents/Resources/backend-runtime` on macOS, or `resources/backend-runtime` on Windows/Linux).
+
 **Version label on the built app:** If you don’t pass anything extra, the script uses the version from **`apps/server/package.json`**. To force a version string on the artifact, use the full artifact script with `--build-version`:
 
 ```bash

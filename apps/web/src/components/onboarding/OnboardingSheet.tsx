@@ -1,5 +1,5 @@
 /**
- * OnboardingSheet — 5-step right-side sheet.
+ * OnboardingSheet — 4-step right-side sheet.
  *
  * Auto-opens on first launch (controlled by useOnboarding localStorage state).
  * Can be reopened from Settings via the "Setup Guide" button.
@@ -8,8 +8,7 @@
  *  1. Provider Install
  *  2. Mobile Pairing
  *  3. Git Setup
- *  4. Feature Tour
- *  5. Import Chats
+ *  4. Import Chats
  */
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
@@ -18,7 +17,6 @@ import { type OnboardingStep, useOnboarding } from "../../hooks/useOnboarding";
 import { ProviderInstallStep } from "./steps/ProviderInstallStep";
 import { MobilePairingStep } from "./steps/MobilePairingStep";
 import { GitSetupStep } from "./steps/GitSetupStep";
-import { FeatureTourStep } from "./steps/FeatureTourStep";
 import { ImportChatsFlow } from "./ImportChatsFlow";
 import { cn } from "~/lib/utils";
 
@@ -26,11 +24,10 @@ const STEP_LABELS: Record<OnboardingStep, string> = {
   1: "Providers",
   2: "Mobile",
   3: "Git",
-  4: "Features",
-  5: "Import",
+  4: "Import",
 };
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 
 // ── Step indicator dots ───────────────────────────────────────────────────────
 
@@ -68,8 +65,6 @@ function StepContent({ step, onImportDone }: { step: OnboardingStep; onImportDon
     case 3:
       return <GitSetupStep />;
     case 4:
-      return <FeatureTourStep />;
-    case 5:
       return <ImportChatsFlow onDone={onImportDone} />;
   }
 }
@@ -82,7 +77,7 @@ export function OnboardingSheet() {
 
   const isLastStep = currentStep === TOTAL_STEPS;
   // The import step manages its own primary CTA (the import button)
-  const isImportStep = currentStep === 5;
+  const isImportStep = currentStep === 4;
 
   return (
     <Sheet
@@ -134,12 +129,7 @@ export function OnboardingSheet() {
               Skip this step
             </button>
           )}
-          <div
-            className={cn(
-              "flex items-center gap-2",
-              isImportStep && "ml-auto",
-            )}
-          >
+          <div className={cn("flex items-center gap-2", isImportStep && "ml-auto")}>
             {currentStep > 1 && (
               <Button size="sm" variant="outline" onClick={prevStep}>
                 <ArrowLeftIcon className="size-3.5 mr-1" />

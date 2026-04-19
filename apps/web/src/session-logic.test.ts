@@ -12,6 +12,7 @@ import {
   deriveCompletionDividerBeforeEntryId,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  derivePhase,
   PROVIDER_OPTIONS,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -1187,7 +1188,7 @@ describe("deriveActiveAgentStatus", () => {
     });
   });
 
-  it("marks active turns as quiet when no visible progress arrives for 15s", () => {
+  it("marks active turns as quiet when no visible progress arrives for 20s", () => {
     expect(
       deriveActiveAgentStatus({
         session: {
@@ -1219,7 +1220,7 @@ describe("deriveActiveAgentStatus", () => {
     });
   });
 
-  it("marks active turns as stalled after 45s of silence", () => {
+  it("marks active turns as stalled after 50s of silence", () => {
     expect(
       deriveActiveAgentStatus({
         session: {
@@ -1249,6 +1250,49 @@ describe("deriveActiveAgentStatus", () => {
       canStop: true,
       lastActivityAt: "2026-02-27T21:10:10.000Z",
     });
+  });
+});
+
+describe("derivePhase", () => {
+  it("returns ready when session sync lags but the active latest turn is already interrupted", () => {
+    const turnId = TurnId.makeUnsafe("turn-1");
+    const session = {
+      provider: "codex" as const,
+      status: "running" as const,
+      orchestrationStatus: "running" as const,
+      activeTurnId: turnId,
+      createdAt: "2026-02-27T00:00:00.000Z",
+      updatedAt: "2026-02-27T00:00:00.000Z",
+    };
+    const latestTurn = {
+      turnId,
+      state: "interrupted" as const,
+      requestedAt: "2026-02-27T00:00:00.000Z",
+      startedAt: "2026-02-27T00:00:00.000Z",
+      completedAt: "2026-02-27T00:00:01.000Z",
+      assistantMessageId: null,
+    };
+    expect(derivePhase(session, latestTurn)).toBe("ready");
+  });
+
+  it("stays running when interrupted latestTurn belongs to a different turn than activeTurnId", () => {
+    const session = {
+      provider: "codex" as const,
+      status: "running" as const,
+      orchestrationStatus: "running" as const,
+      activeTurnId: TurnId.makeUnsafe("turn-2"),
+      createdAt: "2026-02-27T00:00:00.000Z",
+      updatedAt: "2026-02-27T00:00:00.000Z",
+    };
+    const latestTurn = {
+      turnId: TurnId.makeUnsafe("turn-1"),
+      state: "interrupted" as const,
+      requestedAt: "2026-02-27T00:00:00.000Z",
+      startedAt: "2026-02-27T00:00:00.000Z",
+      completedAt: "2026-02-27T00:00:01.000Z",
+      assistantMessageId: null,
+    };
+    expect(derivePhase(session, latestTurn)).toBe("running");
   });
 });
 

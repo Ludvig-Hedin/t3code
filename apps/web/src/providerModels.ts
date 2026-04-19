@@ -29,6 +29,7 @@ export function getProviderModelsByProvider(
     codex: getProviderModels(providers, "codex"),
     claudeAgent: getProviderModels(providers, "claudeAgent"),
     gemini: getProviderModels(providers, "gemini"),
+    cursor: getProviderModels(providers, "cursor"),
     opencode: getProviderModels(providers, "opencode"),
     ollama: getProviderModels(providers, "ollama"),
     manifest: getProviderModels(providers, "manifest"),

@@ -126,19 +126,28 @@ export const ReasoningBlock = memo(function ReasoningBlock({
 
       {/* Expanded reasoning content */}
       {isOpen && (
-        <div className="mt-1 ml-4 border-l border-muted-foreground/15 pl-2 flex flex-col gap-0.5">
+        <div className="mt-1 ml-4 border-l border-muted-foreground/15 pl-3 flex flex-col gap-1.5">
           {entries.map((entry) => {
-            // Strip the "Reasoning update - " prefix so only the useful
-            // content is shown to the user.
-            const text = entry.label.startsWith(REASONING_PREFIX)
+            // Prefer `entry.detail` (the actual reasoning text streamed by the
+            // provider — task.progress.summary for Claude, agent_reasoning.text
+            // for Codex). Fall back to the label with its "Reasoning update - "
+            // prefix stripped so older events still render something useful.
+            const stripped = entry.label.startsWith(REASONING_PREFIX)
               ? entry.label.slice(REASONING_PREFIX.length)
               : entry.label;
+            const text =
+              entry.detail && entry.detail.trim().length > 0
+                ? entry.detail
+                : stripped === "Reasoning update"
+                  ? ""
+                  : stripped;
+
+            if (!text) return null;
 
             return (
               <p
                 key={entry.id}
-                className="text-[10px] text-muted-foreground/40 truncate"
-                title={text}
+                className="text-[11px] leading-relaxed whitespace-pre-wrap break-words text-muted-foreground/70"
               >
                 {text}
               </p>

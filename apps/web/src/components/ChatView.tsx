@@ -1823,6 +1823,31 @@ export default function ChatView({ threadId }: ChatViewProps) {
     return byMessageId;
   }, [turnDiffSummaries]);
 
+  // Aggregate diff stats for the active thread across ALL completed turns.
+  // Merges per-file additions/deletions by file path to avoid double-counting
+  // files touched in multiple turns. Used by the ChatHeader diff toggle so the
+  // "+X/-Y" label reflects only this thread's checkpoint changes, not the
+  // entire working-tree's uncommitted changes.
+  const threadDiffStat = useMemo(() => {
+    const fileMap = new Map<string, { additions: number; deletions: number }>();
+    for (const summary of turnDiffSummaries) {
+      for (const file of summary.files) {
+        const existing = fileMap.get(file.path) ?? { additions: 0, deletions: 0 };
+        fileMap.set(file.path, {
+          additions: existing.additions + (file.additions ?? 0),
+          deletions: existing.deletions + (file.deletions ?? 0),
+        });
+      }
+    }
+    let additions = 0;
+    let deletions = 0;
+    for (const stat of fileMap.values()) {
+      additions += stat.additions;
+      deletions += stat.deletions;
+    }
+    return { additions, deletions };
+  }, [turnDiffSummaries]);
+
   const revertTurnCountByUserMessageId = useMemo(() => {
     const byUserMessageId = new Map<MessageId, number>();
     for (let index = 0; index < timelineEntries.length; index += 1) {
@@ -2755,7 +2780,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
     }
 
-    setShowScrollToBottom(!shouldAutoScrollRef.current);
+    const canScroll = scrollContainer.scrollHeight > scrollContainer.clientHeight;
+    setShowScrollToBottom(!shouldAutoScrollRef.current && canScroll);
     lastKnownScrollTopRef.current = currentScrollTop;
   }, []);
   const onMessagesWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
@@ -2798,6 +2824,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   useLayoutEffect(() => {
     if (!activeThread?.id) return;
     shouldAutoScrollRef.current = true;
+    setShowScrollToBottom(false);
     scheduleStickToBottom();
     const timeout = window.setTimeout(() => {
       const scrollContainer = messagesScrollRef.current;
@@ -4706,85 +4733,53 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, []);
   const expandedImageItem = expandedImage ? expandedImage.images[expandedImage.index] : null;
 
-  // Save the expanded image: same-origin uses a direct download link; cross-origin uses fetch + blob URL.
+  // Save the expanded image.
+  // In Electron: delegates to the main process via desktopBridge.downloadUrl() which calls
+  // webContents.downloadURL() — this bypasses renderer CORS and opens the native OS save dialog.
+  // Web fallback: <a download> for same-origin, new tab for cross-origin.
   const handleSaveExpandedImage = useCallback(async () => {
     if (!expandedImageItem) return;
-    let parsed: URL;
-    try {
-      parsed = new URL(expandedImageItem.src, window.location.href);
-    } catch {
-      toastManager.add({
-        type: "error",
-        title: "Could not save image",
-        description: "The image address is not valid.",
-      });
-      return;
-    }
 
-    const downloadName = expandedImageItem.name || "image";
-    const sameOrigin = parsed.origin === window.location.origin;
-
-    if (sameOrigin) {
+    // Electron path — main process handles the download natively (no CORS restriction).
+    if (window.desktopBridge?.downloadUrl) {
       try {
-        const a = document.createElement("a");
-        a.href = expandedImageItem.src;
-        a.download = downloadName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        await window.desktopBridge.downloadUrl(expandedImageItem.src);
+        return;
       } catch {
-        toastManager.add({
-          type: "error",
-          title: "Could not save image",
-          description: "Try opening the image in a new tab and saving from there.",
-        });
+        // fall through to web path
       }
-      return;
     }
 
-    let objectUrl: string | undefined;
+    // Web / fallback path.
     try {
-      const response = await fetch(expandedImageItem.src);
-      if (!response.ok) {
-        throw new Error("fetch failed");
-      }
-      const blob = await response.blob();
-      objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = downloadName;
+      a.href = expandedImageItem.src;
+      a.download = expandedImageItem.name || "image";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     } catch {
-      toastManager.add({
-        type: "error",
-        title: "Could not save image",
-        description:
-          "Your browser may block this download (cross-origin). Opening the image in a new tab.",
-      });
       window.open(expandedImageItem.src, "_blank", "noopener");
-    } finally {
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
     }
   }, [expandedImageItem]);
 
-  // Copy image to clipboard when possible; on CORS/opaque responses or errors, copy the image URL.
+  // Copy the expanded image to the clipboard.
+  // In Electron: delegates to the main process via desktopBridge.writeImageToClipboard() which
+  // uses net.fetch() (no CORS) + clipboard.writeImage() — no renderer permission needed.
+  // Web fallback: canvas approach for same-origin images; copies the URL for cross-origin.
   const handleCopyExpandedImage = useCallback(async () => {
     if (!expandedImageItem) return;
 
-    if (!window.isSecureContext || typeof navigator.clipboard?.writeText !== "function") {
-      toastManager.add({
-        type: "error",
-        title: "Clipboard not available",
-        description: "Copy needs a secure page and clipboard permission.",
-      });
-      return;
-    }
-
     const copyUrlWithFeedback = async (description: string) => {
+      if (!window.isSecureContext || typeof navigator.clipboard?.writeText !== "function") {
+        toastManager.add({
+          type: "error",
+          title: "Could not copy image",
+          description,
+        });
+        return;
+      }
+
       try {
         await navigator.clipboard.writeText(expandedImageItem.src);
         toastManager.add({
@@ -4795,38 +4790,54 @@ export default function ChatView({ threadId }: ChatViewProps) {
       } catch {
         toastManager.add({
           type: "error",
-          title: "Could not copy",
-          description: "Clipboard permission was denied.",
+          title: "Could not copy image",
+          description,
         });
       }
     };
 
-    try {
-      const response = await fetch(expandedImageItem.src);
-      if (response.type === "opaque" || !response.ok) {
-        await copyUrlWithFeedback(
-          "Could not read the image bytes (cross-origin or network). Copied the image URL instead.",
-        );
-        return;
-      }
-
-      const blob = await response.blob();
+    // Electron path — main process fetches + writes to clipboard natively.
+    if (window.desktopBridge?.writeImageToClipboard) {
       try {
-        if (typeof navigator.clipboard?.write !== "function") {
-          await copyUrlWithFeedback(
-            "Image clipboard API is not available. Copied the image URL instead.",
-          );
+        const result = await window.desktopBridge.writeImageToClipboard(expandedImageItem.src);
+        if (result.ok) {
+          toastManager.add({ type: "success", title: "Image copied to clipboard" });
           return;
         }
-        await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
-        toastManager.add({ type: "success", title: "Image copied to clipboard" });
       } catch {
-        await copyUrlWithFeedback(
-          "Could not copy image data to the clipboard. Copied the image URL instead.",
-        );
+        // fall through to web path
       }
+    }
+
+    if (!window.isSecureContext || typeof navigator.clipboard?.write !== "function") {
+      await copyUrlWithFeedback(
+        "Image clipboard access is unavailable here. Copied the image URL instead.",
+      );
+      return;
+    }
+
+    // Web path: draw image onto a canvas and write the PNG blob to the clipboard.
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        img.addEventListener("load", () => resolve(), { once: true });
+        img.addEventListener("error", () => reject(new Error("load failed")), { once: true });
+        img.src = expandedImageItem.src;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext("2d")?.drawImage(img, 0, 0);
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
+      );
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      toastManager.add({ type: "success", title: "Image copied to clipboard" });
     } catch {
-      await copyUrlWithFeedback("Could not load the image. Copied the image URL instead.");
+      await copyUrlWithFeedback(
+        "Could not read the image bytes in the browser. Copied the image URL instead.",
+      );
     }
   }, [expandedImageItem]);
 
@@ -5012,8 +5023,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
             diffToggleShortcutLabel={diffPanelShortcutLabel}
             gitCwd={gitCwd}
             diffOpen={diffOpen}
-            diffInsertions={gitStatusQuery.data?.workingTree.insertions ?? 0}
-            diffDeletions={gitStatusQuery.data?.workingTree.deletions ?? 0}
+            diffInsertions={threadDiffStat.additions}
+            diffDeletions={threadDiffStat.deletions}
             previewAvailable={previewAvailable}
             previewOpen={previewOpen}
             hasRunningPreviewApp={hasRunningPreviewApp}
@@ -5327,7 +5338,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                     )}
                   >
                     {composerMenuOpen && !isComposerApprovalState && (
-                      <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
+                      <div className="absolute inset-x-0 bottom-full z-40 mb-2 px-1">
                         <ComposerCommandMenu
                           items={composerMenuItems}
                           resolvedTheme={resolvedTheme}

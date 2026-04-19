@@ -31,6 +31,7 @@ function newId(): string {
 
 const make = Effect.gen(function* () {
   const eventPubSub = yield* PubSub.unbounded<A2aSseEvent>();
+  const sql = yield* SqlClient.SqlClient;
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -57,7 +58,6 @@ const make = Effect.gen(function* () {
   const taskFromRow = (row: Record<string, unknown>): A2aTask => ({
     id: row.id as A2aTaskId,
     agentCardId: row.agent_card_id as A2aAgentCardId,
-    threadId: (row.thread_id as string) || undefined,
     status: {
       status: row.status as A2aTaskState["status"],
       timestamp: row.updated_at as string,
@@ -68,24 +68,29 @@ const make = Effect.gen(function* () {
       "messages_json",
       [],
     ),
-    artifacts: row.artifacts_json
-      ? parseTaskJsonField<A2aTask["artifacts"]>(
-          row,
-          row.artifacts_json as string,
-          "artifacts_json",
-          undefined,
-        )
-      : undefined,
-    metadata: row.metadata_json
-      ? parseTaskJsonField<A2aTask["metadata"]>(
-          row,
-          row.metadata_json as string,
-          "metadata_json",
-          undefined,
-        )
-      : undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    ...((row.thread_id as string | null | undefined) ? { threadId: row.thread_id as string } : {}),
+    ...(row.artifacts_json
+      ? {
+          artifacts: parseTaskJsonField<NonNullable<A2aTask["artifacts"]>>(
+            row,
+            row.artifacts_json as string,
+            "artifacts_json",
+            [],
+          ),
+        }
+      : {}),
+    ...(row.metadata_json
+      ? {
+          metadata: parseTaskJsonField<NonNullable<A2aTask["metadata"]>>(
+            row,
+            row.metadata_json as string,
+            "metadata_json",
+            {},
+          ),
+        }
+      : {}),
   });
 
   const publishEvent = (event: A2aSseEvent) =>
@@ -95,7 +100,6 @@ const make = Effect.gen(function* () {
 
   const handleInboundMessage: A2aTaskServiceShape["handleInboundMessage"] = (input) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
       const now = nowIso();
 
       if (input.taskId) {
@@ -173,7 +177,6 @@ const make = Effect.gen(function* () {
 
   const getTask: A2aTaskServiceShape["getTask"] = (taskId) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql`SELECT * FROM a2a_tasks WHERE id = ${taskId}`;
       if (rows.length === 0) {
         return yield* Effect.fail(new A2aServiceError({ message: `Task not found: ${taskId}` }));
@@ -188,7 +191,6 @@ const make = Effect.gen(function* () {
 
   const listTasks: A2aTaskServiceShape["listTasks"] = (agentCardId) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
       const rows = agentCardId
         ? yield* sql`SELECT * FROM a2a_tasks WHERE agent_card_id = ${agentCardId} ORDER BY created_at DESC`
         : yield* sql`SELECT * FROM a2a_tasks ORDER BY created_at DESC`;
@@ -201,7 +203,6 @@ const make = Effect.gen(function* () {
 
   const cancelTask: A2aTaskServiceShape["cancelTask"] = (taskId) =>
     Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
       const now = nowIso();
       const rows = yield* sql`SELECT * FROM a2a_tasks WHERE id = ${taskId}`;
       if (rows.length === 0) {

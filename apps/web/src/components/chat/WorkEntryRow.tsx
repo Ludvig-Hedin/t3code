@@ -25,11 +25,20 @@ import { cn } from "~/lib/utils";
 import type { WorkLogEntry } from "../../session-logic";
 import {
   categorizeWorkEntry,
+  formatSubagentType,
   parseSkillName,
   parseSubAgentDescription,
+  parseSubAgentPrompt,
+  parseSubAgentType,
   type WorkEntryCategory,
 } from "./workLogHelpers";
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
+import {
+  formatSkillSlug,
+  humanizeShellCommand,
+  humanizeToolDetail,
+  relativizePath,
+} from "./humanizeToolDetail";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -37,6 +46,8 @@ import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
 
 export interface WorkEntryRowProps {
   entry: WorkLogEntry;
+  workspaceRoot?: string | undefined;
+  displayStyle?: "clean" | "verbose" | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,8 +93,10 @@ const CATEGORY_CONFIG: Record<WorkEntryCategory, CategoryConfig> = {
   },
   "sub-agent": {
     icon: GitBranchIcon,
-    // Blue accent to visually distinguish sub-agent activity
-    iconClass: "text-blue-400/80 dark:text-blue-400/80",
+    // Neutral foreground — the bright cyan looked like a blue vertical border
+    // on the row because the GitBranch icon is tall and line-like. Keep the
+    // visual weight in line with other tool categories.
+    iconClass: "text-foreground/70",
     textClass: "text-muted-foreground/90",
   },
   skill: {
@@ -119,6 +132,28 @@ function stripLabelPrefixes(label: string): string {
     .trim();
 }
 
+function deriveFileWritePrimary(input: {
+  entry: WorkLogEntry;
+  workspaceRoot?: string | undefined;
+}): string {
+  const { entry, workspaceRoot } = input;
+  const humanizedDetail = entry.detail ? humanizeToolDetail(entry.detail, workspaceRoot) : null;
+  if (humanizedDetail) {
+    return humanizedDetail;
+  }
+
+  const firstChangedFile = entry.changedFiles?.[0];
+  if (firstChangedFile) {
+    return `Edited ${relativizePath(firstChangedFile, workspaceRoot)}`;
+  }
+
+  const filepath = relativizePath(stripLabelPrefixes(entry.label), workspaceRoot);
+  if (/^file change$/i.test(filepath)) {
+    return "Edited file";
+  }
+  return `Wrote ${filepath}`;
+}
+
 /**
  * Derives the primary display label and an optional secondary detail line
  * for each category.
@@ -126,25 +161,42 @@ function stripLabelPrefixes(label: string): string {
 function deriveLabels(
   entry: WorkLogEntry,
   category: WorkEntryCategory,
+  options?: {
+    workspaceRoot?: string | undefined;
+    displayStyle?: "clean" | "verbose" | undefined;
+  },
 ): { primary: string; secondary: string | null } {
+  const workspaceRoot = options?.workspaceRoot;
+  const displayStyle = options?.displayStyle ?? "clean";
+
   switch (category) {
     case "command": {
-      // Show the raw command in mono; surface the AI rationale as secondary
-      const primary = entry.command ?? normalizeCompactToolLabel(entry.label);
-      const secondary = entry.detail && entry.detail !== primary ? entry.detail : null;
+      const rawCommand = entry.command ?? normalizeCompactToolLabel(entry.label);
+      if (displayStyle !== "verbose") {
+        const humanized =
+          humanizeShellCommand(rawCommand, workspaceRoot) ??
+          (entry.detail ? humanizeToolDetail(entry.detail, workspaceRoot) : null);
+        if (humanized) {
+          return { primary: humanized, secondary: null };
+        }
+      }
+
+      const secondary = entry.detail && entry.detail !== rawCommand ? entry.detail : null;
+      const primary = rawCommand;
       return { primary, secondary };
     }
 
     case "file-read": {
       // "Read {filepath}" — strip server-added prefixes from the label
-      const filepath = stripLabelPrefixes(entry.label);
+      const filepath = relativizePath(stripLabelPrefixes(entry.label), workspaceRoot);
       return { primary: `Read ${filepath}`, secondary: null };
     }
 
     case "file-write": {
-      // "Wrote {filepath}" — strip server-added prefixes from the label
-      const filepath = stripLabelPrefixes(entry.label);
-      return { primary: `Wrote ${filepath}`, secondary: null };
+      return {
+        primary: deriveFileWritePrimary({ entry, workspaceRoot }),
+        secondary: null,
+      };
     }
 
     case "web-search": {
@@ -158,19 +210,51 @@ function deriveLabels(
 
     case "sub-agent": {
       const description = parseSubAgentDescription(entry.label, entry.detail);
-      return { primary: `Sub-agent: ${description}`, secondary: null };
+      const typeSlug = parseSubAgentType(entry.label, entry.detail);
+      const agentType = typeSlug ? formatSubagentType(typeSlug) : null;
+
+      // Prefer "Sub-agent (Type): description" so the reader sees which flavor of
+      // sub-agent was dispatched (e.g. Explore, General Purpose, Plan) and the
+      // concrete task in the same line.
+      const primary = agentType
+        ? `Sub-agent (${agentType}): ${description}`
+        : `Sub-agent: ${description}`;
+
+      // Verbose mode exposes the prompt/instructions actually sent to the
+      // sub-agent so the user can see the full brief, not just the headline.
+      if (displayStyle === "verbose") {
+        const prompt = parseSubAgentPrompt(entry.label, entry.detail);
+        const secondary = prompt ?? entry.detail ?? null;
+        return { primary, secondary };
+      }
+
+      return { primary, secondary: null };
     }
 
     case "skill": {
-      // Parse the skill name from the JSON in the label and present it cleanly.
-      // e.g. 'Tool call — Skill: {"skill":"code-review:code-review"}' → "Code Review"
-      const name = parseSkillName(entry.label);
-      return { primary: `Skill: ${name}`, secondary: null };
+      // If the detail field contains the full Skill tool JSON, use the humanizer
+      // so we get the namespace-preserving "Superpowers – Systematic Debugging"
+      // format. Fall back to parseSkillName (label-based) when detail is absent.
+      if (entry.detail) {
+        const humanized = humanizeToolDetail(entry.detail, workspaceRoot);
+        if (humanized) {
+          return { primary: humanized, secondary: null };
+        }
+      }
+      const slug = parseSkillName(entry.label);
+      return { primary: `Used skill: ${formatSkillSlug(slug)}`, secondary: null };
     }
 
     case "tool-call":
     case "reasoning":
     default: {
+      if (category === "tool-call" && displayStyle !== "verbose" && entry.detail) {
+        const humanizedDetail = humanizeToolDetail(entry.detail, workspaceRoot);
+        if (humanizedDetail) {
+          return { primary: humanizedDetail, secondary: null };
+        }
+      }
+
       // Normalize label (strip trailing "complete/completed") and show optional preview
       const primary = normalizeCompactToolLabel(entry.toolTitle ?? entry.label);
       const secondary = entry.detail ?? null;
@@ -183,7 +267,11 @@ function deriveLabels(
 // Component
 // ---------------------------------------------------------------------------
 
-export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowProps) {
+export const WorkEntryRow = memo(function WorkEntryRow({
+  entry,
+  workspaceRoot,
+  displayStyle,
+}: WorkEntryRowProps) {
   const category = categorizeWorkEntry(entry);
   const config = CATEGORY_CONFIG[category];
 
@@ -192,7 +280,9 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
   const resolvedIconClass = isError ? ERROR_ICON_CLASS : config.iconClass;
   const resolvedTextClass = isError ? ERROR_TEXT_CLASS : config.textClass;
 
-  const { primary, secondary } = deriveLabels(entry, category);
+  const { primary, secondary } = deriveLabels(entry, category, { workspaceRoot, displayStyle });
+  const shouldWrapPrimary =
+    displayStyle !== "verbose" && (category === "command" || category === "tool-call");
 
   // Use HammerIcon for dynamic_tool_call instead of the default WrenchIcon
   const Icon: LucideIcon =
@@ -201,16 +291,14 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
   // For file-write, show extra changed file badges when more than one file changed
   const extraChangedFiles =
     category === "file-write" && (entry.changedFiles?.length ?? 0) > 1
-      ? (entry.changedFiles?.slice(1) ?? [])
+      ? (entry.changedFiles?.slice(1).map((file) => relativizePath(file, workspaceRoot)) ?? [])
       : [];
 
   return (
     <div
       className={cn(
         "rounded-lg px-1 py-1",
-        // Sub-agent entries get a subtle blue left border for visual hierarchy
-        category === "sub-agent" && "border-l-2 border-blue-400/40 pl-2",
-        // Skill entries get a subtle amber left border to distinguish from sub-agents
+        // Skill entries get a subtle amber left border to distinguish from other work
         category === "skill" && "border-l-2 border-amber-400/45 pl-2",
       )}
     >
@@ -222,11 +310,20 @@ export const WorkEntryRow = memo(function WorkEntryRow({ entry }: WorkEntryRowPr
 
         <div className="min-w-0 flex-1 overflow-hidden">
           <p
-            className={cn("truncate text-[11px] leading-5", resolvedTextClass)}
+            className={cn(
+              "text-xs leading-5",
+              shouldWrapPrimary ? "whitespace-normal break-words" : "truncate",
+              resolvedTextClass,
+            )}
             title={secondary ? `${primary} — ${secondary}` : primary}
           >
             {/* Command entries use mono font for the command text itself */}
-            <span className={cn(resolvedTextClass, category === "command" && "font-mono")}>
+            <span
+              className={cn(
+                resolvedTextClass,
+                category === "command" && displayStyle === "verbose" && "font-mono",
+              )}
+            >
               {primary}
             </span>
             {/* Secondary line (rationale / detail) in a softer muted tone */}

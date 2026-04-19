@@ -37,6 +37,15 @@ export function useHandleNewThread() {
     });
   }, [projectIds, projectOrder]);
 
+  const waitForNextPaint = useCallback(() => {
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }, []);
+
   const handleNewThread = useCallback(
     (
       projectId: ProjectId,
@@ -74,6 +83,10 @@ export function useHandleNewThread() {
           if (routeThreadId === storedDraftThread.threadId) {
             return;
           }
+          // Give the draft store a paint cycle to settle before the router swaps
+          // to the new thread route. This avoids a brief empty-root flash if the
+          // route guard evaluates before the new project draft is visible.
+          await waitForNextPaint();
           await navigate({
             to: "/$threadId",
             params: { threadId: storedDraftThread.threadId },
@@ -111,13 +124,14 @@ export function useHandleNewThread() {
         });
         applyStickyState(threadId);
 
+        await waitForNextPaint();
         await navigate({
           to: "/$threadId",
           params: { threadId },
         });
       })();
     },
-    [navigate, routeThreadId],
+    [navigate, routeThreadId, waitForNextPaint],
   );
 
   return {

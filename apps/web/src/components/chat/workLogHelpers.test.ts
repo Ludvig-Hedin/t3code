@@ -8,6 +8,7 @@ import {
   groupWorkEntriesIntoSections,
   parseSkillName,
   parseSubAgentDescription,
+  parseSubAgentPrompt,
 } from "./workLogHelpers";
 
 // ---------------------------------------------------------------------------
@@ -177,6 +178,24 @@ describe("parseSkillName", () => {
 
   it("falls back to 'Skill' for an empty label", () => {
     expect(parseSkillName("")).toBe("Skill");
+  });
+
+  it("does not insert extra spaces when the slug has empty dash segments", () => {
+    expect(
+      parseSkillName('Tool call — Skill: {"skill":"ns:code--review--extra"}'),
+    ).toBe("Code Review Extra");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseSubAgentPrompt (regex fallback JSON unescaping)
+// ---------------------------------------------------------------------------
+
+describe("parseSubAgentPrompt", () => {
+  it("uses JSON string unescaping when the label is not valid JSON", () => {
+    // Fragment uses JSON escapes (\t, \u0031); label as a whole is not parseable JSON.
+    const label = 'not-json "prompt": "a\\tb\\u0031c"';
+    expect(parseSubAgentPrompt(label)).toBe("a\tb1c");
   });
 });
 

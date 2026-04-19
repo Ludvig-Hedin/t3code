@@ -1,5 +1,6 @@
 import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
+  DEFAULT_MODEL_BY_PROVIDER,
   type ModelSelection,
   type ProviderKind,
   type ServerProvider,
@@ -51,6 +52,13 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     description: "Save additional Gemini model slugs for the picker and `/model` command.",
     placeholder: "your-gemini-model-slug",
     example: "gemini-3.1-pro-preview",
+  },
+  cursor: {
+    provider: "cursor",
+    title: "Cursor",
+    description: "Save additional Cursor model slugs for the picker and `/model` command.",
+    placeholder: "your-cursor-model-slug",
+    example: "composer-2-fast",
   },
   opencode: {
     provider: "opencode",
@@ -182,14 +190,19 @@ export function resolveAppModelSelection(
   providers: ReadonlyArray<ServerProvider>,
   selectedModel: string | null | undefined,
 ): string {
+  // Never map manifest through resolveSelectableProvider: when manifest is disabled
+  // on the server we'd resolve "auto" against another provider's model list.
+  if (provider === "manifest") {
+    return normalizeModelSlug(selectedModel, "manifest") ?? DEFAULT_MODEL_BY_PROVIDER.manifest;
+  }
+
   const resolvedProvider = resolveSelectableProvider(providers, provider);
-  // Gemini, OpenCode, Ollama, and Manifest use dynamic model slugs that bypass the
+  // Gemini, OpenCode, and Ollama use dynamic model slugs that bypass the
   // selectable-options resolution path — normalise directly to the canonical slug instead.
   if (
     resolvedProvider === "gemini" ||
     resolvedProvider === "opencode" ||
-    resolvedProvider === "ollama" ||
-    resolvedProvider === "manifest"
+    resolvedProvider === "ollama"
   ) {
     return (
       normalizeModelSlug(selectedModel, resolvedProvider) ??
@@ -227,6 +240,12 @@ export function getCustomModelOptionsByProvider(
       providers,
       "gemini",
       selectedProvider === "gemini" ? selectedModel : undefined,
+    ),
+    cursor: getAppModelOptions(
+      settings,
+      providers,
+      "cursor",
+      selectedProvider === "cursor" ? selectedModel : undefined,
     ),
     opencode: getAppModelOptions(
       settings,

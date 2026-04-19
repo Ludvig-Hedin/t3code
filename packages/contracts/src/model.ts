@@ -25,6 +25,9 @@ export type ClaudeModelOptions = typeof ClaudeModelOptions.Type;
 export const GeminiModelOptions = Schema.Struct({});
 export type GeminiModelOptions = typeof GeminiModelOptions.Type;
 
+export const CursorModelOptions = Schema.Struct({});
+export type CursorModelOptions = typeof CursorModelOptions.Type;
+
 export const OpenCodeModelOptions = Schema.Struct({});
 export type OpenCodeModelOptions = typeof OpenCodeModelOptions.Type;
 
@@ -43,6 +46,7 @@ export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
   gemini: Schema.optional(GeminiModelOptions),
+  cursor: Schema.optional(CursorModelOptions),
   opencode: Schema.optional(OpenCodeModelOptions),
   ollama: Schema.optional(OllamaModelOptions),
   manifest: Schema.optional(ManifestModelOptions),
@@ -79,6 +83,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
   codex: "gpt-5.4",
   claudeAgent: "claude-sonnet-4-6",
   gemini: "gemini-2.5-pro",
+  cursor: "composer-2-fast",
   opencode: "openrouter/moonshotai/kimi-k2.5",
   ollama: "llama3.2",
   // manifest always uses "auto" — the router picks the actual model internally
@@ -94,6 +99,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   codex: "gpt-5.4-mini",
   claudeAgent: "claude-haiku-4-5",
   gemini: "gemini-2.5-flash",
+  cursor: "composer-2-fast",
   opencode: "openrouter/moonshotai/kimi-k2.5",
   ollama: "llama3.2",
   manifest: "auto",
@@ -159,6 +165,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "gemini-3-flash": "gemini-3-flash-preview",
     "gemini-3-flash-preview": "gemini-3-flash-preview",
   },
+  cursor: {},
   opencode: {},
   ollama: {
     llama3: "llama3.2",
@@ -175,6 +182,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",
   claudeAgent: "Claude",
   gemini: "Gemini",
+  cursor: "Cursor",
   opencode: "OpenCode",
   ollama: "Ollama",
   // "Auto" is the user-facing name — Manifest is the implementation detail

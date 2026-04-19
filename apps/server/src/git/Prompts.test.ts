@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildPromptImprovementPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./Prompts.ts";
+import { toJsonSchemaObject } from "./Utils.ts";
 import { normalizeCliError, sanitizeThreadTitle } from "./Utils.ts";
 import { TextGenerationError } from "@t3tools/contracts";
 
@@ -133,6 +135,31 @@ describe("buildThreadTitlePrompt", () => {
     expect(result.prompt).toContain("thread.png");
     expect(result.prompt).toContain("image/png");
     expect(result.prompt).toContain("67890 bytes");
+  });
+});
+
+describe("buildPromptImprovementPrompt", () => {
+  it("uses a Codex-compatible schema with fully required top-level keys", () => {
+    const result = buildPromptImprovementPrompt({
+      prompt: "make this prompt clearer",
+      messages: [],
+      instructions: "",
+    });
+
+    const schema = toJsonSchemaObject(result.outputSchema) as {
+      type?: string;
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+
+    expect(schema.type).toBe("object");
+    expect(schema.required).toEqual(["kind", "improvedPrompt", "message"]);
+    expect(Object.keys(schema.properties ?? {})).toEqual(["kind", "improvedPrompt", "message"]);
+    expect(result.prompt).toContain(
+      "Return JSON with exactly these keys: kind, improvedPrompt, message.",
+    );
+    expect(result.prompt).toContain('"kind":"too_vague"');
+    expect(result.prompt).toContain('"kind":"improved"');
   });
 });
 

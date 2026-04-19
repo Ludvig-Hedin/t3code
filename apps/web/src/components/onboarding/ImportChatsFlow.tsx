@@ -2,13 +2,13 @@
  * ImportChatsFlow — reusable conversation import UI.
  *
  * Used in:
- *  - Onboarding step 5
+ *  - Onboarding step 4
  *  - Settings → Providers tab ("Import Conversations" section)
  *
- * Flow: scan → select projects → import → done
+ * Flow: scan → select providers → import → done
  */
 import { useEffect, useState } from "react";
-import { CheckIcon, DownloadIcon, FolderIcon, LoaderIcon } from "lucide-react";
+import { CheckIcon, DownloadIcon, LoaderIcon } from "lucide-react";
 import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 import type { ImportDetectedProject, ImportExecuteResult } from "@t3tools/contracts";
 import { Button } from "../ui/button";
@@ -32,12 +32,32 @@ function projectKey(p: ImportDetectedProject): string {
 }
 
 /**
+ * Groups projects by provider and calculates thread counts per provider.
+ */
+function groupByProvider(
+  projects: ImportDetectedProject[],
+): Map<string, { projects: ImportDetectedProject[]; threadCount: number }> {
+  const grouped = new Map<string, { projects: ImportDetectedProject[]; threadCount: number }>();
+
+  for (const project of projects) {
+    if (!grouped.has(project.provider)) {
+      grouped.set(project.provider, { projects: [], threadCount: 0 });
+    }
+    const group = grouped.get(project.provider)!;
+    group.projects.push(project);
+    group.threadCount += project.threadCount;
+  }
+
+  return grouped;
+}
+
+/**
  * @param onDone — optional callback fired after a successful import (used by OnboardingSheet to advance the step)
  */
 export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
   const [phase, setPhase] = useState<Phase>("scan");
   const [projects, setProjects] = useState<ImportDetectedProject[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedProviders, setSelectedProviders] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<ImportExecuteResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -49,7 +69,9 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
       if (!res.ok) throw new Error(`Scan failed (${res.status})`);
       const data = (await res.json()) as { projects: ImportDetectedProject[] };
       setProjects(data.projects);
-      setSelected(new Set(data.projects.map(projectKey)));
+      // Select all providers by default
+      const grouped = groupByProvider(data.projects);
+      setSelectedProviders(new Set(grouped.keys()));
       setPhase("select");
     } catch (err) {
       setScanError(err instanceof Error ? err.message : "Scan failed");
@@ -61,18 +83,19 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
     void runScan();
   }, []);
 
-  const toggleProject = (key: string) => {
-    setSelected((prev) => {
+  const toggleProvider = (provider: string) => {
+    setSelectedProviders((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(provider)) next.delete(provider);
+      else next.add(provider);
       return next;
     });
   };
 
   const runImport = async () => {
+    // Get all projects from selected providers
     const selections = projects
-      .filter((p) => selected.has(projectKey(p)))
+      .filter((p) => selectedProviders.has(p.provider))
       .map((p) => ({
         provider: p.provider,
         projectPath: p.projectPath,
@@ -166,10 +189,11 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
   }
 
   // ── Select ────────────────────────────────────────────────────────────────
-  const selectedCount = selected.size;
-  const totalThreads = projects
-    .filter((p) => selected.has(projectKey(p)))
-    .reduce((sum, p) => sum + p.threadCount, 0);
+  const grouped = groupByProvider(projects);
+  const selectedCount = selectedProviders.size;
+  const totalThreadsForSelectedProviders = Array.from(grouped.entries())
+    .filter(([provider]) => selectedProviders.has(provider))
+    .reduce((sum, [, group]) => sum + group.threadCount, 0);
 
   return (
     <div className="space-y-4">
@@ -194,37 +218,35 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
           {/* Count + select/clear controls */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              {selectedCount} project{selectedCount !== 1 ? "s" : ""} selected (~{totalThreads}{" "}
-              threads)
+              {selectedCount} provider{selectedCount !== 1 ? "s" : ""} selected (~
+              {totalThreadsForSelectedProviders} threads)
             </span>
             <div className="flex gap-1.5">
               <Button
                 size="xs"
                 variant="ghost"
-                onClick={() => setSelected(new Set(projects.map(projectKey)))}
+                onClick={() => setSelectedProviders(new Set(grouped.keys()))}
               >
                 All
               </Button>
-              <Button size="xs" variant="ghost" onClick={() => setSelected(new Set())}>
+              <Button size="xs" variant="ghost" onClick={() => setSelectedProviders(new Set())}>
                 None
               </Button>
             </div>
           </div>
 
-          {/* Project list */}
+          {/* Provider list */}
           <div className="space-y-1.5 pr-1">
-            {projects.map((project) => {
-              const key = projectKey(project);
-              const isSelected = selected.has(key);
-              const ProviderIcon = PROVIDER_ICON[project.provider];
+            {Array.from(grouped.entries()).map(([provider, group]) => {
+              const isSelected = selectedProviders.has(provider);
+              const ProviderIcon = PROVIDER_ICON[provider];
               const providerLabel =
-                PROVIDER_DISPLAY_NAMES[project.provider as keyof typeof PROVIDER_DISPLAY_NAMES] ??
-                project.provider;
+                PROVIDER_DISPLAY_NAMES[provider as keyof typeof PROVIDER_DISPLAY_NAMES] ?? provider;
               return (
                 <button
-                  key={key}
+                  key={provider}
                   type="button"
-                  onClick={() => toggleProject(key)}
+                  onClick={() => toggleProvider(provider)}
                   className={cn(
                     "w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
                     isSelected
@@ -251,13 +273,9 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
                         {providerLabel}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <FolderIcon className="size-3 text-muted-foreground/60 shrink-0" />
-                      <span className="text-sm font-medium truncate">{project.projectName}</span>
-                    </div>
                   </div>
                   <Badge variant="outline" className="text-[10px] shrink-0">
-                    {project.threadCount} {project.threadCount === 1 ? "thread" : "threads"}
+                    {group.threadCount} {group.threadCount === 1 ? "thread" : "threads"}
                   </Badge>
                 </button>
               );
@@ -271,7 +289,9 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
           >
             <DownloadIcon className="size-4 mr-2" />
             Import{" "}
-            {selectedCount > 0 ? `${totalThreads} thread${totalThreads !== 1 ? "s" : ""}` : ""}
+            {selectedCount > 0
+              ? `${totalThreadsForSelectedProviders} thread${totalThreadsForSelectedProviders !== 1 ? "s" : ""}`
+              : ""}
           </Button>
         </>
       )}

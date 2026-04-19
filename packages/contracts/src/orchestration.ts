@@ -36,6 +36,7 @@ export const ProviderKind = Schema.Literals([
   "codex",
   "claudeAgent",
   "gemini",
+  "cursor",
   "opencode",
   "ollama",
   // manifest = Manifest smart router: routes each request to the cheapest capable model automatically
@@ -676,6 +677,15 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadTurnAbortCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.abort"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  turnId: TurnId,
+  reason: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  createdAt: IsoDateTime,
+});
+
 const ThreadActivityAppendCommand = Schema.Struct({
   type: Schema.Literal("thread.activity.append"),
   commandId: CommandId,
@@ -698,6 +708,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadMessageAssistantCompleteCommand,
   ThreadProposedPlanUpsertCommand,
   ThreadTurnDiffCompleteCommand,
+  ThreadTurnAbortCommand,
   ThreadActivityAppendCommand,
   ThreadRevertCompleteCommand,
 ]);
@@ -723,6 +734,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.message-sent",
   "thread.turn-start-requested",
   "thread.turn-interrupt-requested",
+  "thread.turn-aborted",
   "thread.approval-response-requested",
   "thread.user-input-response-requested",
   "thread.checkpoint-revert-requested",
@@ -845,6 +857,13 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
 export const ThreadTurnInterruptRequestedPayload = Schema.Struct({
   threadId: ThreadId,
   turnId: Schema.optional(TurnId),
+  createdAt: IsoDateTime,
+});
+
+export const ThreadTurnAbortedPayload = Schema.Struct({
+  threadId: ThreadId,
+  turnId: TurnId,
+  reason: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   createdAt: IsoDateTime,
 });
 
@@ -990,6 +1009,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.turn-interrupt-requested"),
     payload: ThreadTurnInterruptRequestedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.turn-aborted"),
+    payload: ThreadTurnAbortedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

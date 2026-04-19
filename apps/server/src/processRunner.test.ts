@@ -20,4 +20,21 @@ describe("runProcess", () => {
     expect(result.stdoutTruncated).toBe(true);
     expect(result.stderrTruncated).toBe(false);
   });
+
+  it("invokes stdout chunk callbacks while still collecting output", async () => {
+    const chunks: string[] = [];
+
+    const result = await runProcess(
+      "node",
+      ["-e", "process.stdout.write('hello'); process.stdout.write(' world')"],
+      {
+        onStdoutChunk: (chunk) => {
+          chunks.push(chunk);
+        },
+      },
+    );
+
+    expect(result.stdout).toBe("hello world");
+    expect(chunks.join("")).toBe("hello world");
+  });
 });

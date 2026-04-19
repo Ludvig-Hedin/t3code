@@ -754,14 +754,16 @@ const WsRpcLayer = WsRpcGroup.toLayer(
               ),
             );
             if (!currentSettings.promptImprovementEnabled) {
-              return yield* new PromptImprovementError({
-                detail: "Prompt improvement is disabled in settings.",
-              });
+              return yield* Effect.fail(
+                new PromptImprovementError({
+                  detail: "Prompt improvement is disabled in settings.",
+                }),
+              );
             }
 
             return yield* textGeneration
               .generateImprovedPrompt({
-                cwd: process.cwd(),
+                cwd: config.cwd,
                 prompt: input.prompt,
                 threadMessages: input.threadMessages,
                 instructions: currentSettings.promptImprovementInstructions,

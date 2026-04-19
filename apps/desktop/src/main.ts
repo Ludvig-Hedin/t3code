@@ -7,11 +7,13 @@ import * as Path from "node:path";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
   nativeImage,
   nativeTheme,
+  net,
   protocol,
   shell,
 } from "electron";
@@ -124,6 +126,10 @@ const REMOTE_SETTINGS_GET_CHANNEL = "desktop:remote-settings-get";
 const TUNNEL_ENABLE_CHANNEL = "desktop:tunnel-enable";
 const TUNNEL_DISABLE_CHANNEL = "desktop:tunnel-disable";
 const KEEP_AWAKE_SET_CHANNEL = "desktop:keep-awake-set";
+const DOWNLOAD_URL_CHANNEL = "desktop:download-url";
+const WRITE_IMAGE_TO_CLIPBOARD_CHANNEL = "desktop:write-image-to-clipboard";
+/** Upper bound for clipboard image fetch (main process); avoids unbounded memory use. */
+const MAX_CLIPBOARD_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const expectedBackendExitChildren = new WeakSet<ChildProcess.ChildProcess>();
 const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
@@ -209,6 +215,34 @@ function getSafeExternalUrl(rawUrl: unknown): string | null {
   }
 
   return parsedUrl.toString();
+}
+
+async function readResponseBodyWithCap(
+  response: Response,
+  maxBytes: number,
+): Promise<{ ok: true; buffer: Buffer } | { ok: false; error: string }> {
+  const body = response.body;
+  if (!body) {
+    return { ok: false, error: "No response body" };
+  }
+  const reader = body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        return { ok: false, error: `Image too large (max ${maxBytes} bytes)` };
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return { ok: true, buffer: Buffer.concat(chunks) };
 }
 
 function getSafeTheme(rawTheme: unknown): DesktopTheme | null {
@@ -476,6 +510,39 @@ function getDestructiveMenuIcon(): Electron.NativeImage | undefined {
     return undefined;
   }
 }
+
+const CONTEXT_MENU_ICON_GLYPHS: Record<string, string> = {
+  archive: "🗄",
+  copy: "⧉",
+  delete: "🗑",
+  folder: "📁",
+  mail: "✉",
+  pencil: "✎",
+  pin: "📌",
+  search: "⌕",
+  settings: "⚙",
+  trash: "🗑",
+};
+
+function getContextMenuIcon(icon: string): Electron.NativeImage | undefined {
+  const glyph = CONTEXT_MENU_ICON_GLYPHS[icon];
+  if (!glyph) return undefined;
+  try {
+    const svg = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><text x="8" y="11" text-anchor="middle" font-size="11" font-family="system-ui,Segoe UI Emoji,Apple Color Emoji,sans-serif">${glyph}</text></svg>`,
+      "utf8",
+    ).toString("base64");
+    const image = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${svg}`).resize({
+      width: 14,
+      height: 14,
+    });
+    if (image.isEmpty()) return undefined;
+    image.setTemplateImage(true);
+    return image;
+  } catch {
+    return undefined;
+  }
+}
 let updatePollTimer: ReturnType<typeof setInterval> | null = null;
 let updateStartupTimer: ReturnType<typeof setTimeout> | null = null;
 let updateCheckInFlight = false;
@@ -508,6 +575,10 @@ function resolveAppRoot(): string {
     return ROOT_DIR;
   }
   return app.getAppPath();
+}
+
+function resolvePackagedBackendRoot(): string {
+  return Path.join(process.resourcesPath, "backend-runtime");
 }
 
 /** Read the baked-in app-update.yml config (if applicable). */
@@ -581,6 +652,9 @@ function resolveAboutCommitHash(): string | null {
 }
 
 function resolveBackendEntry(): string {
+  if (app.isPackaged) {
+    return Path.join(resolvePackagedBackendRoot(), "apps/server/dist/bin.mjs");
+  }
   return Path.join(resolveAppRoot(), "apps/server/dist/bin.mjs");
 }
 
@@ -588,15 +662,16 @@ function resolveBackendCwd(): string {
   if (!app.isPackaged) {
     return resolveAppRoot();
   }
-  return OS.homedir();
+  return resolvePackagedBackendRoot();
 }
 
 function resolveDesktopStaticDir(): string | null {
-  const appRoot = resolveAppRoot();
-  const candidates = [
-    Path.join(appRoot, "apps/server/dist/client"),
-    Path.join(appRoot, "apps/web/dist"),
-  ];
+  const candidates = app.isPackaged
+    ? [Path.join(resolvePackagedBackendRoot(), "apps/server/dist/client")]
+    : [
+        Path.join(resolveAppRoot(), "apps/server/dist/client"),
+        Path.join(resolveAppRoot(), "apps/web/dist"),
+      ];
 
   for (const candidate of candidates) {
     if (FS.existsSync(Path.join(candidate, "index.html"))) {
@@ -1410,6 +1485,7 @@ function registerIpcHandlers(): void {
         .map((item) => ({
           id: item.id,
           label: item.label,
+          icon: typeof item.icon === "string" ? item.icon : null,
           destructive: item.destructive === true,
           disabled: item.disabled === true,
         }));
@@ -1445,6 +1521,12 @@ function registerIpcHandlers(): void {
             enabled: !item.disabled,
             click: () => resolve(item.id),
           };
+          if (item.icon) {
+            const icon = getContextMenuIcon(item.icon);
+            if (icon) {
+              itemOption.icon = icon;
+            }
+          }
           if (item.destructive) {
             const destructiveIcon = getDestructiveMenuIcon();
             if (destructiveIcon) {
@@ -1496,6 +1578,91 @@ function registerIpcHandlers(): void {
       return false;
     }
   });
+
+  // Triggers the Electron native download manager so the user gets the OS save dialog.
+  // webContents.downloadURL works cross-origin because it uses the Electron net stack.
+  ipcMain.removeHandler(DOWNLOAD_URL_CHANNEL);
+  ipcMain.handle(DOWNLOAD_URL_CHANNEL, (event, rawUrl: unknown) => {
+    if (typeof rawUrl !== "string") return;
+    const trimmed = rawUrl.trim();
+    if (trimmed.length === 0) return;
+    const safeUrl = getSafeExternalUrl(trimmed);
+    if (!safeUrl) return;
+    try {
+      event.sender.downloadURL(safeUrl);
+    } catch {
+      // Silently ignore — renderer will show its own fallback.
+    }
+  });
+
+  // Fetches an image URL via the main-process net stack (bypasses renderer CORS restrictions)
+  // and writes it to the system clipboard using Electron's native clipboard module.
+  ipcMain.removeHandler(WRITE_IMAGE_TO_CLIPBOARD_CHANNEL);
+  ipcMain.handle(
+    WRITE_IMAGE_TO_CLIPBOARD_CHANNEL,
+    async (_event, rawUrl: unknown): Promise<{ ok: boolean; error?: string }> => {
+      if (typeof rawUrl !== "string") {
+        return { ok: false, error: "Invalid URL" };
+      }
+      const trimmed = rawUrl.trim();
+      if (trimmed.length === 0) {
+        return { ok: false, error: "Invalid URL" };
+      }
+      const safeUrl = getSafeExternalUrl(trimmed);
+      if (!safeUrl) {
+        return { ok: false, error: "URL must use http or https" };
+      }
+      try {
+        const response = await net.fetch(safeUrl);
+        if (!response.ok) {
+          return { ok: false, error: `Download failed (HTTP ${response.status})` };
+        }
+
+        const lengthHeader = response.headers.get("content-length");
+        let declaredLen: number | null = null;
+        if (lengthHeader != null && lengthHeader !== "") {
+          const n = Number(lengthHeader);
+          if (Number.isFinite(n) && n >= 0) {
+            declaredLen = n;
+          }
+        }
+
+        if (declaredLen !== null && declaredLen > MAX_CLIPBOARD_IMAGE_BYTES) {
+          return {
+            ok: false,
+            error: `Image too large (${declaredLen} bytes; max ${MAX_CLIPBOARD_IMAGE_BYTES})`,
+          };
+        }
+
+        let buffer: Buffer;
+        if (declaredLen !== null) {
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+          if (buffer.byteLength > MAX_CLIPBOARD_IMAGE_BYTES) {
+            return {
+              ok: false,
+              error: `Image too large (${buffer.byteLength} bytes; max ${MAX_CLIPBOARD_IMAGE_BYTES})`,
+            };
+          }
+        } else {
+          const capped = await readResponseBodyWithCap(response, MAX_CLIPBOARD_IMAGE_BYTES);
+          if (!capped.ok) {
+            return { ok: false, error: capped.error };
+          }
+          buffer = capped.buffer;
+        }
+
+        const image = nativeImage.createFromBuffer(buffer);
+        if (image.isEmpty()) {
+          return { ok: false, error: "Could not decode image" };
+        }
+        clipboard.writeImage(image);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
 
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);

@@ -356,6 +356,17 @@ function addThreadToSnapshot(
   };
 }
 
+function addProjectToSnapshot(
+  snapshot: OrchestrationReadModel,
+  project: OrchestrationReadModel["projects"][number],
+): OrchestrationReadModel {
+  return {
+    ...snapshot,
+    snapshotSequence: snapshot.snapshotSequence + 1,
+    projects: [...snapshot.projects, project],
+  };
+}
+
 function createThreadCreatedEvent(threadId: ThreadId, sequence: number): OrchestrationEvent {
   return {
     sequence,
@@ -867,7 +878,7 @@ async function expectComposerActionsContained(): Promise<void> {
 }
 
 async function waitForInteractionModeButton(
-  expectedLabel: "Chat" | "Plan",
+  expectedLabel: "Build" | "Plan",
 ): Promise<HTMLButtonElement> {
   return waitForElement(
     () =>
@@ -2097,8 +2108,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
     });
 
     try {
-      const initialModeButton = await waitForInteractionModeButton("Chat");
-      expect(initialModeButton.title).toContain("enter plan mode");
+      const initialModeButton = await waitForInteractionModeButton("Build");
+      expect(initialModeButton.title).toContain("switch to Plan mode");
 
       window.dispatchEvent(
         new KeyboardEvent("keydown", {
@@ -2110,7 +2121,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       await waitForLayout();
 
-      expect((await waitForInteractionModeButton("Chat")).title).toContain("enter plan mode");
+      expect((await waitForInteractionModeButton("Build")).title).toContain("switch to Plan mode");
 
       const composerEditor = await waitForComposerEditor();
       composerEditor.focus();
@@ -2126,7 +2137,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await vi.waitFor(
         async () => {
           expect((await waitForInteractionModeButton("Plan")).title).toContain(
-            "return to normal chat mode",
+            "return to Build mode",
           );
         },
         { timeout: 8_000, interval: 16 },
@@ -2143,7 +2154,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
       await vi.waitFor(
         async () => {
-          expect((await waitForInteractionModeButton("Chat")).title).toContain("enter plan mode");
+          expect((await waitForInteractionModeButton("Build")).title).toContain(
+            "switch to Plan mode",
+          );
         },
         { timeout: 8_000, interval: 16 },
       );
@@ -2455,6 +2468,57 @@ describe("ChatView timeline estimator parity (full app)", () => {
         .element(page.getByText("Send a message to start the conversation."))
         .toBeInTheDocument();
       await expect.element(page.getByTestId("composer-editor")).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("opens a new thread for the selected project row without falling back to the empty root state", async () => {
+    const snapshot = addProjectToSnapshot(
+      createSnapshotForTargetUser({
+        targetMessageId: "msg-user-project-row-new-thread-test" as MessageId,
+        targetText: "project row new thread test",
+      }),
+      {
+        id: "project-2" as ProjectId,
+        title: "Second Project",
+        workspaceRoot: "/repo/second-project",
+        defaultModelSelection: {
+          provider: "codex",
+          model: "gpt-5",
+        },
+        scripts: [],
+        createdAt: NOW_ISO,
+        updatedAt: NOW_ISO,
+        deletedAt: null,
+      },
+    );
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot,
+    });
+
+    try {
+      await page.getByText("Second Project").hover();
+      const projectNewThreadButton = page.getByRole("button", {
+        name: "Create new thread in Second Project",
+      });
+      await expect.element(projectNewThreadButton).toBeInTheDocument();
+
+      await projectNewThreadButton.click();
+
+      const newThreadPath = await waitForURL(
+        mounted.router,
+        (path) => UUID_ROUTE_RE.test(path),
+        "Project-row new thread button should navigate to a draft thread route.",
+      );
+
+      await expect.element(page.getByTestId("composer-editor")).toBeInTheDocument();
+      await expect
+        .element(page.getByText("Select a thread or create a new one to get started."))
+        .not.toBeInTheDocument();
+      expect(newThreadPath).not.toBe("/");
     } finally {
       await mounted.cleanup();
     }

@@ -8,6 +8,7 @@ import { Effect, Equal, Layer, PubSub, Ref, Stream } from "effect";
 
 import { ClaudeProviderLive } from "./ClaudeProvider";
 import { CodexProviderLive } from "./CodexProvider";
+import { CursorProviderLive } from "./CursorProvider";
 import { GeminiProviderLive } from "./GeminiProvider";
 import { ManifestProviderLive } from "./ManifestProvider";
 import { OllamaProviderLive } from "./OllamaProvider";
@@ -16,6 +17,8 @@ import type { ClaudeProviderShape } from "../Services/ClaudeProvider";
 import { ClaudeProvider } from "../Services/ClaudeProvider";
 import type { CodexProviderShape } from "../Services/CodexProvider";
 import { CodexProvider } from "../Services/CodexProvider";
+import type { CursorProviderShape } from "../Services/CursorProvider";
+import { CursorProvider } from "../Services/CursorProvider";
 import type { GeminiProviderShape } from "../Services/GeminiProvider";
 import { GeminiProvider } from "../Services/GeminiProvider";
 import type { ManifestProviderShape } from "../Services/ManifestProvider";
@@ -29,6 +32,7 @@ import { ProviderRegistry, type ProviderRegistryShape } from "../Services/Provid
 const loadProviders = (
   codexProvider: CodexProviderShape,
   claudeProvider: ClaudeProviderShape,
+  cursorProvider: CursorProviderShape,
   geminiProvider: GeminiProviderShape,
   openCodeProvider: OpenCodeProviderShape,
   ollamaProvider: OllamaProviderShape,
@@ -41,12 +45,14 @@ const loadProviders = (
     ServerProvider,
     ServerProvider,
     ServerProvider,
+    ServerProvider,
   ]
 > =>
   Effect.all(
     [
       codexProvider.getSnapshot,
       claudeProvider.getSnapshot,
+      cursorProvider.getSnapshot,
       geminiProvider.getSnapshot,
       openCodeProvider.getSnapshot,
       ollamaProvider.getSnapshot,
@@ -67,6 +73,7 @@ export const ProviderRegistryLive = Layer.effect(
   Effect.gen(function* () {
     const codexProvider = yield* CodexProvider;
     const claudeProvider = yield* ClaudeProvider;
+    const cursorProvider = yield* CursorProvider;
     const geminiProvider = yield* GeminiProvider;
     const openCodeProvider = yield* OpenCodeProvider;
     const ollamaProvider = yield* OllamaProvider;
@@ -79,6 +86,7 @@ export const ProviderRegistryLive = Layer.effect(
       yield* loadProviders(
         codexProvider,
         claudeProvider,
+        cursorProvider,
         geminiProvider,
         openCodeProvider,
         ollamaProvider,
@@ -93,6 +101,7 @@ export const ProviderRegistryLive = Layer.effect(
       const providers = yield* loadProviders(
         codexProvider,
         claudeProvider,
+        cursorProvider,
         geminiProvider,
         openCodeProvider,
         ollamaProvider,
@@ -111,6 +120,9 @@ export const ProviderRegistryLive = Layer.effect(
       Effect.forkScoped,
     );
     yield* Stream.runForEach(claudeProvider.streamChanges, () => syncProviders()).pipe(
+      Effect.forkScoped,
+    );
+    yield* Stream.runForEach(cursorProvider.streamChanges, () => syncProviders()).pipe(
       Effect.forkScoped,
     );
     yield* Stream.runForEach(geminiProvider.streamChanges, () => syncProviders()).pipe(
@@ -134,6 +146,9 @@ export const ProviderRegistryLive = Layer.effect(
         case "claudeAgent":
           yield* claudeProvider.refresh;
           break;
+        case "cursor":
+          yield* cursorProvider.refresh;
+          break;
         case "gemini":
           yield* geminiProvider.refresh;
           break;
@@ -151,6 +166,7 @@ export const ProviderRegistryLive = Layer.effect(
             [
               codexProvider.refresh,
               claudeProvider.refresh,
+              cursorProvider.refresh,
               geminiProvider.refresh,
               openCodeProvider.refresh,
               ollamaProvider.refresh,
@@ -183,6 +199,7 @@ export const ProviderRegistryLive = Layer.effect(
 ).pipe(
   Layer.provideMerge(CodexProviderLive),
   Layer.provideMerge(ClaudeProviderLive),
+  Layer.provideMerge(CursorProviderLive),
   Layer.provideMerge(GeminiProviderLive),
   Layer.provideMerge(OpenCodeProviderLive),
   Layer.provideMerge(OllamaProviderLive),

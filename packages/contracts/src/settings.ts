@@ -27,10 +27,14 @@ export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 
+export type ToolCallDisplayStyle = "clean" | "verbose";
+export const DEFAULT_TOOL_CALL_DISPLAY_STYLE: ToolCallDisplayStyle = "clean";
+
 export const ClientSettingsSchema = Schema.Struct({
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   diffWordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  collapseChangedFilesByDefault: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   sidebarProjectSortOrder: SidebarProjectSortOrder.pipe(
     Schema.withDecodingDefault(() => DEFAULT_SIDEBAR_PROJECT_SORT_ORDER),
   ),
@@ -51,6 +55,9 @@ export const ClientSettingsSchema = Schema.Struct({
   // Appearance
   // Enabled by default — pointer cursors are generally preferred UX
   usePointerCursors: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  toolCallDisplayStyle: Schema.Literals(["clean", "verbose"]).pipe(
+    Schema.withDecodingDefault(() => DEFAULT_TOOL_CALL_DISPLAY_STYLE),
+  ),
   uiFontSize: Schema.Number.pipe(Schema.withDecodingDefault(() => 14)),
   codeFontSize: Schema.Number.pipe(Schema.withDecodingDefault(() => 13)),
   uiFont: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
@@ -73,7 +80,7 @@ export const ClientSettingsSchema = Schema.Struct({
   customInstructions: Schema.String.pipe(Schema.withDecodingDefault(() => "")),
 
   // Default provider for new chats
-  defaultProvider: Schema.Literals(["use-latest", "codex", "claudeAgent", "gemini"]).pipe(
+  defaultProvider: Schema.Literals(["use-latest", "codex", "claudeAgent", "gemini", "cursor"]).pipe(
     Schema.withDecodingDefault(() => "use-latest" as const),
   ),
 
@@ -86,7 +93,7 @@ export const ClientSettingsSchema = Schema.Struct({
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
 export type TurnCompletionNotifications = "always" | "never" | "unfocused";
-export type DefaultProvider = "use-latest" | "codex" | "claudeAgent" | "gemini";
+export type DefaultProvider = "use-latest" | "codex" | "claudeAgent" | "gemini" | "cursor";
 
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientSettingsSchema)({});
 
@@ -128,6 +135,13 @@ export const GeminiSettings = Schema.Struct({
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
 });
 export type GeminiSettings = typeof GeminiSettings.Type;
+
+export const CursorSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  binaryPath: makeBinaryPathSetting("cursor-agent"),
+  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+});
+export type CursorSettings = typeof CursorSettings.Type;
 
 export const OpenCodeSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
@@ -201,6 +215,7 @@ export const ServerSettings = Schema.Struct({
     codex: CodexSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     gemini: GeminiSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    cursor: CursorSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     ollama: OllamaSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     manifest: ManifestSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -257,7 +272,6 @@ const ClaudeModelOptionsPatch = Schema.Struct({
 });
 
 const GeminiModelOptionsPatch = Schema.Struct({});
-
 const OllamaModelOptionsPatch = Schema.Struct({});
 
 const ModelSelectionPatch = Schema.Union([
@@ -313,6 +327,12 @@ const GeminiSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const CursorSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(Schema.String),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
 const OllamaSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   baseUrl: Schema.optionalKey(Schema.String),
@@ -345,6 +365,7 @@ export const ServerSettingsPatch = Schema.Struct({
       codex: Schema.optionalKey(CodexSettingsPatch),
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
       gemini: Schema.optionalKey(GeminiSettingsPatch),
+      cursor: Schema.optionalKey(CursorSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
       ollama: Schema.optionalKey(OllamaSettingsPatch),
       manifest: Schema.optionalKey(ManifestSettingsPatch),
