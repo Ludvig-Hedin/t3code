@@ -28,6 +28,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   AutoIcon,
   ClaudeAI,
@@ -239,46 +240,53 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           setIsMenuOpen(open);
         }}
       >
-        <MenuTrigger
-          render={
-            <Button
-              size="sm"
-              variant={props.triggerVariant ?? "ghost"}
-              data-chat-provider-model-picker="true"
-              className={cn(
-                "min-w-0 justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 [&_svg]:mx-0",
-                props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56 sm:px-3",
-                props.triggerClassName,
-              )}
-              disabled={props.disabled}
-            />
-          }
-        >
-          <span
-            className={cn(
-              "flex min-w-0 w-full box-border items-center gap-2 overflow-hidden",
-              props.compact ? "max-w-36 sm:pl-1" : undefined,
-            )}
-          >
-            <ProviderIcon
-              aria-hidden="true"
-              className={cn(
-                "size-4 shrink-0",
-                providerIconClassName(activeProvider, "text-muted-foreground/70"),
-                props.activeProviderIconClassName,
-              )}
-            />
-            <span className="min-w-0 flex-1 truncate">
-              <span>{selectedModelLabel}</span>
-              {showRuntimeModel ? (
-                <span className="ml-1 text-[10px] text-muted-foreground/60">
-                  using {runtimeModelLabel}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <MenuTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant={props.triggerVariant ?? "ghost"}
+                    data-chat-provider-model-picker="true"
+                    className={cn(
+                      "min-w-0 justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 [&_svg]:mx-0",
+                      props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56 sm:px-3",
+                      props.triggerClassName,
+                    )}
+                    disabled={props.disabled}
+                  />
+                }
+              >
+                <span
+                  className={cn(
+                    "flex min-w-0 w-full box-border items-center gap-2 overflow-hidden",
+                    props.compact ? "max-w-36 sm:pl-1" : undefined,
+                  )}
+                >
+                  <ProviderIcon
+                    aria-hidden="true"
+                    className={cn(
+                      "size-4 shrink-0",
+                      providerIconClassName(activeProvider, "text-muted-foreground/70"),
+                      props.activeProviderIconClassName,
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    <span>{selectedModelLabel}</span>
+                    {showRuntimeModel ? (
+                      <span className="ml-1 text-[10px] text-muted-foreground/60">
+                        using {runtimeModelLabel}
+                      </span>
+                    ) : null}
+                  </span>
+                  <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
                 </span>
-              ) : null}
-            </span>
-            <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
-          </span>
-        </MenuTrigger>
+              </MenuTrigger>
+            }
+          />
+          <TooltipPopup side="top">Select provider and model</TooltipPopup>
+        </Tooltip>
         <MenuPopup align="start">
           {props.lockedProvider !== null ? (
             <MenuGroup>

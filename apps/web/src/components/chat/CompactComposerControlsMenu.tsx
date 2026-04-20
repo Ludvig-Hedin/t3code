@@ -16,6 +16,7 @@ import {
   MenuSeparator as MenuDivider,
   MenuTrigger,
 } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   activePlan: boolean;
@@ -35,18 +36,25 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
 
   return (
     <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            size="sm"
-            variant="ghost"
-            className="shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80"
-            aria-label="More composer controls"
-          />
-        }
-      >
-        <EllipsisIcon aria-hidden="true" className="size-4" />
-      </MenuTrigger>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80"
+                  aria-label="More composer controls"
+                />
+              }
+            >
+              <EllipsisIcon aria-hidden="true" className="size-4" />
+            </MenuTrigger>
+          }
+        />
+        <TooltipPopup side="top">More composer controls</TooltipPopup>
+      </Tooltip>
       <MenuPopup align="start">
         {props.traitsMenuContent ? (
           <>

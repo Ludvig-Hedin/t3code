@@ -57,7 +57,6 @@ import {
   derivePendingUserInputs,
   derivePhase,
   deriveTimelineEntries,
-  deriveActiveAgentStatus,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   findSidebarProposedPlan,
@@ -95,7 +94,6 @@ import {
   type ChatMessage,
   type SessionPhase,
   type Thread,
-  type TurnDiffFileChange,
   type TurnDiffSummary,
 } from "../types";
 import { LRUCache } from "../lib/lruCache";
@@ -133,7 +131,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "./ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { createProjectFromPath } from "../lib/createProject";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { orderItemsByPreferredIds, sortProjectsForSidebar } from "./Sidebar.logic";
@@ -1453,23 +1451,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => derivePendingUserInputs(threadActivities),
     [threadActivities],
   );
-  const activeAgentStatus = useMemo(
-    () =>
-      deriveActiveAgentStatus({
-        session: activeThread?.session ?? null,
-        activities: threadActivities,
-        nowMs: nowTick,
-        pendingApprovalCount: pendingApprovals.length,
-        pendingUserInputCount: pendingUserInputs.length,
-      }),
-    [
-      activeThread?.session,
-      nowTick,
-      pendingApprovals.length,
-      pendingUserInputs.length,
-      threadActivities,
-    ],
-  );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingDraftAnswers = useMemo(
     () =>
@@ -1778,48 +1759,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (!summary.assistantMessageId) continue;
       byMessageId.set(summary.assistantMessageId, summary);
     }
-    return byMessageId;
-  }, [turnDiffSummaries]);
-
-  // Build a display-only map for the "Changed files" card.
-  // We merge all file changes across every turn of the thread and attach the
-  // result to only the LAST assistant message, so the card appears once at the
-  // end of the chat instead of after every assistant turn.
-  const displayTurnDiffSummaryByAssistantMessageId = useMemo(() => {
-    const byMessageId = new Map<MessageId, TurnDiffSummary>();
-    if (turnDiffSummaries.length === 0) return byMessageId;
-
-    // Merge additions/deletions per file path across all turns.
-    const fileMap = new Map<string, TurnDiffFileChange>();
-    for (const summary of turnDiffSummaries) {
-      for (const file of summary.files) {
-        const existing = fileMap.get(file.path);
-        if (existing) {
-          fileMap.set(file.path, {
-            ...existing,
-            additions: (existing.additions ?? 0) + (file.additions ?? 0),
-            deletions: (existing.deletions ?? 0) + (file.deletions ?? 0),
-          });
-        } else {
-          fileMap.set(file.path, { ...file });
-        }
-      }
-    }
-    const mergedFiles = Array.from(fileMap.values()).toSorted((a, b) =>
-      a.path.localeCompare(b.path),
-    );
-
-    // Attach the merged file list to only the last turn's assistant message.
-    // turnDiffSummaries is sorted by checkpointTurnCount, so the last entry is
-    // the most recent turn.
-    const lastSummary = turnDiffSummaries.at(-1);
-    if (lastSummary?.assistantMessageId && mergedFiles.length > 0) {
-      byMessageId.set(lastSummary.assistantMessageId, {
-        ...lastSummary,
-        files: mergedFiles,
-      });
-    }
-
     return byMessageId;
   }, [turnDiffSummaries]);
 
@@ -3513,8 +3452,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     e?.preventDefault();
     if (!activeThread) return;
 
-    // When AI is running, we can still queue messages — bypass the normal send guards
-    if (phase === "running") {
+    // When AI is running, we can still queue messages — bypass the normal send guards.
+    // If a questionnaire is open, the session can still be "running" while the turn is
+    // paused for answers; skip this branch so submit/advance runs below.
+    if (phase === "running" && !activePendingProgress) {
       const { trimmedPrompt: trimmed, hasSendableContent: hasContent } = deriveComposerSendState({
         prompt: promptRef.current,
         imageCount: composerImages.length,
@@ -4072,6 +4013,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     onRespondToUserInput,
     setActivePendingUserInputQuestionIndex,
   ]);
+
+  const onAdvanceActivePendingUserInputRef = useRef(onAdvanceActivePendingUserInput);
+  onAdvanceActivePendingUserInputRef.current = onAdvanceActivePendingUserInput;
+  const flushAdvanceActivePendingUserInput = useCallback(() => {
+    onAdvanceActivePendingUserInputRef.current();
+  }, []);
 
   const onPreviousActivePendingUserInputQuestion = useCallback(() => {
     if (!activePendingProgress) {
@@ -5082,17 +5029,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         if (!open) setProjectSearch("");
                       }}
                     >
-                      <MenuTrigger
-                        render={
-                          <button
-                            type="button"
-                            className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-3xl font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                          >
-                            {activeProject?.name ?? "Select project"}
-                            <ChevronRightIcon className="size-6 opacity-50" />
-                          </button>
-                        }
-                      />
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <MenuTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-3xl font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                >
+                                  {activeProject?.name ?? "Select project"}
+                                  <ChevronRightIcon className="size-6 opacity-50" />
+                                </button>
+                              }
+                            />
+                          }
+                        />
+                        <TooltipPopup side="bottom">Switch project</TooltipPopup>
+                      </Tooltip>
                       {/*
                         contentClassName overrides the inner wrapper so we can split it into
                         three non-homogeneous zones:
@@ -5201,16 +5155,25 @@ export default function ChatView({ threadId }: ChatViewProps) {
                     )}
 
                     {/* Show more / Show less toggle */}
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 self-center text-xs text-muted-foreground transition-colors hover:text-foreground"
-                      onClick={() => setShowMoreSuggestions((prev) => !prev)}
-                    >
-                      <ChevronDownIcon
-                        className={`size-3.5 transition-transform duration-200 ${showMoreSuggestions ? "rotate-180" : ""}`}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 self-center text-xs text-muted-foreground transition-colors hover:text-foreground"
+                            onClick={() => setShowMoreSuggestions((prev) => !prev)}
+                          >
+                            <ChevronDownIcon
+                              className={`size-3.5 transition-transform duration-200 ${showMoreSuggestions ? "rotate-180" : ""}`}
+                            />
+                            {showMoreSuggestions ? "Show less" : "Show more"}
+                          </button>
+                        }
                       />
-                      {showMoreSuggestions ? "Show less" : "Show more"}
-                    </button>
+                      <TooltipPopup side="top">
+                        {showMoreSuggestions ? "Show fewer suggestions" : "Show more suggestions"}
+                      </TooltipPopup>
+                    </Tooltip>
                   </div>
                 </div>
               ) : (
@@ -5320,7 +5283,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         answers={activePendingDraftAnswers}
                         questionIndex={activePendingQuestionIndex}
                         onSelectOption={onSelectActivePendingUserInputOption}
-                        onAdvance={onAdvanceActivePendingUserInput}
+                        onAdvance={flushAdvanceActivePendingUserInput}
                       />
                     </div>
                   ) : showPlanFollowUpPrompt && activeProposedPlan ? (
@@ -5634,27 +5597,38 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               className="mx-0.5 hidden h-4 sm:block"
                             />
 
-                            <Button
-                              variant="ghost"
-                              className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
-                              size="sm"
-                              type="button"
-                              onClick={toggleInteractionMode}
-                              title={
-                                interactionMode === "plan"
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    variant="ghost"
+                                    className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+                                    size="sm"
+                                    type="button"
+                                    onClick={toggleInteractionMode}
+                                    aria-label={
+                                      interactionMode === "plan"
+                                        ? "Switch to build mode"
+                                        : "Switch to plan mode"
+                                    }
+                                  >
+                                    {interactionMode === "plan" ? (
+                                      <ListChecksIcon />
+                                    ) : (
+                                      <MessageSquareIcon />
+                                    )}
+                                    <span className="sr-only sm:not-sr-only">
+                                      {interactionMode === "plan" ? "Plan" : "Build"}
+                                    </span>
+                                  </Button>
+                                }
+                              />
+                              <TooltipPopup side="top">
+                                {interactionMode === "plan"
                                   ? "Plan mode — agent proposes a plan before making changes. Click to return to Build mode."
-                                  : "Build mode — agent acts on each message directly. Click to switch to Plan mode."
-                              }
-                            >
-                              {interactionMode === "plan" ? (
-                                <ListChecksIcon />
-                              ) : (
-                                <MessageSquareIcon />
-                              )}
-                              <span className="sr-only sm:not-sr-only">
-                                {interactionMode === "plan" ? "Plan" : "Build"}
-                              </span>
-                            </Button>
+                                  : "Build mode — agent acts on each message directly. Click to switch to Plan mode."}
+                              </TooltipPopup>
+                            </Tooltip>
 
                             {activePlan || sidebarProposedPlan || planSidebarOpen ? (
                               <>
@@ -5662,24 +5636,35 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   orientation="vertical"
                                   className="mx-0.5 hidden h-4 sm:block"
                                 />
-                                <Button
-                                  variant="ghost"
-                                  className={cn(
-                                    "shrink-0 whitespace-nowrap px-2 sm:px-3",
-                                    planSidebarOpen
-                                      ? "text-blue-400 hover:text-blue-300"
-                                      : "text-muted-foreground/70 hover:text-foreground/80",
-                                  )}
-                                  size="sm"
-                                  type="button"
-                                  onClick={togglePlanSidebar}
-                                  title={
-                                    planSidebarOpen ? "Hide plan sidebar" : "Show plan sidebar"
-                                  }
-                                >
-                                  <ListTodoIcon />
-                                  <span className="sr-only sm:not-sr-only">Plan</span>
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <Button
+                                        variant="ghost"
+                                        className={cn(
+                                          "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                                          planSidebarOpen
+                                            ? "text-blue-400 hover:text-blue-300"
+                                            : "text-muted-foreground/70 hover:text-foreground/80",
+                                        )}
+                                        size="sm"
+                                        type="button"
+                                        onClick={togglePlanSidebar}
+                                        aria-label={
+                                          planSidebarOpen
+                                            ? "Hide plan sidebar"
+                                            : "Show plan sidebar"
+                                        }
+                                      >
+                                        <ListTodoIcon />
+                                        <span className="sr-only sm:not-sr-only">Plan</span>
+                                      </Button>
+                                    }
+                                  />
+                                  <TooltipPopup side="top">
+                                    {planSidebarOpen ? "Hide plan sidebar" : "Show plan sidebar"}
+                                  </TooltipPopup>
+                                </Tooltip>
                               </>
                             ) : null}
                           </>

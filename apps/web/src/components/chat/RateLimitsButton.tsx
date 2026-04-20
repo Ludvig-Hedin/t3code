@@ -38,6 +38,7 @@ import { getWsRpcClient } from "../../wsRpcClient";
 import { ClaudeAI, Gemini, OpenAI } from "../Icons";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 // ---------------------------------------------------------------------------
 // Type guard for the primary (direct-fetch) format
@@ -335,20 +336,27 @@ export function RateLimitsButton() {
 
   return (
     <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            className="shrink-0 gap-1 px-2 text-muted-foreground/70 hover:text-foreground/80"
-            aria-label="View provider rate limits"
-          />
-        }
-      >
-        <GaugeCircleIcon aria-hidden="true" className="size-3 shrink-0" />
-        <span className="hidden text-xs sm:inline">Rate limits</span>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="shrink-0 gap-1 px-2 text-muted-foreground/70 hover:text-foreground/80"
+                  aria-label="View provider rate limits"
+                />
+              }
+            >
+              <GaugeCircleIcon aria-hidden="true" className="size-3 shrink-0" />
+              <span className="hidden text-xs sm:inline">Rate limits</span>
+            </PopoverTrigger>
+          }
+        />
+        <TooltipPopup side="top">View provider rate limits</TooltipPopup>
+      </Tooltip>
 
       <PopoverPopup side="top" align="start" sideOffset={6} className="w-72">
         <div className="space-y-4">

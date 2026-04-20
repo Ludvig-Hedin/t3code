@@ -9,9 +9,15 @@ import {
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
-import { getTranscriptionErrorMessage, transcribeAudio } from "~/lib/transcription";
+import {
+  getTranscriptionErrorMessage,
+  transcribeAudio,
+  warmLocalTranscriber,
+} from "~/lib/transcription";
 import { CheckIcon, LoaderCircleIcon, MicIcon, XIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 declare global {
   interface Window {
@@ -294,6 +300,7 @@ export const VoiceInputControls = memo(function VoiceInputControls({
       mediaRecorder.start();
       startWaveformLoop();
       startSpeechRecognition();
+      warmLocalTranscriber();
       setMode("recording");
     } catch (error) {
       await releaseMediaResources();
@@ -366,17 +373,24 @@ export const VoiceInputControls = memo(function VoiceInputControls({
     <>
       <div className="relative flex shrink-0 items-center">
         {mode === "idle" ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-full text-muted-foreground/70 hover:text-foreground/80"
-            aria-label="Start voice recording"
-            disabled={isBusy}
-            onClick={() => void beginRecording()}
-          >
-            <MicIcon className="size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-muted-foreground/70 hover:text-foreground/80"
+                  aria-label="Start voice recording"
+                  disabled={isBusy}
+                  onClick={() => void beginRecording()}
+                >
+                  <MicIcon className="size-4" />
+                </Button>
+              }
+            />
+            <TooltipPopup side="top">Start voice recording</TooltipPopup>
+          </Tooltip>
         ) : (
           <div
             data-testid="voice-recording-pill"
@@ -414,26 +428,40 @@ export const VoiceInputControls = memo(function VoiceInputControls({
 
             {mode === "recording" ? (
               <div className="flex items-center gap-0.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-full border-none text-background hover:bg-background/14 hover:text-background"
-                  aria-label="Cancel recording"
-                  onClick={() => void cancelRecording()}
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-full border-none text-background hover:bg-background/14 hover:text-background"
-                  aria-label="Save recording"
-                  onClick={() => void saveRecording()}
-                >
-                  <CheckIcon className="size-3.5" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="rounded-full border-none text-background hover:bg-background/14 hover:text-background"
+                        aria-label="Cancel recording"
+                        onClick={() => void cancelRecording()}
+                      >
+                        <XIcon className="size-3.5" />
+                      </Button>
+                    }
+                  />
+                  <TooltipPopup side="top">Cancel recording</TooltipPopup>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="rounded-full border-none text-background hover:bg-background/14 hover:text-background"
+                        aria-label="Save recording"
+                        onClick={() => void saveRecording()}
+                      >
+                        <CheckIcon className="size-3.5" />
+                      </Button>
+                    }
+                  />
+                  <TooltipPopup side="top">Save recording</TooltipPopup>
+                </Tooltip>
               </div>
             ) : null}
           </div>

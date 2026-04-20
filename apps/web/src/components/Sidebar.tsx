@@ -973,22 +973,36 @@ function SidebarOrganizedView({
               {...rowProps}
             />
             {hiddenCount > 0 && !isExpanded && (
-              <button
-                type="button"
-                className="mt-0.5 w-full px-4 py-1 text-left text-[10px] text-muted-foreground/60 hover:text-muted-foreground/80"
-                onClick={() => onExpandGroup(key)}
-              >
-                View more ({hiddenCount} more)
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="mt-0.5 w-full px-4 py-1 text-left text-[10px] text-muted-foreground/60 hover:text-muted-foreground/80"
+                      onClick={() => onExpandGroup(key)}
+                    >
+                      View more ({hiddenCount} more)
+                    </button>
+                  }
+                />
+                <TooltipPopup side="right">Show the remaining threads in {label}</TooltipPopup>
+              </Tooltip>
             )}
             {isExpanded && threads.length > GROUP_PREVIEW_LIMIT && (
-              <button
-                type="button"
-                className="mt-0.5 w-full px-4 py-1 text-left text-[10px] text-muted-foreground/60 hover:text-muted-foreground/80"
-                onClick={() => onCollapseGroup(key)}
-              >
-                Show less
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="mt-0.5 w-full px-4 py-1 text-left text-[10px] text-muted-foreground/60 hover:text-muted-foreground/80"
+                      onClick={() => onCollapseGroup(key)}
+                    >
+                      Show less
+                    </button>
+                  }
+                />
+                <TooltipPopup side="right">Collapse the thread list in {label}</TooltipPopup>
+              </Tooltip>
             )}
           </div>
         );
@@ -1835,12 +1849,7 @@ export default function Sidebar() {
         });
       }
     },
-    [
-      clearComposerDraftForThread,
-      clearProjectDraftThreadId,
-      getDraftThreadByProjectId,
-      threadIdsByProjectId,
-    ],
+    [clearComposerDraftForThread, clearProjectDraftThreadId, getDraftThreadByProjectId],
   );
   const handleThreadContextMenu = useCallback(
     async (threadId: ThreadId, position: { x: number; y: number }) => {
@@ -3082,50 +3091,53 @@ export default function Sidebar() {
                   On mobile the sidebar closes immediately so the user sees the new thread. */}
               {/* Styled to exactly match the footer SidebarMenuButton size="sm" buttons:
                   h-7, rounded-lg, px-2 py-1.5, text-xs, size-3.5 icon. */}
-              <button
-                type="button"
-                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-                onClick={() => {
-                  void handleNewThread(defaultProjectId!);
-                  // Close the mobile sheet so the new thread is immediately visible
-                  if (isMobile) setOpenMobile(false);
-                }}
-              >
-                <SquarePenIcon className="size-3.5 shrink-0" />
-                <span className="flex-1 text-left">New thread</span>
-                {/* Plain-text shortcut hint — matches the settings button style (no border/bg). */}
-                {newThreadShortcutLabel && (
-                  <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
-                    {newThreadShortcutLabel}
-                  </span>
-                )}
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                      onClick={() => {
+                        void handleNewThread(defaultProjectId!);
+                        // Close the mobile sheet so the new thread is immediately visible
+                        if (isMobile) setOpenMobile(false);
+                      }}
+                    >
+                      <SquarePenIcon className="size-3.5 shrink-0" />
+                      <span className="flex-1 text-left">New thread</span>
+                      {/* Plain-text shortcut hint — matches the settings button style (no border/bg). */}
+                      {newThreadShortcutLabel && (
+                        <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
+                          {newThreadShortcutLabel}
+                        </span>
+                      )}
+                    </button>
+                  }
+                />
+                <TooltipPopup side="right">
+                  New thread{newThreadShortcutLabel ? ` (${newThreadShortcutLabel})` : ""}
+                </TooltipPopup>
+              </Tooltip>
               {/* Search button — opens the search modal (also triggered by Cmd+K) */}
-              <button
-                type="button"
-                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-                onClick={() => setSearchOpen(true)}
-              >
-                <SearchIcon className="size-3.5 shrink-0" />
-                <span className="flex-1 text-left">Search</span>
-                {/* Plain-text shortcut hint — matches the settings button style (no border/bg). */}
-                <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
-                  {isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"}
-                </span>
-              </button>
-              {/* Files button — toggles the VS Code-style Files panel (also Cmd/Ctrl+Shift+E). */}
-              <button
-                type="button"
-                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-                onClick={() => useFilesPanelStore.getState().toggle()}
-                aria-label="Toggle Files panel"
-              >
-                <FolderIcon className="size-3.5 shrink-0" />
-                <span className="flex-1 text-left">Files</span>
-                <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
-                  {isMacPlatform(navigator.platform) ? "⇧⌘E" : "Ctrl+Shift+E"}
-                </span>
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="flex h-7 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                      onClick={() => setSearchOpen(true)}
+                    >
+                      <SearchIcon className="size-3.5 shrink-0" />
+                      <span className="flex-1 text-left">Search</span>
+                      {/* Plain-text shortcut hint — matches the settings button style (no border/bg). */}
+                      <span className="pointer-events-none hidden text-[9px] text-muted-foreground/40 sm:inline">
+                        {isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K"}
+                      </span>
+                    </button>
+                  }
+                />
+                <TooltipPopup side="right">Search threads and projects</TooltipPopup>
+              </Tooltip>
             </div>
           )}
           <SidebarContent className="gap-0">
@@ -3216,15 +3228,22 @@ export default function Sidebar() {
               {shouldShowProjectPathEntry && (
                 <div className="mb-2 px-1">
                   {isElectron && (
-                    <button
-                      type="button"
-                      className="mb-1.5 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary py-1.5 text-xs text-foreground/80 transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void handlePickFolder()}
-                      disabled={isPickingFolder || isAddingProject}
-                    >
-                      <FolderIcon className="size-3.5" />
-                      {isPickingFolder ? "Picking folder..." : "Browse for folder"}
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="mb-1.5 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary py-1.5 text-xs text-foreground/80 transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void handlePickFolder()}
+                            disabled={isPickingFolder || isAddingProject}
+                          >
+                            <FolderIcon className="size-3.5" />
+                            {isPickingFolder ? "Picking folder..." : "Browse for folder"}
+                          </button>
+                        }
+                      />
+                      <TooltipPopup side="right">Choose a project folder</TooltipPopup>
+                    </Tooltip>
                   )}
                   <div className="flex gap-1.5">
                     <input
@@ -3249,14 +3268,21 @@ export default function Sidebar() {
                       }}
                       autoFocus
                     />
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 disabled:opacity-60"
-                      onClick={handleAddProject}
-                      disabled={!canAddProject}
-                    >
-                      {isAddingProject ? "Adding..." : "Add"}
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 disabled:opacity-60"
+                            onClick={handleAddProject}
+                            disabled={!canAddProject}
+                          >
+                            {isAddingProject ? "Adding..." : "Add"}
+                          </button>
+                        }
+                      />
+                      <TooltipPopup side="top">Add project</TooltipPopup>
+                    </Tooltip>
                   </div>
                   {addProjectError && (
                     <p className="mt-1 px-0.5 text-[11px] leading-tight text-red-400">

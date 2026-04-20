@@ -148,14 +148,21 @@ export default function BranchToolbar({
                 onValueChange={(value) => onEnvModeChange(value as EnvMode)}
                 items={envModeItems}
               >
-                <SelectTrigger variant="ghost" size="xs" className="font-medium">
-                  {effectiveEnvMode === "worktree" ? (
-                    <GitForkIcon className="size-3" />
-                  ) : (
-                    <FolderIcon className="size-3" />
-                  )}
-                  <SelectValue />
-                </SelectTrigger>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <SelectTrigger variant="ghost" size="xs" className="font-medium">
+                        {effectiveEnvMode === "worktree" ? (
+                          <GitForkIcon className="size-3" />
+                        ) : (
+                          <FolderIcon className="size-3" />
+                        )}
+                        <SelectValue />
+                      </SelectTrigger>
+                    }
+                  />
+                  <TooltipPopup side="top">Change working environment</TooltipPopup>
+                </Tooltip>
                 <SelectPopup>
                   <SelectItem value="local">
                     <span className="inline-flex items-center gap-1.5">

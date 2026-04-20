@@ -10,6 +10,7 @@ import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "../ui/menu
 import { type Icon } from "../Icons";
 import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /**
  * resolveOptions — builds the ordered list of editor choices shown in the picker,
@@ -94,22 +95,42 @@ export const OpenInPicker = memo(function OpenInPicker({
 
   return (
     <Group aria-label="Subscription actions">
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={!preferredEditor || !openInCwd}
-        onClick={() => openInEditor(preferredEditor)}
-      >
-        {primaryOption?.Icon && <primaryOption.Icon aria-hidden="true" className="size-3.5" />}
-        <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
-          Open
-        </span>
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={!preferredEditor || !openInCwd}
+              onClick={() => openInEditor(preferredEditor)}
+            >
+              {primaryOption?.Icon && (
+                <primaryOption.Icon aria-hidden="true" className="size-3.5" />
+              )}
+              <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+                Open
+              </span>
+            </Button>
+          }
+        />
+        <TooltipPopup side="bottom">
+          {preferredEditor ? "Open current project in your preferred editor" : "No editor selected"}
+        </TooltipPopup>
+      </Tooltip>
       <GroupSeparator className="hidden @3xl/header-actions:block" />
       <Menu>
-        <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
-          <ChevronDownIcon aria-hidden="true" className="size-4" />
-        </MenuTrigger>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <MenuTrigger
+                render={<Button aria-label="Editor options" size="icon-xs" variant="outline" />}
+              >
+                <ChevronDownIcon aria-hidden="true" className="size-4" />
+              </MenuTrigger>
+            }
+          />
+          <TooltipPopup side="bottom">Editor options</TooltipPopup>
+        </Tooltip>
         <MenuPopup align="end">
           {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
           {options.map(({ label, Icon, value }) => (
