@@ -345,6 +345,67 @@ label:has(> select#reasoning-effort) select {
   margin-top: 0.25rem;
 }
 
+/* Composer rich-text lists: keep Word/Docs-style bullets and indentation visible
+   inside the Lexical editor while preserving the app's compact composer height. */
+.composer-editor {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.composer-editor > :first-child {
+  margin-top: 0;
+}
+
+.composer-editor > :last-child {
+  margin-bottom: 0;
+}
+
+.composer-editor p,
+.composer-editor ul,
+.composer-editor ol,
+.composer-editor blockquote {
+  margin: 0.35rem 0;
+}
+
+.composer-editor ul,
+.composer-editor ol {
+  padding-left: 1.25rem;
+  list-style-position: outside;
+}
+
+.composer-editor ul {
+  list-style-type: disc;
+}
+
+.composer-editor ol {
+  list-style-type: decimal;
+}
+
+.composer-editor ul ul {
+  list-style-type: circle;
+}
+
+.composer-editor ul ul ul {
+  list-style-type: square;
+}
+
+.composer-editor ol ol {
+  list-style-type: lower-alpha;
+}
+
+.composer-editor ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.composer-editor li {
+  margin: 0.2rem 0;
+}
+
+.composer-editor li > p {
+  margin: 0;
+}
+
 .chat-markdown a {
   color: var(--info-foreground);
   text-decoration: underline;

@@ -4,7 +4,8 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
-import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import { ListPlugin } from "@lexical/react/LexicalListPlugin";
+import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import {
   $applyNodeReplacement,
   $createRangeSelection,
@@ -22,6 +23,7 @@ import {
   KEY_ARROW_RIGHT_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
+  KEY_SPACE_COMMAND,
   KEY_TAB_COMMAND,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_NORMAL,
@@ -38,6 +40,14 @@ import {
   type SerializedTextNode,
   type Spread,
 } from "lexical";
+import {
+  $createListItemNode,
+  $createListNode,
+  INSERT_ORDERED_LIST_COMMAND,
+  INSERT_UNORDERED_LIST_COMMAND,
+  ListItemNode,
+  ListNode,
+} from "@lexical/list";
 import {
   createContext,
   forwardRef,
@@ -72,6 +82,11 @@ import {
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
 } from "./composerInlineChip";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
+import {
+  isComposerListShortcutPrefix,
+  normalizeComposerPromptText,
+  parseComposerPromptLine,
+} from "./composerPromptRichText";
 
 const COMPOSER_EDITOR_HMR_KEY = `composer-editor-${Math.random().toString(36).slice(2)}`;
 
@@ -576,15 +591,433 @@ function $readExpandedSelectionOffsetFromEditorState(fallback: number): number {
   return Math.max(0, Math.min(offset, expandedLength));
 }
 
-function $appendTextWithLineBreaks(parent: ElementNode, text: string): void {
-  const lines = text.split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line.length > 0) {
-      parent.append($createTextNode(line));
+function isComposerParagraphNode(node: LexicalNode): node is ElementNode {
+  return $isElementNode(node) && node.getType() === "paragraph";
+}
+
+function isComposerListItemNode(node: LexicalNode): node is ListItemNode {
+  return node instanceof ListItemNode;
+}
+
+function isComposerListNode(node: LexicalNode): node is ListNode {
+  return node instanceof ListNode;
+}
+
+function getComposerLinePrefix(listNode: ListNode, index: number): string {
+  return listNode.getListType() === "number" ? `${index + 1}. ` : "- ";
+}
+
+function getComposerListItemContentNode(listItem: ListItemNode): ElementNode {
+  const firstParagraph = listItem
+    .getChildren()
+    .find((child): child is ElementNode => isComposerParagraphNode(child));
+  return firstParagraph ?? listItem;
+}
+
+function getComposerLineBlocks(root: ElementNode = $getRoot() as unknown as ElementNode): Array<{
+  blockNode: ElementNode;
+  contentNode: ElementNode;
+  prefix: string;
+}> {
+  const blocks: Array<{
+    blockNode: ElementNode;
+    contentNode: ElementNode;
+    prefix: string;
+  }> = [];
+
+  if (!$isElementNode(root)) {
+    return blocks;
+  }
+
+  for (const child of root.getChildren()) {
+    if (isComposerListNode(child)) {
+      const listItems = child.getChildren().filter(isComposerListItemNode);
+      listItems.forEach((item, index) => {
+        blocks.push({
+          blockNode: item,
+          contentNode: getComposerListItemContentNode(item),
+          prefix: getComposerLinePrefix(child, index),
+        });
+      });
+      continue;
     }
-    if (index < lines.length - 1) {
-      parent.append($createLineBreakNode());
+
+    if (isComposerParagraphNode(child)) {
+      blocks.push({
+        blockNode: child,
+        contentNode: child,
+        prefix: "",
+      });
+    }
+  }
+
+  if (blocks.length === 0) {
+    const paragraph = $createParagraphNode();
+    root.append(paragraph);
+    blocks.push({
+      blockNode: paragraph,
+      contentNode: paragraph,
+      prefix: "",
+    });
+  }
+
+  return blocks;
+}
+
+function getComposerBlockNodeForSelection(node: LexicalNode): ElementNode | null {
+  let current: LexicalNode | null = node;
+  while (current) {
+    if (isComposerParagraphNode(current) || isComposerListItemNode(current)) {
+      return current as ElementNode;
+    }
+    current = current.getParent() as LexicalNode | null;
+  }
+  return null;
+}
+
+function serializeComposerNodeText(node: LexicalNode): string {
+  if ($isElementNode(node)) {
+    return node.getChildren().map((child) => serializeComposerNodeText(child)).join("");
+  }
+  return node.getTextContent();
+}
+
+function measureComposerNodeLength(
+  node: LexicalNode,
+  mode: "collapsed" | "expanded",
+): number {
+  if (node instanceof ComposerMentionNode) {
+    return mode === "collapsed" ? 1 : node.getTextContentSize();
+  }
+  if (node instanceof ComposerTerminalContextNode) {
+    return 1;
+  }
+  if ($isTextNode(node)) {
+    return node.getTextContentSize();
+  }
+  if ($isLineBreakNode(node)) {
+    return 1;
+  }
+  if ($isElementNode(node)) {
+    return node
+      .getChildren()
+      .reduce((sum, child) => sum + measureComposerNodeLength(child, mode), 0);
+  }
+  return 0;
+}
+
+function measureComposerNodeOffsetWithinNode(
+  node: LexicalNode,
+  targetNode: LexicalNode,
+  pointOffset: number,
+  mode: "collapsed" | "expanded",
+): number | null {
+  if (node === targetNode) {
+    if ($isTextNode(node) || node instanceof ComposerMentionNode || node instanceof ComposerTerminalContextNode || $isLineBreakNode(node)) {
+      return Math.min(pointOffset, measureComposerNodeLength(node, mode));
+    }
+
+    if ($isElementNode(node)) {
+      const children = node.getChildren();
+      const clampedOffset = Math.max(0, Math.min(pointOffset, children.length));
+      let offset = 0;
+      for (let index = 0; index < clampedOffset; index += 1) {
+        const child = children[index];
+        if (!child) continue;
+        offset += measureComposerNodeLength(child, mode);
+      }
+      return offset;
+    }
+  }
+
+  if ($isElementNode(node)) {
+    let offset = 0;
+    for (const child of node.getChildren()) {
+      const childOffset = measureComposerNodeOffsetWithinNode(
+        child,
+        targetNode,
+        pointOffset,
+        mode,
+      );
+      if (childOffset !== null) {
+        return offset + childOffset;
+      }
+      offset += measureComposerNodeLength(child, mode);
+    }
+  }
+
+  return null;
+}
+
+function findSelectionPointWithinComposerNode(
+  node: LexicalNode,
+  remainingRef: { value: number },
+  mode: "collapsed" | "expanded",
+): { key: string; offset: number; type: "text" | "element" } | null {
+  if (node instanceof ComposerMentionNode || node instanceof ComposerTerminalContextNode) {
+    return findSelectionPointForInlineToken(node, remainingRef);
+  }
+
+  if ($isTextNode(node)) {
+    const size = node.getTextContentSize();
+    if (remainingRef.value <= size) {
+      return {
+        key: node.getKey(),
+        offset: remainingRef.value,
+        type: "text",
+      };
+    }
+    remainingRef.value -= size;
+    return null;
+  }
+
+  if ($isLineBreakNode(node)) {
+    const parent = node.getParent();
+    if (!parent) return null;
+    const index = node.getIndexWithinParent();
+    if (remainingRef.value === 0) {
+      return {
+        key: parent.getKey(),
+        offset: index,
+        type: "element",
+      };
+    }
+    if (remainingRef.value === 1) {
+      return {
+        key: parent.getKey(),
+        offset: index + 1,
+        type: "element",
+      };
+    }
+    remainingRef.value -= 1;
+    return null;
+  }
+
+  if ($isElementNode(node)) {
+    const children = node.getChildren();
+    for (const child of children) {
+      const point = findSelectionPointWithinComposerNode(child, remainingRef, mode);
+      if (point) {
+        return point;
+      }
+    }
+
+    if (remainingRef.value === 0) {
+      return {
+        key: node.getKey(),
+        offset: children.length,
+        type: "element",
+      };
+    }
+  }
+
+  return null;
+}
+
+function getComposerLineBlocksLength(blocks: ReturnType<typeof getComposerLineBlocks>, mode: "collapsed" | "expanded"): number {
+  if (blocks.length === 0) {
+    return 0;
+  }
+  return blocks.reduce((sum, block) => sum + block.prefix.length + measureComposerNodeLength(block.contentNode, mode), 0) + (blocks.length - 1);
+}
+
+function getComposerSerializedPromptFromEditorState(
+  root: ElementNode = $getRoot() as unknown as ElementNode,
+): string {
+  return getComposerLineBlocks(root)
+    .map((block) => `${block.prefix}${serializeComposerNodeText(block.contentNode)}`)
+    .join("\n");
+}
+
+function setComposerSelectionAtOffset(nextOffset: number): void {
+  const root = $getRoot();
+  const blocks = getComposerLineBlocks(root);
+  const totalLength = getComposerLineBlocksLength(blocks, "collapsed");
+  const boundedOffset = Math.max(0, Math.min(nextOffset, totalLength));
+  let remaining = boundedOffset;
+
+  const fallbackBlock = blocks[blocks.length - 1] ?? null;
+  if (!fallbackBlock) {
+    return;
+  }
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (!block) continue;
+    const blockLength = block.prefix.length + measureComposerNodeLength(block.contentNode, "collapsed");
+
+    if (remaining <= blockLength) {
+      const withinContent = Math.max(0, remaining - block.prefix.length);
+      const point =
+        findSelectionPointWithinComposerNode(
+          block.contentNode,
+          { value: withinContent },
+          "collapsed",
+        ) ?? {
+          key: block.contentNode.getKey(),
+          offset: 0,
+          type: "element" as const,
+        };
+      const selection = $createRangeSelection();
+      selection.anchor.set(point.key, point.offset, point.type);
+      selection.focus.set(point.key, point.offset, point.type);
+      $setSelection(selection);
+      return;
+    }
+
+    remaining -= blockLength;
+    if (index < blocks.length - 1) {
+      if (remaining === 0) {
+        const nextBlock = blocks[index + 1] ?? fallbackBlock;
+        const point = {
+          key: nextBlock.contentNode.getKey(),
+          offset: 0,
+          type: "element" as const,
+        };
+        const selection = $createRangeSelection();
+        selection.anchor.set(point.key, point.offset, point.type);
+        selection.focus.set(point.key, point.offset, point.type);
+        $setSelection(selection);
+        return;
+      }
+      remaining -= 1;
+    }
+  }
+
+  const lastPoint =
+    findSelectionPointWithinComposerNode(
+      fallbackBlock.contentNode,
+      { value: measureComposerNodeLength(fallbackBlock.contentNode, "collapsed") },
+      "collapsed",
+    ) ?? {
+      key: fallbackBlock.contentNode.getKey(),
+      offset: fallbackBlock.contentNode.getChildren().length,
+      type: "element" as const,
+    };
+  const selection = $createRangeSelection();
+  selection.anchor.set(lastPoint.key, lastPoint.offset, lastPoint.type);
+  selection.focus.set(lastPoint.key, lastPoint.offset, lastPoint.type);
+  $setSelection(selection);
+}
+
+function readComposerSelectionOffsetFromEditorState(fallback: number): number {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+    return fallback;
+  }
+
+  const blocks = getComposerLineBlocks();
+  const anchorNode = selection.anchor.getNode();
+  let runningOffset = 0;
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (!block) continue;
+    const blockLength = block.prefix.length + measureComposerNodeLength(block.contentNode, "collapsed");
+    const anchorInBlock =
+      anchorNode === block.blockNode ||
+      anchorNode === block.contentNode ||
+      isComposerDescendantOf(anchorNode, block.contentNode);
+
+    if (anchorInBlock) {
+      const withinContent =
+        anchorNode === block.blockNode && isComposerListItemNode(block.blockNode)
+          ? Math.min(
+              selection.anchor.offset,
+              measureComposerNodeLength(block.contentNode, "collapsed"),
+            )
+          : measureComposerNodeOffsetWithinNode(
+                block.contentNode,
+                anchorNode,
+                selection.anchor.offset,
+                "collapsed",
+              ) ?? 0;
+      return runningOffset + block.prefix.length + withinContent;
+    }
+
+    runningOffset += blockLength;
+    if (index < blocks.length - 1) {
+      runningOffset += 1;
+    }
+  }
+
+  return fallback;
+}
+
+function readComposerExpandedSelectionOffsetFromEditorState(fallback: number): number {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+    return fallback;
+  }
+
+  const blocks = getComposerLineBlocks();
+  const anchorNode = selection.anchor.getNode();
+  let runningOffset = 0;
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (!block) continue;
+    const blockLength = block.prefix.length + measureComposerNodeLength(block.contentNode, "expanded");
+    const anchorInBlock =
+      anchorNode === block.blockNode ||
+      anchorNode === block.contentNode ||
+      isComposerDescendantOf(anchorNode, block.contentNode);
+
+    if (anchorInBlock) {
+      const withinContent =
+        anchorNode === block.blockNode && isComposerListItemNode(block.blockNode)
+          ? Math.min(
+              selection.anchor.offset,
+              measureComposerNodeLength(block.contentNode, "expanded"),
+            )
+          : measureComposerNodeOffsetWithinNode(
+                block.contentNode,
+                anchorNode,
+                selection.anchor.offset,
+                "expanded",
+              ) ?? 0;
+      return runningOffset + block.prefix.length + withinContent;
+    }
+
+    runningOffset += blockLength;
+    if (index < blocks.length - 1) {
+      runningOffset += 1;
+    }
+  }
+
+  return fallback;
+}
+
+function isComposerDescendantOf(node: LexicalNode, ancestor: LexicalNode): boolean {
+  let current: LexicalNode | null = node;
+  while (current) {
+    if (current === ancestor) {
+      return true;
+    }
+    current = current.getParent() as LexicalNode | null;
+  }
+  return false;
+}
+
+function $appendComposerInlineContent(
+  parent: ElementNode,
+  text: string,
+  terminalContexts: ReadonlyArray<TerminalContextDraft>,
+): void {
+  const segments = splitPromptIntoComposerSegments(text, terminalContexts);
+  for (const segment of segments) {
+    if (segment.type === "mention") {
+      parent.append($createComposerMentionNode(segment.path));
+      continue;
+    }
+    if (segment.type === "terminal-context") {
+      if (segment.context) {
+        parent.append($createComposerTerminalContextNode(segment.context));
+      }
+      continue;
+    }
+    if (segment.text.length > 0) {
+      parent.append($createTextNode(segment.text));
     }
   }
 }
@@ -595,22 +1028,46 @@ function $setComposerEditorPrompt(
 ): void {
   const root = $getRoot();
   root.clear();
-  const paragraph = $createParagraphNode();
-  root.append(paragraph);
+  const normalizedPrompt = normalizeComposerPromptText(prompt);
+  const lines = normalizedPrompt.length > 0 ? normalizedPrompt.split("\n") : [""];
 
-  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts);
-  for (const segment of segments) {
-    if (segment.type === "mention") {
-      paragraph.append($createComposerMentionNode(segment.path));
-      continue;
-    }
-    if (segment.type === "terminal-context") {
-      if (segment.context) {
-        paragraph.append($createComposerTerminalContextNode(segment.context));
+  let currentListNode: ListNode | null = null;
+  let currentListType: "bullet" | "number" | null = null;
+
+  for (const line of lines) {
+    const parsedLine = parseComposerPromptLine(line);
+
+    if (parsedLine.kind === "paragraph") {
+      currentListNode = null;
+      currentListType = null;
+      const paragraph = $createParagraphNode();
+      $appendComposerInlineContent(paragraph, parsedLine.content, terminalContexts);
+      if (paragraph.getChildren().length === 0) {
+        paragraph.append($createTextNode(""));
       }
+      root.append(paragraph);
       continue;
     }
-    $appendTextWithLineBreaks(paragraph, segment.text);
+
+    const nextListType = parsedLine.kind;
+    if (!currentListNode || currentListType !== nextListType) {
+      currentListNode = $createListNode(nextListType, 1);
+      currentListType = nextListType;
+      root.append(currentListNode);
+    }
+
+    const item = $createListItemNode();
+    const itemParagraph = $createParagraphNode();
+    $appendComposerInlineContent(itemParagraph, parsedLine.content, terminalContexts);
+    if (itemParagraph.getChildren().length === 0) {
+      itemParagraph.append($createTextNode(""));
+    }
+    item.append(itemParagraph);
+    currentListNode.append(item);
+  }
+
+  if (root.getChildren().length === 0) {
+    root.append($createParagraphNode());
   }
 }
 
@@ -622,6 +1079,125 @@ function collectTerminalContextIds(node: LexicalNode): string[] {
     return node.getChildren().flatMap((child) => collectTerminalContextIds(child));
   }
   return [];
+}
+
+function ComposerListShortcutPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_SPACE_COMMAND,
+      (event) => {
+        if (!event || event.altKey || event.metaKey || event.ctrlKey) {
+          return false;
+        }
+
+        let shortcutKind: "bullet" | "number" | null = null;
+        let prefixLength = 0;
+
+        editor.getEditorState().read(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+            return;
+          }
+
+          const anchorNode = selection.anchor.getNode();
+          const blockNode = getComposerBlockNodeForSelection(anchorNode);
+          if (!blockNode || !isComposerParagraphNode(blockNode)) {
+            return;
+          }
+
+          const contentText = serializeComposerNodeText(blockNode);
+          const contentOffset =
+            measureComposerNodeOffsetWithinNode(
+              blockNode,
+              anchorNode,
+              selection.anchor.offset,
+              "expanded",
+            ) ?? 0;
+          const prefixCandidate = contentText.slice(0, contentOffset);
+          shortcutKind = isComposerListShortcutPrefix(prefixCandidate);
+          if (!shortcutKind) {
+            return;
+          }
+          prefixLength = prefixCandidate.length;
+        });
+
+        if (!shortcutKind || prefixLength === 0) {
+          return false;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        editor.update(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+            return;
+          }
+
+          const anchorNode = selection.anchor.getNode();
+          const blockNode = getComposerBlockNodeForSelection(anchorNode);
+          if (!blockNode || !isComposerParagraphNode(blockNode)) {
+            return;
+          }
+
+          let remaining = prefixLength;
+          while (remaining > 0) {
+            selection.deleteCharacter(true);
+            remaining -= 1;
+          }
+
+          editor.dispatchCommand(
+            shortcutKind === "bullet"
+              ? INSERT_UNORDERED_LIST_COMMAND
+              : INSERT_ORDERED_LIST_COMMAND,
+            undefined,
+          );
+        });
+
+        return true;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+  }, [editor]);
+
+  return null;
+}
+
+function ComposerFormattingShortcutsPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "b" && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        editor.update(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
+
+          const selectedText = selection.getTextContent();
+          if (!selectedText) return;
+
+          const isBold =
+            selectedText.startsWith("**") && selectedText.endsWith("**") && selectedText.length > 4;
+          const replacement = isBold ? selectedText.slice(2, -2) : `**${selectedText}**`;
+
+          selection.insertRawText(replacement);
+        });
+      }
+    };
+
+    rootElement.addEventListener("keydown", handleKeyDown);
+    return () => rootElement.removeEventListener("keydown", handleKeyDown);
+  }, [editor]);
+
+  return null;
 }
 
 export interface ComposerPromptEditorHandle {
@@ -714,159 +1290,6 @@ function ComposerCommandKeyPlugin(props: {
       unregisterTab();
     };
   }, [editor, props]);
-
-  return null;
-}
-
-/**
- * Resolves the list prefix for auto-continuation. Returns the prefix to insert
- * on the next line, or null if the current line isn't a list item.
- * Also handles clearing the prefix when the user presses Enter on an empty list line.
- */
-function resolveListContinuation(currentLineText: string): {
-  prefix: string;
-  clearLine: boolean;
-} | null {
-  // Unordered list: "- " or "* "
-  const unorderedMatch = currentLineText.match(/^(\s*)([-*])\s/);
-  if (unorderedMatch) {
-    const indent = unorderedMatch[1] ?? "";
-    const marker = unorderedMatch[2] ?? "-";
-    // If the line is ONLY the list marker (empty item), clear it instead
-    const textAfterPrefix = currentLineText.slice((unorderedMatch[0] ?? "").length);
-    if (textAfterPrefix.trim().length === 0) {
-      return { prefix: "", clearLine: true };
-    }
-    return { prefix: `${indent}${marker} `, clearLine: false };
-  }
-
-  // Ordered list: "1. ", "2. ", etc.
-  const orderedMatch = currentLineText.match(/^(\s*)(\d+)\.\s/);
-  if (orderedMatch) {
-    const indent = orderedMatch[1] ?? "";
-    const num = parseInt(orderedMatch[2] ?? "1", 10);
-    const textAfterPrefix = currentLineText.slice((orderedMatch[0] ?? "").length);
-    if (textAfterPrefix.trim().length === 0) {
-      return { prefix: "", clearLine: true };
-    }
-    return { prefix: `${indent}${num + 1}. `, clearLine: false };
-  }
-
-  return null;
-}
-
-/**
- * ComposerMarkdownShortcutsPlugin — Handles markdown shortcuts in the composer:
- * - Cmd/Ctrl+B wraps selected text in **bold** markdown
- * - Enter after a list item auto-continues the list prefix ("- ", "1. ", etc.)
- * - Enter on an empty list item clears the prefix
- */
-function ComposerMarkdownShortcutsPlugin() {
-  const [editor] = useLexicalComposerContext();
-
-  // Register list auto-continuation on Enter at NORMAL priority (below the
-  // command key plugin at HIGH priority, so it only fires when Enter is NOT
-  // used to send the message)
-  useEffect(() => {
-    const unregister = editor.registerCommand(
-      KEY_ENTER_COMMAND,
-      (event) => {
-        // Only handle plain Enter (no modifiers) — Cmd/Ctrl+Enter is for sending
-        if (!event || event.metaKey || event.ctrlKey) return false;
-
-        const currentLineText = editor.getEditorState().read(() => {
-          const selection = $getSelection();
-          if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null;
-
-          // Walk backwards from cursor to find the current line content
-          const anchor = selection.anchor;
-          const anchorNode = anchor.getNode();
-          if (!$isTextNode(anchorNode)) return null;
-
-          const textBefore = anchorNode.getTextContent().slice(0, anchor.offset);
-          // Find the last newline to get the current line
-          const lastNewline = textBefore.lastIndexOf("\n");
-          return lastNewline === -1 ? textBefore : textBefore.slice(lastNewline + 1);
-        });
-
-        if (currentLineText === null) return false;
-
-        const continuation = resolveListContinuation(currentLineText);
-        if (!continuation) return false;
-
-        event.preventDefault();
-
-        if (continuation.clearLine) {
-          // Remove the empty list prefix — replace current line text with empty
-          editor.update(() => {
-            const selection = $getSelection();
-            if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
-            const anchor = selection.anchor;
-            const anchorNode = anchor.getNode();
-            if (!$isTextNode(anchorNode)) return;
-
-            const textContent = anchorNode.getTextContent();
-            const offset = anchor.offset;
-            const textBefore = textContent.slice(0, offset);
-            const lastNewline = textBefore.lastIndexOf("\n");
-            const lineStart = lastNewline + 1;
-
-            // Delete from lineStart to cursor (the empty prefix)
-            const before = textContent.slice(0, lineStart);
-            const after = textContent.slice(offset);
-            anchorNode.setTextContent(before + after);
-
-            // Move cursor to where the prefix was
-            const newSelection = $createRangeSelection();
-            newSelection.anchor.set(anchorNode.getKey(), lineStart, "text");
-            newSelection.focus.set(anchorNode.getKey(), lineStart, "text");
-            $setSelection(newSelection);
-          });
-        } else {
-          // Insert newline + list prefix
-          editor.update(() => {
-            const selection = $getSelection();
-            if (!$isRangeSelection(selection)) return;
-            selection.insertRawText(`\n${continuation.prefix}`);
-          });
-        }
-        return true;
-      },
-      COMMAND_PRIORITY_NORMAL,
-    );
-    return unregister;
-  }, [editor]);
-
-  // Cmd/Ctrl+B for bold markdown wrapping
-  useEffect(() => {
-    const rootElement = editor.getRootElement();
-    if (!rootElement) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "b" && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        editor.update(() => {
-          const selection = $getSelection();
-          if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
-
-          const selectedText = selection.getTextContent();
-          if (!selectedText) return;
-
-          // Toggle: if already wrapped in **, unwrap; otherwise wrap
-          const isBold =
-            selectedText.startsWith("**") && selectedText.endsWith("**") && selectedText.length > 4;
-          const replacement = isBold ? selectedText.slice(2, -2) : `**${selectedText}**`;
-
-          selection.insertRawText(replacement);
-        });
-      }
-    };
-
-    rootElement.addEventListener("keydown", handleKeyDown);
-    return () => rootElement.removeEventListener("keydown", handleKeyDown);
-  }, [editor]);
 
   return null;
 }
@@ -1145,7 +1568,7 @@ function ComposerPromptEditorInner({
   } => {
     let snapshot = snapshotRef.current;
     editor.getEditorState().read(() => {
-      const nextValue = $getRoot().getTextContent();
+      const nextValue = getComposerSerializedPromptFromEditorState($getRoot());
       const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
       const nextCursor = clampCollapsedComposerCursor(
         nextValue,
@@ -1193,7 +1616,7 @@ function ComposerPromptEditorInner({
 
   const handleEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
-      const nextValue = $getRoot().getTextContent();
+      const nextValue = getComposerSerializedPromptFromEditorState($getRoot());
       const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
       const nextCursor = clampCollapsedComposerCursor(
         nextValue,
@@ -1243,11 +1666,11 @@ function ComposerPromptEditorInner({
   return (
     <ComposerTerminalContextActionsContext.Provider value={terminalContextActions}>
       <div className="relative">
-        <PlainTextPlugin
+        <RichTextPlugin
           contentEditable={
             <ContentEditable
               className={cn(
-                "block max-h-[200px] min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[14px] leading-relaxed text-foreground focus:outline-none",
+                "composer-editor block max-h-[200px] min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[14px] leading-relaxed text-foreground focus:outline-none",
                 className,
               )}
               data-testid="composer-editor"
@@ -1265,9 +1688,11 @@ function ComposerPromptEditorInner({
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
+        <ListPlugin />
         <OnChangePlugin onChange={handleEditorChange} />
         <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
-        <ComposerMarkdownShortcutsPlugin />
+        <ComposerListShortcutPlugin />
+        <ComposerFormattingShortcutsPlugin />
         <ComposerInlineTokenArrowPlugin />
         <ComposerInlineTokenSelectionNormalizePlugin />
         <ComposerInlineTokenBackspacePlugin />
@@ -1301,7 +1726,7 @@ export const ComposerPromptEditor = forwardRef<
     () => ({
       namespace: "t3tools-composer-editor",
       editable: true,
-      nodes: [ComposerMentionNode, ComposerTerminalContextNode],
+      nodes: [ComposerMentionNode, ComposerTerminalContextNode, ListNode, ListItemNode],
       editorState: () => {
         $setComposerEditorPrompt(initialValueRef.current, initialTerminalContextsRef.current);
       },
