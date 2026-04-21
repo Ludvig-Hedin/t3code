@@ -173,3 +173,27 @@ The absolute path = cwd + "/" + relative path. Example for a project at `/Users/
 **Fallback (auto-detected):** If you write a file path in backtick inline code (e.g. `` `apps/server/src/file.ts` ``), the renderer will also detect it and make it clickable using the session's cwd. Prefer the explicit Markdown link form for maximum reliability.
 
 Apply this to all "Updated Files" sections and any mention of a specific file path in your responses.
+
+## File Edit Transparency
+
+When you create or edit a file, include a compact inline preview immediately after the edit so the user can see what changed without scrolling through a full diff.
+
+Required format:
+
+```text
+✏️ [absolute/original file path](file:///absolute/path/to/file.ts)
+  — Short explanation of why the file changed
+  — Diff preview:
+    - old line
+    + new line
+    - old line
+    + new line
+```
+
+Rules:
+
+- Always show the exact file path.
+- Always show at least one concrete diff line when the change is small.
+- If the diff is large, show only 3 to 4 representative changed lines or line pairs.
+- Do not use vague summaries like "added file" or "updated file" without the path and a preview.
+- Keep the preview concise and readable.

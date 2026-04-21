@@ -15,14 +15,23 @@
 
 Gemini CLI does not support PostToolUse hooks, so you must output file paths and diffs manually.
 
-After **every** file edit or creation, output this inline in your response:
+After every file edit or creation, output this inline in your response:
 
 ```
-✏️ path/to/file.ts — What changed and why (keep it brief; wrap in your editor if the line is long)
+✏️ path/to/file.ts
+  — What changed and why (keep it brief)
+  — Diff preview:
+    - old line
+    + new line
+    - old line
+    + new line
 ```
 
 Do not batch these at the end of your response. Output them as you go, immediately after
 each edit. This makes it easy to follow what changed without scrolling to a summary.
+
+If the diff is large, show only 3 to 4 representative changed lines or line pairs so the output
+stays readable while still showing the exact path and concrete changes.
 
 ---
 
