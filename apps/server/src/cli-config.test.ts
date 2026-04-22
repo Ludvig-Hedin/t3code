@@ -403,6 +403,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         devUrl: undefined,
         noBrowser: true,
         authToken: undefined,
+        enableInsecureQueryToken: false,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
       });

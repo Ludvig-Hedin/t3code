@@ -141,6 +141,10 @@ export function useThreadJumpHintVisibility(): {
 
 export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
   if (!thread.latestTurn?.completedAt) return false;
+  // An interrupted turn should never surface as an unread completion — the
+  // user stopped it intentionally, and the "completed" timestamp is a
+  // synthetic stop-time, not a real AI completion.
+  if (thread.latestTurn.state === "interrupted") return false;
   const completedAt = Date.parse(thread.latestTurn.completedAt);
   if (Number.isNaN(completedAt)) return false;
   if (!thread.lastVisitedAt) return true;
@@ -331,12 +335,21 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.session?.status === "running") {
+  if (
+    thread.session?.status === "running" &&
+    thread.latestTurn?.state !== "interrupted"
+  ) {
     // Neutral gray for "Working" so that when this pill surfaces at the
     // collapsed-project level (shown as a dot) it stays consistent with the
     // gray per-thread spinner. The spinner itself is the primary activity
     // hint on expanded threads; the label/dot rendering is suppressed in the
     // thread row (see Sidebar.tsx) to avoid showing "Working" twice.
+    //
+    // Guard against an interrupted turn: when the user manually stops a
+    // frozen thread the server emits `thread.turn-interrupt-requested` which
+    // sets latestTurn.state = "interrupted" but leaves session.status as
+    // "running". Without this guard the spinner would keep showing even
+    // though no work is happening.
     return {
       label: "Working",
       colorClass: "text-muted-foreground",

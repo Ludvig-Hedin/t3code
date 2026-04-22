@@ -1110,6 +1110,42 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           { "rpc.aggregate": "preview" },
         ),
 
+      [WS_METHODS.previewListFiles]: ({ projectId }) =>
+        observeRpcEffect(
+          WS_METHODS.previewListFiles,
+          Effect.gen(function* () {
+            const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+            const project = snapshot.projects?.find(
+              (p: { id: string; workspaceRoot?: string }) => p.id === projectId,
+            );
+            const cwd = project?.workspaceRoot ?? "";
+            return yield* previewManager.listFiles(projectId, cwd);
+          }).pipe(
+            Effect.mapError(
+              (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+            ),
+          ),
+          { "rpc.aggregate": "preview" },
+        ),
+
+      [WS_METHODS.previewOpenFile]: ({ projectId, relativePath }) =>
+        observeRpcEffect(
+          WS_METHODS.previewOpenFile,
+          Effect.gen(function* () {
+            const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+            const project = snapshot.projects?.find(
+              (p: { id: string; workspaceRoot?: string }) => p.id === projectId,
+            );
+            const cwd = project?.workspaceRoot ?? "";
+            return yield* previewManager.openFile(projectId, cwd, relativePath);
+          }).pipe(
+            Effect.mapError(
+              (e) => new PreviewError({ message: e instanceof Error ? e.message : String(e) }),
+            ),
+          ),
+          { "rpc.aggregate": "preview" },
+        ),
+
       [WS_METHODS.previewStart]: ({ projectId, appId }) =>
         observeRpcEffect(
           WS_METHODS.previewStart,

@@ -26,6 +26,7 @@ const BootstrapEnvelopeSchema = Schema.Struct({
   devUrl: Schema.optional(Schema.URLFromString),
   noBrowser: Schema.optional(Schema.Boolean),
   authToken: Schema.optional(Schema.String),
+  enableInsecureQueryToken: Schema.optional(Schema.Boolean),
   autoBootstrapProjectFromCwd: Schema.optional(Schema.Boolean),
   logWebSocketEvents: Schema.optional(Schema.Boolean),
   otlpTracesUrl: Schema.optional(Schema.String),
@@ -120,6 +121,9 @@ const EnvServerConfig = Config.all({
   authToken: Config.string("T3CODE_AUTH_TOKEN").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
+  ),
+  enableInsecureQueryToken: Config.boolean("T3CODE_ENABLE_INSECURE_QUERY_TOKEN").pipe(
+    Config.withDefault(false),
   ),
   bootstrapFd: Config.int("T3CODE_BOOTSTRAP_FD").pipe(
     Config.option,
@@ -257,6 +261,12 @@ export const resolveServerConfig = (
         ),
       ),
     );
+    const enableInsecureQueryToken = Option.getOrElse(
+      Option.flatMap(bootstrapEnvelope, (bootstrap) =>
+        Option.fromUndefinedOr(bootstrap.enableInsecureQueryToken),
+      ),
+      () => env.enableInsecureQueryToken,
+    );
     const autoBootstrapProjectFromCwd = resolveBooleanFlag(
       flags.autoBootstrapProjectFromCwd,
       Option.getOrElse(
@@ -328,6 +338,7 @@ export const resolveServerConfig = (
       devUrl,
       noBrowser,
       authToken,
+      enableInsecureQueryToken,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
     };

@@ -97,13 +97,7 @@ function DirectoryChildren({
     return <TreeLeafMessage depth={depth} label="Loading…" tone="muted" />;
   }
   if (query.isError) {
-    return (
-      <TreeLeafMessage
-        depth={depth}
-        label="Failed to load directory"
-        tone="error"
-      />
-    );
+    return <TreeLeafMessage depth={depth} label="Failed to load directory" tone="error" />;
   }
 
   const entries = query.data?.entries ?? [];
@@ -138,11 +132,7 @@ function DirectoryChildren({
         ),
       )}
       {query.data?.truncated ? (
-        <TreeLeafMessage
-          depth={depth}
-          label="Showing first 1000 entries…"
-          tone="muted"
-        />
+        <TreeLeafMessage depth={depth} label="Showing first 1000 entries…" tone="muted" />
       ) : null}
     </>
   );
@@ -247,8 +237,12 @@ function FileNode({
       aria-label={`File ${entry.path}`}
       data-active={isActive ? "true" : undefined}
       className={cn(
-        "group flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left hover:bg-accent/40",
-        isActive && "bg-accent/50",
+        // Non-active rows: subtle hover. Active row gets a clear solid accent
+        // background + primary border tick so the user can always find the
+        // currently-open file at a glance (VS Code parity).
+        "group relative flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left hover:bg-accent/40",
+        isActive &&
+          "bg-accent text-accent-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-r before:bg-primary hover:bg-accent",
       )}
       style={{ paddingLeft: `${leftPadding}px` }}
       onClick={() => onOpenFile(entry.path)}
@@ -263,12 +257,12 @@ function FileNode({
         pathValue={entry.path}
         kind="file"
         theme={resolvedTheme}
-        className="size-3.5 text-muted-foreground/70"
+        className={cn("size-3.5 text-muted-foreground/70", isActive && "text-foreground")}
       />
       <span
         className={cn(
           "truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground",
-          isActive && "text-foreground",
+          isActive && "font-medium text-foreground",
         )}
       >
         {name}

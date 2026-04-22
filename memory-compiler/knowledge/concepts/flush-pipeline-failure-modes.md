@@ -5,8 +5,9 @@ tags: [memory-compiler, error-handling, resilience, operations]
 sources:
   - "daily/2026-04-17.md"
   - "daily/2026-04-18.md"
+  - "daily/2026-04-20.md"
 created: 2026-04-17
-updated: 2026-04-18
+updated: 2026-04-20
 ---
 
 # Flush Pipeline Failure Modes and Error Resilience
@@ -60,7 +61,7 @@ Exception: Command failed with exit code 1
 Error output: Check stderr output for details
 ```
 
-The error originates in the Claude Agent SDK's internal message processing. The "exit code 1" suggests the SDK spawned a subprocess (likely Claude Code CLI) that failed, but the error message provides no details about *why* it failed. The "Check stderr output" instruction is unhelpful because flush.py does not capture or log stderr from the SDK's internal subprocess.
+The error originates in the Claude Agent SDK's internal message processing. The "exit code 1" suggests the SDK spawned a subprocess (likely Claude Code CLI) that failed, but the error message provides no details about _why_ it failed. The "Check stderr output" instruction is unhelpful because flush.py does not capture or log stderr from the SDK's internal subprocess.
 
 ### Missing Resilience Patterns
 
@@ -97,6 +98,10 @@ The user experiences no visible error (flush is a background process), making th
 
 The same failure pattern recurred on 2026-04-18 with 2 FLUSH_ERROR entries (at 13:37 and 13:52 UTC) interspersed among successful FLUSH_OK entries. The errors were identical to the 2026-04-17 pattern: `query()` raising "Command failed with exit code 1" with the same uninformative "Check stderr output for details" message. Unlike the sustained failure window on 2026-04-17 (~20 consecutive failures over 2 hours), the 2026-04-18 failures were intermittent — successful flushes occurred before, between, and after the errors. This suggests the underlying cause may be transient resource contention or rate limiting rather than a persistent configuration issue. The intermittent pattern further supports the need for retry logic with backoff, as a single retry would likely succeed for these transient failures.
 
+### Burst Failures on 2026-04-20
+
+A cluster of five FLUSH_ERROR entries was observed: four near-simultaneous failures at **23:00:26 UTC** and one isolated failure at **22:19 UTC**. The error text matched prior runs (opaque “exit code 1” / “Check stderr” style). The **23:00 burst of four simultaneous failures** suggests concurrent hook invocations (e.g., several sessions ending together) all hitting the same failure mode—reinforcing the need for a **circuit breaker** so concurrent flushes do not hammer a broken endpoint independently.
+
 ## Related Concepts
 
 - [[concepts/memory-compiler-three-stage-pipeline]] — The pipeline architecture where flush failures break Stage 2
@@ -110,3 +115,4 @@ The same failure pattern recurred on 2026-04-18 with 2 FLUSH_ERROR entries (at 1
 - [[daily/2026-04-17.md]] — Failures continued from 19:53 through 21:14, approximately every 1-5 minutes, all with identical traceback
 - [[daily/2026-04-17.md]] — Earlier flushes at 19:21, 19:23, 19:30, 19:34, 19:36, 19:45 all returned FLUSH_OK, indicating the failure was a state transition, not a persistent configuration issue
 - [[daily/2026-04-18.md]] — 2 intermittent FLUSH_ERROR entries at 13:37 and 13:52 UTC with identical traceback, interspersed with FLUSH_OK successes — suggests transient rather than persistent failures
+- [[daily/2026-04-20.md]] — 5 FLUSH_ERROR entries: 1 at 22:19 UTC, 4 burst at 23:00:26 UTC (near-simultaneous), all with identical traceback to prior failures

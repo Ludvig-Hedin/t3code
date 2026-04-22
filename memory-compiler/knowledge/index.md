@@ -4,7 +4,7 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-18"
+updated: "2026-04-20"
 ---
 
 # Knowledge Base Index
@@ -72,7 +72,22 @@ updated: "2026-04-18"
 | [[connections/silent-rendering-bugs-from-conditional-pipelines]] | Provider picker ordering and wizard step filtering share a root pattern: silent UI bugs from conditional pipeline ordering                 | daily/2026-04-13.md | 2026-04-13 |
 | [[concepts/flush-pipeline-failure-modes]]                        | Flush.py failed ~20 times consecutively; reveals missing backoff, circuit breaker, and opaque error handling in Stage 2                    | daily/2026-04-17.md | 2026-04-18 |
 | [[concepts/standalone-to-workspace-package-refactoring]]         | Convert standalone CLI tools to workspace packages: programmatic API, tsx runtime, phased migration with TypeCheck gates                   | daily/2026-04-18.md | 2026-04-18 |
-| [[concepts/ai-context-content-prioritization]]                   | Priority order for AI system prompts: project identity → coding standards → architecture → current state → file structure                 | daily/2026-04-18.md | 2026-04-18 |
+| [[concepts/ai-context-content-prioritization]]                   | Priority order for AI system prompts: project identity → coding standards → architecture → current state → file structure                  | daily/2026-04-18.md | 2026-04-18 |
 | [[concepts/feature-parity-verification-pattern]]                 | Run old and new implementations side-by-side on same input to verify migration correctness; multiple comparison rounds needed              | daily/2026-04-18.md | 2026-04-18 |
-| [[concepts/project-instructions-injection-pipeline]]             | Compiled memory feeds into editor AI via settings → IPC → system prompt; auto-compiles on project open                                    | daily/2026-04-18.md | 2026-04-18 |
-| [[connections/memory-compiler-and-ai-context-pipeline]]           | Compiler output + project instructions pipeline + content prioritization form complete AI context system; neither works alone              | daily/2026-04-18.md | 2026-04-18 |
+| [[concepts/project-instructions-injection-pipeline]]             | Compiled memory feeds into editor AI via settings → IPC → system prompt; auto-compiles on project open                                     | daily/2026-04-18.md | 2026-04-18 |
+| [[connections/memory-compiler-and-ai-context-pipeline]]          | Compiler output + project instructions pipeline + content prioritization form complete AI context system; neither works alone              | daily/2026-04-18.md | 2026-04-18 |
+| [[concepts/inactivity-watchdog-fiber-pattern]]                   | Watchdog fiber detects frozen provider streams by tracking lastActivityAtMs; calls stopSessionInternal when no activity during active turn | daily/2026-04-19.md | 2026-04-19 |
+| [[concepts/effect-timeoutoption-clean-error-types]]              | `Effect.timeoutOption` returns `Option<A>` on timeout instead of adding `TimeoutException` to error channel; use for "try then fall back"  | daily/2026-04-19.md | 2026-04-19 |
+| [[concepts/stream-takewhile-freeze-limitation]]                  | `Stream.takeWhile` predicate never evaluates when source is frozen; watchdog fiber is the correct stop mechanism for frozen streams        | daily/2026-04-19.md | 2026-04-19 |
+| [[concepts/late-event-ingestion-guard]]                          | Reject terminal events arriving after session is stopped/completed to prevent zombie events re-activating spinner and stop button          | daily/2026-04-19.md | 2026-04-19 |
+| [[concepts/phase-derivation-turn-id-guard]]                      | Require `activeTurnId !== null` alongside `status === "running"` in `derivePhase` to prevent stale spinner after turn completes            | daily/2026-04-19.md | 2026-04-19 |
+| [[connections/frozen-stream-defense-in-depth]]                   | Four-layer defense: watchdog + interrupt timeout + late-event guard + phase guard form complete strategy for frozen AI provider streams    | daily/2026-04-19.md | 2026-04-19 |
+| [[concepts/react18-setstate-updater-timing-trap]]                | React 18 setState updaters run during reconciliation, not synchronously; reading refs set inside updaters always returns stale values      | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/websocket-silent-death-heartbeat]]                    | WebSocket connections die silently on sleep/wake/NAT; 20s heartbeat ping with reload after 2 failures detects and recovers                 | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/process-output-dual-pattern-matching]]                | Process watchers need both success AND error pattern matching; success-only hangs forever when process fails                               | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/code-review-thread-isolation]]                        | Create fresh threads for code reviews instead of reusing active sessions; eliminates stale session errors                                  | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/nodejs-readline-close-race]]                          | child.on('close') fires before readline emits all buffered lines; coordinate all three close events before reading buffers                 | daily/2026-04-20.md | 2026-04-20 |
+| [[connections/silent-hang-detection-patterns]]                   | WebSocket heartbeat, watchdog fiber, and error pattern matching are the same "active probe" pattern at different stack layers              | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/lazy-file-tree-rpc-expansion]]                        | Lazy per-directory RPC loading for file trees; binary file guard; CodeMirror lazy language loading                                         | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/pending-selection-store-coordination]]                | Store-mediated deferred action pattern: component A writes pending selection, editor B consumes on ready                                   | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/electron-context-menu-react-overlay]]                 | Native Electron menus lack icon support; replace with React overlay + virtual anchor at cursor position                                    | daily/2026-04-20.md | 2026-04-20 |

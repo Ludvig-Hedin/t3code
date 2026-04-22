@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/show-diff.sh",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/show-diff.sh\"",
             "statusMessage": "Showing diff…"
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/humanize-bash.py",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/humanize-bash.py\"",
             "statusMessage": "Translating command…"
           }
         ]

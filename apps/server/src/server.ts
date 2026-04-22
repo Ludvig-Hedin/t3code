@@ -2,7 +2,12 @@ import { Effect, Layer } from "effect";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 
 import { ServerConfig } from "./config";
-import { attachmentsRouteLayer, projectFaviconRouteLayer, staticAndDevRouteLayer } from "./http";
+import {
+  attachmentsRouteLayer,
+  projectFaviconRouteLayer,
+  staticAndDevRouteLayer,
+  transcriptionRouteLayer,
+} from "./http";
 import { mobileCompanionRouteLayer } from "./mobile";
 import {
   gitStatusRouteLayer,
@@ -286,6 +291,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   mobileCompanionRouteLayer,
   previewProxyRouteLayer,
   projectFaviconRouteLayer,
+  transcriptionRouteLayer,
   // A2A protocol endpoints (agent card discovery + JSON-RPC)
   a2aAgentCardRoute,
   a2aJsonRpcRoute,

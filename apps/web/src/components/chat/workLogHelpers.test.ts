@@ -181,9 +181,9 @@ describe("parseSkillName", () => {
   });
 
   it("does not insert extra spaces when the slug has empty dash segments", () => {
-    expect(
-      parseSkillName('Tool call — Skill: {"skill":"ns:code--review--extra"}'),
-    ).toBe("Code Review Extra");
+    expect(parseSkillName('Tool call — Skill: {"skill":"ns:code--review--extra"}')).toBe(
+      "Code Review Extra",
+    );
   });
 });
 

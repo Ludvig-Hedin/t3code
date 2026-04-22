@@ -26,8 +26,11 @@ export class KeepAwakeManager {
   enable(): void {
     if (this.isEnabled) return;
 
-    // Electron blocker — prevents idle system sleep.
-    this.blockerId = powerSaveBlocker.start("prevent-app-suspension");
+    // Electron powerSaveBlocker: `prevent-display-sleep` (below) keeps both the
+    // display and system awake on desktop. `prevent-app-suspension` prevents the
+    // system from being suspended but still allows the display to turn off — so we
+    // use `prevent-display-sleep` here (`this.blockerId`) when we want display+system awake.
+    this.blockerId = powerSaveBlocker.start("prevent-display-sleep");
 
     // caffeinate -s: prevent sleep on AC. -w {pid}: tie lifetime to our process.
     if (process.platform === "darwin") {

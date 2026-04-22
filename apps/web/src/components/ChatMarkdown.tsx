@@ -15,6 +15,7 @@ import React, {
 } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { openInPreferredEditor } from "../editorPreferences";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
@@ -50,6 +51,12 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   isStreaming?: boolean;
+  /**
+   * When true, raw HTML embedded in the markdown is rendered as HTML rather
+   * than escaped to plain text. Enable for user-controlled content (e.g. file
+   * preview) but leave off for AI-generated chat messages.
+   */
+  allowHtml?: boolean;
   /**
    * Optional callback invoked when the user clicks "Run in terminal" on a
    * shell-type code block. When omitted the Run button is not shown.
@@ -285,13 +292,16 @@ function SuspenseShikiCodeBlock({
   );
 }
 
-function ChatMarkdown({ text, cwd, isStreaming = false, onRunInTerminal }: ChatMarkdownProps) {
+function ChatMarkdown({ text, cwd, isStreaming = false, allowHtml = false, onRunInTerminal }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
 
   // Remark plugins are stable references — defined once outside the component.
   // remarkInlineLinks handles plain-text URLs and file paths.
   const remarkPlugins = useMemo(() => [remarkGfm, remarkInlineLinks], []);
+  // rehype-raw is only enabled when allowHtml is true (file preview) so that
+  // AI-generated markdown cannot inject arbitrary HTML into chat messages.
+  const rehypePlugins = useMemo(() => (allowHtml ? [rehypeRaw] : []), [allowHtml]);
 
   const markdownComponents = useMemo<Components>(
     () => ({
@@ -452,7 +462,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false, onRunInTerminal }: ChatM
 
   return (
     <div className="chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/80">
-      <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
         {text}
       </ReactMarkdown>
     </div>

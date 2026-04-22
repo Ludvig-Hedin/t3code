@@ -614,6 +614,20 @@ function getComposerListItemContentNode(listItem: ListItemNode): ElementNode {
   return firstParagraph ?? listItem;
 }
 
+/** Call only inside `editor.update()` — ensures line-block helpers have a paragraph to read. */
+function $ensureAtLeastOneComposerLine(
+  root: ElementNode = $getRoot() as unknown as ElementNode,
+): void {
+  if (!$isElementNode(root)) {
+    return;
+  }
+  if (getComposerLineBlocks(root).length > 0) {
+    return;
+  }
+  const paragraph = $createParagraphNode();
+  root.append(paragraph);
+}
+
 function getComposerLineBlocks(root: ElementNode = $getRoot() as unknown as ElementNode): Array<{
   blockNode: ElementNode;
   contentNode: ElementNode;
@@ -651,16 +665,6 @@ function getComposerLineBlocks(root: ElementNode = $getRoot() as unknown as Elem
     }
   }
 
-  if (blocks.length === 0) {
-    const paragraph = $createParagraphNode();
-    root.append(paragraph);
-    blocks.push({
-      blockNode: paragraph,
-      contentNode: paragraph,
-      prefix: "",
-    });
-  }
-
   return blocks;
 }
 
@@ -677,15 +681,15 @@ function getComposerBlockNodeForSelection(node: LexicalNode): ElementNode | null
 
 function serializeComposerNodeText(node: LexicalNode): string {
   if ($isElementNode(node)) {
-    return node.getChildren().map((child) => serializeComposerNodeText(child)).join("");
+    return node
+      .getChildren()
+      .map((child) => serializeComposerNodeText(child))
+      .join("");
   }
   return node.getTextContent();
 }
 
-function measureComposerNodeLength(
-  node: LexicalNode,
-  mode: "collapsed" | "expanded",
-): number {
+function measureComposerNodeLength(node: LexicalNode, mode: "collapsed" | "expanded"): number {
   if (node instanceof ComposerMentionNode) {
     return mode === "collapsed" ? 1 : node.getTextContentSize();
   }
@@ -713,7 +717,12 @@ function measureComposerNodeOffsetWithinNode(
   mode: "collapsed" | "expanded",
 ): number | null {
   if (node === targetNode) {
-    if ($isTextNode(node) || node instanceof ComposerMentionNode || node instanceof ComposerTerminalContextNode || $isLineBreakNode(node)) {
+    if (
+      $isTextNode(node) ||
+      node instanceof ComposerMentionNode ||
+      node instanceof ComposerTerminalContextNode ||
+      $isLineBreakNode(node)
+    ) {
       return Math.min(pointOffset, measureComposerNodeLength(node, mode));
     }
 
@@ -733,12 +742,7 @@ function measureComposerNodeOffsetWithinNode(
   if ($isElementNode(node)) {
     let offset = 0;
     for (const child of node.getChildren()) {
-      const childOffset = measureComposerNodeOffsetWithinNode(
-        child,
-        targetNode,
-        pointOffset,
-        mode,
-      );
+      const childOffset = measureComposerNodeOffsetWithinNode(child, targetNode, pointOffset, mode);
       if (childOffset !== null) {
         return offset + childOffset;
       }
@@ -814,11 +818,21 @@ function findSelectionPointWithinComposerNode(
   return null;
 }
 
-function getComposerLineBlocksLength(blocks: ReturnType<typeof getComposerLineBlocks>, mode: "collapsed" | "expanded"): number {
+function getComposerLineBlocksLength(
+  blocks: ReturnType<typeof getComposerLineBlocks>,
+  mode: "collapsed" | "expanded",
+): number {
   if (blocks.length === 0) {
     return 0;
   }
-  return blocks.reduce((sum, block) => sum + block.prefix.length + measureComposerNodeLength(block.contentNode, mode), 0) + (blocks.length - 1);
+  return (
+    blocks.reduce(
+      (sum, block) =>
+        sum + block.prefix.length + measureComposerNodeLength(block.contentNode, mode),
+      0,
+    ) +
+    (blocks.length - 1)
+  );
 }
 
 function getComposerSerializedPromptFromEditorState(
@@ -831,6 +845,7 @@ function getComposerSerializedPromptFromEditorState(
 
 function setComposerSelectionAtOffset(nextOffset: number): void {
   const root = $getRoot();
+  $ensureAtLeastOneComposerLine(root);
   const blocks = getComposerLineBlocks(root);
   const totalLength = getComposerLineBlocksLength(blocks, "collapsed");
   const boundedOffset = Math.max(0, Math.min(nextOffset, totalLength));
@@ -844,20 +859,20 @@ function setComposerSelectionAtOffset(nextOffset: number): void {
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index];
     if (!block) continue;
-    const blockLength = block.prefix.length + measureComposerNodeLength(block.contentNode, "collapsed");
+    const blockLength =
+      block.prefix.length + measureComposerNodeLength(block.contentNode, "collapsed");
 
     if (remaining <= blockLength) {
       const withinContent = Math.max(0, remaining - block.prefix.length);
-      const point =
-        findSelectionPointWithinComposerNode(
-          block.contentNode,
-          { value: withinContent },
-          "collapsed",
-        ) ?? {
-          key: block.contentNode.getKey(),
-          offset: 0,
-          type: "element" as const,
-        };
+      const point = findSelectionPointWithinComposerNode(
+        block.contentNode,
+        { value: withinContent },
+        "collapsed",
+      ) ?? {
+        key: block.contentNode.getKey(),
+        offset: 0,
+        type: "element" as const,
+      };
       const selection = $createRangeSelection();
       selection.anchor.set(point.key, point.offset, point.type);
       selection.focus.set(point.key, point.offset, point.type);
@@ -884,16 +899,15 @@ function setComposerSelectionAtOffset(nextOffset: number): void {
     }
   }
 
-  const lastPoint =
-    findSelectionPointWithinComposerNode(
-      fallbackBlock.contentNode,
-      { value: measureComposerNodeLength(fallbackBlock.contentNode, "collapsed") },
-      "collapsed",
-    ) ?? {
-      key: fallbackBlock.contentNode.getKey(),
-      offset: fallbackBlock.contentNode.getChildren().length,
-      type: "element" as const,
-    };
+  const lastPoint = findSelectionPointWithinComposerNode(
+    fallbackBlock.contentNode,
+    { value: measureComposerNodeLength(fallbackBlock.contentNode, "collapsed") },
+    "collapsed",
+  ) ?? {
+    key: fallbackBlock.contentNode.getKey(),
+    offset: fallbackBlock.contentNode.getChildren().length,
+    type: "element" as const,
+  };
   const selection = $createRangeSelection();
   selection.anchor.set(lastPoint.key, lastPoint.offset, lastPoint.type);
   selection.focus.set(lastPoint.key, lastPoint.offset, lastPoint.type);
@@ -913,7 +927,8 @@ function readComposerSelectionOffsetFromEditorState(fallback: number): number {
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index];
     if (!block) continue;
-    const blockLength = block.prefix.length + measureComposerNodeLength(block.contentNode, "collapsed");
+    const blockLength =
+      block.prefix.length + measureComposerNodeLength(block.contentNode, "collapsed");
     const anchorInBlock =
       anchorNode === block.blockNode ||
       anchorNode === block.contentNode ||
@@ -926,12 +941,12 @@ function readComposerSelectionOffsetFromEditorState(fallback: number): number {
               selection.anchor.offset,
               measureComposerNodeLength(block.contentNode, "collapsed"),
             )
-          : measureComposerNodeOffsetWithinNode(
-                block.contentNode,
-                anchorNode,
-                selection.anchor.offset,
-                "collapsed",
-              ) ?? 0;
+          : (measureComposerNodeOffsetWithinNode(
+              block.contentNode,
+              anchorNode,
+              selection.anchor.offset,
+              "collapsed",
+            ) ?? 0);
       return runningOffset + block.prefix.length + withinContent;
     }
 
@@ -957,7 +972,8 @@ function readComposerExpandedSelectionOffsetFromEditorState(fallback: number): n
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index];
     if (!block) continue;
-    const blockLength = block.prefix.length + measureComposerNodeLength(block.contentNode, "expanded");
+    const blockLength =
+      block.prefix.length + measureComposerNodeLength(block.contentNode, "expanded");
     const anchorInBlock =
       anchorNode === block.blockNode ||
       anchorNode === block.contentNode ||
@@ -970,12 +986,12 @@ function readComposerExpandedSelectionOffsetFromEditorState(fallback: number): n
               selection.anchor.offset,
               measureComposerNodeLength(block.contentNode, "expanded"),
             )
-          : measureComposerNodeOffsetWithinNode(
-                block.contentNode,
-                anchorNode,
-                selection.anchor.offset,
-                "expanded",
-              ) ?? 0;
+          : (measureComposerNodeOffsetWithinNode(
+              block.contentNode,
+              anchorNode,
+              selection.anchor.offset,
+              "expanded",
+            ) ?? 0);
       return runningOffset + block.prefix.length + withinContent;
     }
 
@@ -1149,9 +1165,7 @@ function ComposerListShortcutPlugin() {
           }
 
           editor.dispatchCommand(
-            shortcutKind === "bullet"
-              ? INSERT_UNORDERED_LIST_COMMAND
-              : INSERT_ORDERED_LIST_COMMAND,
+            shortcutKind === "bullet" ? INSERT_UNORDERED_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND,
             undefined,
           );
         });

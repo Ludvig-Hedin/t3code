@@ -35,17 +35,16 @@ function readServerAuthToken(): string | null {
 }
 
 function buildDirectServerTranscriptionUrl(): string {
+  return resolveApiUrl({ pathname: "/api/transcribe" });
+}
+
+function buildTranscriptionAuthHeaders(): Headers {
+  const headers = new Headers();
   const token = readServerAuthToken();
-  return resolveApiUrl(
-    token
-      ? {
-          pathname: "/api/transcribe",
-          searchParams: { token },
-        }
-      : {
-          pathname: "/api/transcribe",
-        },
-  );
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return headers;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -165,15 +164,25 @@ async function transcribeViaServer(audioBlob: Blob): Promise<string> {
   try {
     const response = await fetch(buildDirectServerTranscriptionUrl(), {
       method: "POST",
+      headers: buildTranscriptionAuthHeaders(),
       body: formData,
     });
 
     if (response.ok) {
-      const result = (await response.json()) as ServerTranscribeAudioResult;
+      const result: unknown = await response.json();
       logTiming("server_http_completed", performance.now() - directStartedAt, {
         bytes: audioBlob.size,
       });
-      const directText = result.text.trim();
+      if (
+        !result ||
+        typeof result !== "object" ||
+        typeof (result as { text?: unknown }).text !== "string"
+      ) {
+        const detail = JSON.stringify(result);
+        console.error("[voice-transcription] invalid /api/transcribe JSON", result);
+        throw new Error(`Invalid server response: missing or non-string 'text' (${detail})`);
+      }
+      const directText = (result as ServerTranscribeAudioResult).text.trim();
       if (!directText) {
         throw new Error("Local Whisper server returned an empty transcript.");
       }

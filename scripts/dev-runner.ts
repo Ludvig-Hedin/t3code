@@ -29,7 +29,7 @@ const MODE_ARGS = {
     "--parallel",
   ],
   "dev:server": ["run", "dev", "--filter=t3"],
-  "dev:web": ["run", "dev", "--filter=@t3tools/web"],
+  "dev:web": ["run", "dev", "--filter=t3", "--filter=@t3tools/web", "--parallel"],
   "dev:desktop": ["run", "dev", "--filter=@t3tools/desktop", "--filter=@t3tools/web", "--parallel"],
 } as const satisfies Record<string, ReadonlyArray<string>>;
 
@@ -313,13 +313,15 @@ export function resolveModePortOffsets<R = NetService>({
         return { serverOffset: startOffset, webOffset: startOffset };
       }
 
-      const webOffset = yield* findFirstAvailableOffset({
+      // dev:web runs the API server and Vite together; keep a single shared offset
+      // so T3CODE_PORT and the web dev port stay paired.
+      const sharedOffset = yield* findFirstAvailableOffset({
         startOffset,
-        requireServerPort: false,
+        requireServerPort: !hasExplicitServerPort,
         requireWebPort: true,
         checkPortAvailability: checkPort,
       });
-      return { serverOffset: startOffset, webOffset };
+      return { serverOffset: sharedOffset, webOffset: sharedOffset };
     }
 
     if (mode === "dev:server") {

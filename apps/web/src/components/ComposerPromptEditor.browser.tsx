@@ -59,16 +59,14 @@ describe("ComposerPromptEditor", () => {
     await using _ = await mountComposer();
 
     await page.getByTestId("composer-editor").fill("-");
-    document
-      .querySelector<HTMLElement>('[data-testid="composer-editor"]')
-      ?.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          bubbles: true,
-          cancelable: true,
-          code: "Space",
-          key: " ",
-        }),
-      );
+    document.querySelector<HTMLElement>('[data-testid="composer-editor"]')?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        code: "Space",
+        key: " ",
+      }),
+    );
 
     await vi.waitFor(() => {
       const editor = document.querySelector<HTMLElement>('[data-testid="composer-editor"]');
@@ -82,16 +80,14 @@ describe("ComposerPromptEditor", () => {
     await using _ = await mountComposer();
 
     await page.getByTestId("composer-editor").fill("1.");
-    document
-      .querySelector<HTMLElement>('[data-testid="composer-editor"]')
-      ?.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          bubbles: true,
-          cancelable: true,
-          code: "Space",
-          key: " ",
-        }),
-      );
+    document.querySelector<HTMLElement>('[data-testid="composer-editor"]')?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        code: "Space",
+        key: " ",
+      }),
+    );
 
     await vi.waitFor(() => {
       const editor = document.querySelector<HTMLElement>('[data-testid="composer-editor"]');

@@ -65,7 +65,9 @@ struct MobileWebView: View {
 
       case .failed(let message):
         // Shown when the webview cannot reach the desktop server. Provides
-        // retry and disconnect actions so the user is never stuck.
+        // retry, open-settings, and disconnect actions so the user is never
+        // stuck. Open Settings is the common fix — iOS silently blocks LAN
+        // requests after the user denies Local Network permission.
         Color(uiColor: .systemBackground)
           .ignoresSafeArea()
           .overlay(
@@ -80,21 +82,34 @@ struct MobileWebView: View {
                   .font(.callout)
                   .foregroundStyle(MobileTheme.muted)
                   .multilineTextAlignment(.center)
+                Text("If this persists, check Local Network access for Bird Code in iPhone Settings, and make sure the desktop app is running on the same Wi-Fi.")
+                  .font(.caption)
+                  .foregroundStyle(MobileTheme.muted)
+                  .multilineTextAlignment(.center)
               }
-              HStack(spacing: 12) {
-                Button("Retry") {
-                  loadState = .loading
-                  // reload() is a no-op after didFailProvisionalNavigation because
-                  // the webview has no committed document to reload. Use load(_:)
-                  // with the original request to start fresh navigation instead.
-                  let request = URLRequest(
-                    url: serverURL,
-                    cachePolicy: .reloadIgnoringLocalCacheData,
-                    timeoutInterval: 15
-                  )
-                  webViewRef?.load(request)
+              VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                  Button("Retry") {
+                    loadState = .loading
+                    // reload() is a no-op after didFailProvisionalNavigation because
+                    // the webview has no committed document to reload. Use load(_:)
+                    // with the original request to start fresh navigation instead.
+                    let request = URLRequest(
+                      url: serverURL,
+                      cachePolicy: .reloadIgnoringLocalCacheData,
+                      timeoutInterval: 15
+                    )
+                    webViewRef?.load(request)
+                  }
+                  .buttonStyle(MobilePrimaryButtonStyle())
+
+                  Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                      UIApplication.shared.open(url)
+                    }
+                  }
+                  .buttonStyle(MobileSecondaryButtonStyle())
                 }
-                .buttonStyle(MobilePrimaryButtonStyle())
 
                 Button("Disconnect") {
                   onDisconnect()

@@ -1,5 +1,20 @@
 # Changelog
 
+## [2026-04-22] [Fix] `dev:web` starts the API server so the browser can finish loading
+
+- **Root cause (1):** `bun run dev:web` only launched Vite while `VITE_WS_URL` still pointed at the local Bird Code server. With no process on that port, the web client’s WebSocket never came up, so the app appeared to load forever.
+- **Change (1):** `dev:web` now runs `t3` and `@t3tools/web` in parallel. Port selection uses a **shared** offset for server + web ports so `T3CODE_PORT` and the Vite port stay matched.
+- **Root cause (2):** Even with the API running, `resolveServerUrl` preferred `window.location.origin` (the Vite dev server, e.g. `:5733`) over `VITE_WS_URL`, so the app opened a WebSocket to the wrong host and never received orchestration snapshot / `bootstrapComplete`.
+- **Change (2):** Resolve order is now explicit bridge URL → `VITE_WS_URL` → `location.origin`, matching the split-ports dev layout.
+- **Files:** `scripts/dev-runner.ts`, `scripts/dev-runner.test.ts`, `apps/web/src/lib/utils.ts`, `README.md`, `.docs/scripts.md`
+
+## [2026-04-20] [Fix] Hide unsupported GPT-5.1 Codex mini on ChatGPT-auth Codex accounts
+
+- **Codex provider:** `adjustCodexModelsForAccount` now filters `gpt-5.1-codex-mini` for ChatGPT-auth Codex accounts, so the unsupported model no longer appears in the provider model list.
+- **Runtime fallback:** `resolveCodexModelForAccount` now falls back to `gpt-5.3-codex` if an existing ChatGPT-auth session still points at the unsupported mini model.
+- **Tests:** Added regression coverage for the filtered provider list and the fallback behavior.
+- **Files:** `apps/server/src/provider/codexAccount.ts`, `apps/server/src/codexAppServerManager.test.ts`
+
 ## [2026-04-19] [Fix] Early-reject unsupported Cursor model selections; restore image fallback; protect code spans in previews
 
 - **Cursor model-selection guard:** Removed `cursor` from the orchestration/runtime model-selection decode path and the matching settings patch schema so unsupported Cursor turns fail at validation time instead of starting and crashing later with `ProviderUnsupportedError`. This deliberately does **not** change the separate in-progress Cursor provider implementation.

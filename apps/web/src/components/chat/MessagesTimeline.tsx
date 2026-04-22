@@ -486,7 +486,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 )}
                 {(displayedUserMessage.visibleText.trim().length > 0 ||
                   terminalContexts.length > 0) && (
-                  <div className="relative rounded-2xl bg-black/5 dark:bg-white/10 px-3 py-2">
+                  <div className="relative rounded-2xl bg-black/5 dark:bg-white/[0.03] px-12 py-8">
                     <UserMessageBody
                       text={displayedUserMessage.visibleText}
                       terminalContexts={terminalContexts}

@@ -123,6 +123,7 @@ let tunnelManager: TunnelManager | null = null;
 let keepAwakeManager: KeepAwakeManager | null = null;
 const TUNNEL_STATUS_CHANNEL = "tunnel:status";
 const REMOTE_SETTINGS_GET_CHANNEL = "desktop:remote-settings-get";
+const TUNNEL_GET_STATUS_CHANNEL = "desktop:tunnel-get-status";
 const TUNNEL_ENABLE_CHANNEL = "desktop:tunnel-enable";
 const TUNNEL_DISABLE_CHANNEL = "desktop:tunnel-disable";
 const KEEP_AWAKE_SET_CHANNEL = "desktop:keep-awake-set";
@@ -1713,6 +1714,13 @@ function registerIpcHandlers(): void {
   ipcMain.removeAllListeners(REMOTE_SETTINGS_GET_CHANNEL);
   ipcMain.on(REMOTE_SETTINGS_GET_CHANNEL, (event) => {
     event.returnValue = readRemoteSettings(app.getPath("userData"));
+  });
+
+  // Returns the tunnel manager's current status synchronously so the renderer
+  // can seed its initial state without waiting for the next status-change event.
+  ipcMain.removeAllListeners(TUNNEL_GET_STATUS_CHANNEL);
+  ipcMain.on(TUNNEL_GET_STATUS_CHANNEL, (event) => {
+    event.returnValue = tunnelManager?.status ?? { status: "idle" };
   });
 
   ipcMain.removeHandler(TUNNEL_ENABLE_CHANNEL);

@@ -6,6 +6,7 @@ import { Cache, Duration, Effect, Exit, Layer, Option, Path } from "effect";
 import {
   type ProjectEntry,
   type ProjectListDirectoryResult,
+  PROJECT_LIST_DIRECTORY_MAX_ENTRIES,
 } from "@t3tools/contracts";
 
 import { GitCore } from "../../git/Services/GitCore.ts";
@@ -22,7 +23,6 @@ const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_SCAN_READDIR_CONCURRENCY = 32;
 // Shallow directory listings are capped so the Files-panel tree stays responsive
 // even in pathological directories (e.g. a Downloads folder with 10k items).
-const WORKSPACE_LIST_DIRECTORY_MAX_ENTRIES = 1_000;
 const IGNORED_DIRECTORY_NAMES = new Set([
   ".git",
   ".convex",
@@ -510,9 +510,7 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
    */
   const listDirectory: WorkspaceEntriesShape["listDirectory"] = Effect.fn(
     "WorkspaceEntries.listDirectory",
-  )(function* (
-    input,
-  ): Effect.fn.Return<
+  )(function* (input): Effect.fn.Return<
     ProjectListDirectoryResult,
     WorkspaceEntriesError | import("../Services/WorkspacePaths.ts").WorkspacePathOutsideRootError
   > {
@@ -520,19 +518,18 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
 
     // Normalize the relative path. "" = workspace root.
     const rawRelativePath = input.relativePath.trim();
-    const normalizedRelativePath = toPosixPath(
-      rawRelativePath.replace(/^\/+|\/+$/g, ""),
-    );
+    const normalizedRelativePath = toPosixPath(rawRelativePath.replace(/^\/+|\/+$/g, ""));
 
     // Use WorkspacePaths to ensure the requested directory is within root.
     // For the root itself we skip resolution (the service rejects empty
     // relativePath as outside-root) and use normalizedCwd directly.
-    const absoluteDir = normalizedRelativePath.length === 0
-      ? normalizedCwd
-      : (yield* workspacePaths.resolveRelativePathWithinRoot({
-          workspaceRoot: normalizedCwd,
-          relativePath: normalizedRelativePath,
-        })).absolutePath;
+    const absoluteDir =
+      normalizedRelativePath.length === 0
+        ? normalizedCwd
+        : (yield* workspacePaths.resolveRelativePathWithinRoot({
+            workspaceRoot: normalizedCwd,
+            relativePath: normalizedRelativePath,
+          })).absolutePath;
 
     const dirents = yield* Effect.tryPromise({
       try: () => fsPromises.readdir(absoluteDir, { withFileTypes: true }),
@@ -550,7 +547,6 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
     const showHidden = input.showHidden === true;
     const candidates: ProjectEntry[] = [];
     const gitCheckPaths: string[] = [];
-    const gitCheckIndexes: number[] = [];
     for (const dirent of dirents) {
       if (!dirent.name || dirent.name === "." || dirent.name === "..") continue;
       if (!showHidden && dirent.name.startsWith(".")) continue;
@@ -558,9 +554,7 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
       if (!dirent.isDirectory() && !dirent.isFile()) continue;
 
       const relativePath = toPosixPath(
-        normalizedRelativePath
-          ? path.join(normalizedRelativePath, dirent.name)
-          : dirent.name,
+        normalizedRelativePath ? path.join(normalizedRelativePath, dirent.name) : dirent.name,
       );
 
       candidates.push({
@@ -569,7 +563,6 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
         parentPath: parentPathOf(relativePath),
       });
       gitCheckPaths.push(relativePath);
-      gitCheckIndexes.push(candidates.length - 1);
     }
 
     // Filter out .gitignored entries when inside a git work tree. The same
@@ -593,10 +586,8 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
       return left.path.localeCompare(right.path);
     });
 
-    const truncated = sorted.length > WORKSPACE_LIST_DIRECTORY_MAX_ENTRIES;
-    const entries = truncated
-      ? sorted.slice(0, WORKSPACE_LIST_DIRECTORY_MAX_ENTRIES)
-      : sorted;
+    const truncated = sorted.length > PROJECT_LIST_DIRECTORY_MAX_ENTRIES;
+    const entries = truncated ? sorted.slice(0, PROJECT_LIST_DIRECTORY_MAX_ENTRIES) : sorted;
 
     return {
       relativePath: normalizedRelativePath,

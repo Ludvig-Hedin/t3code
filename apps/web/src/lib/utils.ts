@@ -52,11 +52,14 @@ export const resolveServerUrl = (options?: {
   pathname?: string | undefined;
   searchParams?: Record<string, string> | undefined;
 }): string => {
-  const windowUrl =
-    typeof window !== "undefined"
-      ? (window.desktopBridge?.getWsUrl() ?? window.location.origin)
-      : undefined;
-  const rawUrl = firstNonEmptyString(options?.url, windowUrl, import.meta.env.VITE_WS_URL);
+  // Do not use `window.location.origin` before `VITE_WS_URL`: in dev the UI is
+  // served from Vite (e.g. :5733) while the API WebSocket is on a different
+  // port. Prefer Electron bridge, then build-time API URL, then same-origin.
+  const bridgeWsUrl =
+    typeof window !== "undefined" ? window.desktopBridge?.getWsUrl?.() : undefined;
+  const envWsUrl = import.meta.env.VITE_WS_URL;
+  const locationOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
+  const rawUrl = firstNonEmptyString(options?.url, bridgeWsUrl, envWsUrl, locationOrigin);
 
   const parsedUrl = new URL(rawUrl);
   if (options?.protocol) {

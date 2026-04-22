@@ -249,14 +249,11 @@ function DeviceRow({
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export function BirdCodeMobileCompanionPanel() {
-  // tunnelStatus must be declared before serverURL so the useMemo dep is in scope.
-  const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>(() => {
-    const settings = window.desktopBridge?.getRemoteSettings?.();
-    if (settings?.remoteAccessEnabled && settings.tunnelUrl) {
-      return { status: "connecting" };
-    }
-    return { status: "idle" };
-  });
+  // Seed from the actual current tunnel status so we never show a stale
+  // "connecting" spinner when the tunnel is already active or idle.
+  const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>(
+    () => window.desktopBridge?.getTunnelStatus?.() ?? { status: "idle" },
+  );
 
   const [remoteSettings, setRemoteSettings] = useState<RemoteSettings | null>(
     () => window.desktopBridge?.getRemoteSettings?.() ?? null,

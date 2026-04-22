@@ -164,6 +164,7 @@ export interface DesktopBridge {
   getMobileDevices?: () => DesktopMobileDevicesResult | null;
   revokeMobileDevice?: (input: { deviceId: string }) => Promise<DesktopMobileDevicesResult | null>;
   getRemoteSettings?: () => RemoteSettings | null;
+  getTunnelStatus?: () => TunnelStatus;
   enableRemoteAccess?: () => Promise<{ ok: boolean; error?: string }>;
   disableRemoteAccess?: () => Promise<void>;
   setKeepAwake?: (enabled: boolean) => Promise<void>;

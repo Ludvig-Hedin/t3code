@@ -16,6 +16,10 @@ import {
   readCodexAccountSnapshot,
   resolveCodexModelForAccount,
 } from "./codexAppServerManager";
+import {
+  CODEX_CHATGPT_UNSUPPORTED_MODEL,
+  adjustCodexModelsForAccount,
+} from "./provider/codexAccount";
 
 const asThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value);
 
@@ -337,6 +341,16 @@ describe("readCodexAccountSnapshot", () => {
 });
 
 describe("resolveCodexModelForAccount", () => {
+  it("falls back from the unsupported chatgpt mini model to the default", () => {
+    expect(
+      resolveCodexModelForAccount(CODEX_CHATGPT_UNSUPPORTED_MODEL, {
+        type: "chatgpt",
+        planType: "plus",
+        sparkEnabled: false,
+      }),
+    ).toBe("gpt-5.3-codex");
+  });
+
   it("falls back from spark to default for unsupported chatgpt plans", () => {
     expect(
       resolveCodexModelForAccount("gpt-5.3-codex-spark", {
@@ -365,6 +379,53 @@ describe("resolveCodexModelForAccount", () => {
         sparkEnabled: false,
       }),
     ).toBe("gpt-5.3-codex");
+  });
+});
+
+describe("adjustCodexModelsForAccount", () => {
+  it("hides the unsupported chatgpt mini model while keeping custom entries", () => {
+    expect(
+      adjustCodexModelsForAccount(
+        [
+          {
+            slug: "gpt-5.3-codex",
+            name: "GPT-5.3 Codex",
+            isCustom: false,
+            capabilities: null,
+          },
+          {
+            slug: CODEX_CHATGPT_UNSUPPORTED_MODEL,
+            name: "GPT-5.1 Codex Mini",
+            isCustom: false,
+            capabilities: null,
+          },
+          {
+            slug: "custom-codex-model",
+            name: "Custom Codex Model",
+            isCustom: true,
+            capabilities: null,
+          },
+        ],
+        {
+          type: "chatgpt",
+          planType: "plus",
+          sparkEnabled: false,
+        },
+      ),
+    ).toEqual([
+      {
+        slug: "gpt-5.3-codex",
+        name: "GPT-5.3 Codex",
+        isCustom: false,
+        capabilities: null,
+      },
+      {
+        slug: "custom-codex-model",
+        name: "Custom Codex Model",
+        isCustom: true,
+        capabilities: null,
+      },
+    ]);
   });
 });
 

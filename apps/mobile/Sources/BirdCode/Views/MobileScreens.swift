@@ -45,6 +45,10 @@ struct MobileRootView: View {
     }
     .fontDesign(.default)
     .task {
+      // Always prime the iOS Local Network prompt on launch. If we're already
+      // paired and headed into the webview, this guarantees the prompt shows
+      // *before* WKWebView's first HTTP load fails silently.
+      store.primeLocalNetworkPermission()
       await store.restoreSessionIfPossible()
     }
   }
@@ -66,9 +70,10 @@ struct MobilePairingView: View {
 
         if let errorMessage = store.errorMessage {
           MobileBanner(
-            title: "Connection issue",
+            title: bannerTitle,
             message: errorMessage,
             tint: MobileTheme.danger,
+            primaryAction: primaryBannerAction,
           )
         }
 
@@ -151,6 +156,42 @@ struct MobilePairingView: View {
       }
     }
     .fontDesign(.default)
+    // Trigger the iOS Local Network permission prompt as soon as the user
+    // lands on the pairing screen. This way the system dialog appears before
+    // they tap "Pair device" — if they tap Allow, the first pair request
+    // succeeds on a cold install without a single Settings trip.
+    .task {
+      store.primeLocalNetworkPermission()
+    }
+  }
+
+  private var bannerTitle: String {
+    switch store.lastAPIError {
+    case .localNetworkPermissionDenied:
+      return "Local Network access needed"
+    case .desktopUnreachable:
+      return "Can't reach the desktop"
+    case .networkOffline:
+      return "You're offline"
+    default:
+      return "Connection issue"
+    }
+  }
+
+  private var primaryBannerAction: MobileBannerAction? {
+    switch store.lastAPIError {
+    case .localNetworkPermissionDenied:
+      return MobileBannerAction(title: "Open Settings") {
+        openAppSettings()
+      }
+    default:
+      return nil
+    }
+  }
+
+  private func openAppSettings() {
+    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+    UIApplication.shared.open(url)
   }
 }
 
@@ -1029,25 +1070,41 @@ private struct MobileField<Content: View>: View {
   }
 }
 
+struct MobileBannerAction {
+  let title: String
+  let handler: () -> Void
+}
+
 private struct MobileBanner: View {
   let title: String
   let message: String
   let tint: Color
+  var primaryAction: MobileBannerAction? = nil
 
   var body: some View {
-    HStack(alignment: .top, spacing: 12) {
-      Circle()
-        .fill(tint)
-        .frame(width: 8, height: 8)
-        .padding(.top, 5)
-      VStack(alignment: .leading, spacing: 4) {
-        Text(title)
-          .font(.subheadline.weight(.semibold))
-        Text(message)
-          .font(.callout)
-          .foregroundStyle(MobileTheme.muted)
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .top, spacing: 12) {
+        Circle()
+          .fill(tint)
+          .frame(width: 8, height: 8)
+          .padding(.top, 5)
+        VStack(alignment: .leading, spacing: 4) {
+          Text(title)
+            .font(.subheadline.weight(.semibold))
+          Text(message)
+            .font(.callout)
+            .foregroundStyle(MobileTheme.muted)
+        }
+        Spacer(minLength: 0)
       }
-      Spacer(minLength: 0)
+
+      if let action = primaryAction {
+        HStack {
+          Spacer(minLength: 0)
+          Button(action.title, action: action.handler)
+            .buttonStyle(MobilePrimaryButtonStyle())
+        }
+      }
     }
     .padding(12)
     .background(tint.opacity(0.1))

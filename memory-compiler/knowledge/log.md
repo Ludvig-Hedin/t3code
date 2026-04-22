@@ -4,7 +4,7 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-18"
+updated: "2026-04-20"
 ---
 
 # Build Log
@@ -222,3 +222,66 @@ updated: "2026-04-18"
 - Articles updated: (none)
 - Orphan files replaced with redirect stubs (9 files): standalone-to-workspace-package-migration.md, feature-parity-side-by-side-verification.md, project-instructions-ipc-pipeline.md, memory-compiler-tool-to-integration-evolution.md, tool-call-humanization-pattern.md, conditional-check-ordering-render-pipelines.md, conditional-rendering-order-in-pipelines.md, dynamic-wizard-step-navigation.md, wizard-step-filtering-navigation-sync.md
 - Summary: Re-compilation requested. All knowledge from daily/2026-04-18.md was already extracted into 4 concept articles (standalone-to-workspace-package-refactoring, ai-context-content-prioritization, feature-parity-verification-pattern, project-instructions-injection-pipeline), 1 connection article (memory-compiler-and-ai-context-pipeline), and 2 article updates (flush-pipeline-failure-modes, memory-compiler-three-stage-pipeline) during prior passes. Maintenance: replaced 9 orphan duplicate files from prior compilation passes (4 from 2026-04-18 first pass with wrong slugs, 5 from 2026-04-13 compilation) with redirect stubs pointing to canonical articles. Total index: 65 entries (49 concepts + 16 connections), unchanged.
+
+## [2026-04-19T00:00:00+02:00] compile | daily/2026-04-18.md (no-op, confirmed)
+
+- Source: daily/2026-04-18.md
+- Status: SKIPPED — already fully compiled (fourth compilation pass; second no-op confirmation)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Manual compilation pass requested. Cross-checked daily/2026-04-18.md against all indexed articles and prior log entries. Full knowledge has been extracted across 2 substantive passes (2026-04-18T11:53:33 and 2026-04-18T18:54:00) plus two subsequent no-op confirmation passes (including this one). All major session content covered: memory-compiler refactoring to workspace package, AI context content prioritization, feature parity verification methodology, project instructions IPC pipeline, and flush pipeline 2026-04-18 intermittent errors (FLUSH_ERROR at 15:37 and 15:52). Knowledge base remains at 65 entries (49 concepts + 16 connections).
+
+## [2026-04-20T12:46:43-05:00] compile | daily/2026-04-18.md (no-op, confirmed)
+
+- Source: daily/2026-04-18.md
+- Status: SKIPPED — already fully compiled (fifth compilation pass; third no-op confirmation)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. Verified against index.md and log.md. All knowledge from daily/2026-04-18.md was fully extracted across 2 substantive passes (2026-04-18T11:53:33 and 2026-04-18T18:54:00). Concepts covered: standalone-to-workspace-package-refactoring, ai-context-content-prioritization, feature-parity-verification-pattern, project-instructions-injection-pipeline, memory-compiler-and-ai-context-pipeline (connection). Updated articles: flush-pipeline-failure-modes (intermittent 2026-04-18 errors), memory-compiler-three-stage-pipeline (package refactoring section). No new knowledge to extract. Knowledge base remains at 65 entries (49 concepts + 16 connections).
+
+## [2026-04-19T23:04:00-05:00] compile | daily/2026-04-19.md
+
+- Source: daily/2026-04-19.md
+- Articles created: [[concepts/inactivity-watchdog-fiber-pattern]], [[concepts/effect-timeoutoption-clean-error-types]], [[concepts/stream-takewhile-freeze-limitation]], [[concepts/late-event-ingestion-guard]], [[concepts/phase-derivation-turn-id-guard]], [[connections/frozen-stream-defense-in-depth]]
+- Articles updated: (none)
+
+## [2026-04-20T10:00:00-05:00] compile | daily/2026-04-18.md
+
+- Source: daily/2026-04-18.md
+- Articles created: [[concepts/standalone-to-workspace-package-refactoring]], [[concepts/ai-context-content-prioritization]], [[concepts/feature-parity-verification-pattern]], [[concepts/project-instructions-injection-pipeline]], [[connections/memory-compiler-and-ai-context-pipeline]]
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (added 2026-04-18 intermittent failure data), [[concepts/memory-compiler-three-stage-pipeline]] (added workspace package refactoring and editor integration notes)
+
+## [2026-04-20T18:00:00-05:00] compile | daily/2026-04-19.md (no-op, confirmed)
+
+- Source: daily/2026-04-19.md
+- Status: SKIPPED — already fully compiled on 2026-04-19T23:04:00-05:00
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. Verified against index.md and log.md (entry at 2026-04-19T23:04:00). All knowledge from daily/2026-04-19.md was fully extracted in one pass: 5 concept articles (inactivity-watchdog-fiber-pattern, effect-timeoutoption-clean-error-types, stream-takewhile-freeze-limitation, late-event-ingestion-guard, phase-derivation-turn-id-guard) and 1 connection article (frozen-stream-defense-in-depth). Covers the complete debugging session: frozen provider streams, broken stop button, spinner flicker, and the four-layer defense-in-depth solution (watchdog + interrupt timeout + late-event guard + phase derivation guard). No new knowledge to extract. Knowledge base remains at 65 entries (49 concepts + 16 connections).
+
+## [2026-04-20T20:00:00-05:00] compile | daily/2026-04-20.md
+
+- Source: daily/2026-04-20.md
+- Articles created: [[concepts/react18-setstate-updater-timing-trap]], [[concepts/websocket-silent-death-heartbeat]], [[concepts/process-output-dual-pattern-matching]], [[concepts/code-review-thread-isolation]], [[concepts/nodejs-readline-close-race]], [[connections/silent-hang-detection-patterns]]
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (added 2026-04-20 burst failure data — 5 FLUSH_ERRORs including 4 near-simultaneous at 23:00 UTC)
+- Summary: Daily log 2026-04-20 covered 10+ sessions spanning diverse topics. Key concepts extracted: (1) React 18 setState updater timing trap — updaters run during reconciliation, not synchronously; reading refs set inside updaters returns stale values; fix with queueRef mirroring committed state. (2) WebSocket silent death and heartbeat recovery — connections die silently on sleep/wake/NAT; 20s heartbeat with reload after 2 failures. (3) Process output dual-pattern matching — success-only watchers hang on failure; always match error patterns alongside success. (4) Code review thread isolation — create fresh threads per review instead of reusing stale active sessions. (5) Node.js readline close race — coordinate child close + readline close events before reading buffers. Connection article links WebSocket heartbeat, watchdog fiber, and error pattern matching as instances of the same "active probe" pattern at different stack layers. Updated flush-pipeline-failure-modes with 2026-04-20 burst failures. Total index: 71 entries (54 concepts + 17 connections).
+
+## [2026-04-20T20:30:00] compile | Daily Log 2026-04-20
+
+- Source: daily/2026-04-20.md
+- Articles created: [[concepts/lazy-file-tree-rpc-expansion]], [[concepts/pending-selection-store-coordination]], [[concepts/electron-context-menu-react-overlay]]
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (already updated with 2026-04-20 burst failure data in prior compile run), [[concepts/react18-setstate-updater-timing-trap]], [[concepts/websocket-silent-death-heartbeat]], [[concepts/process-output-dual-pattern-matching]], [[concepts/nodejs-readline-close-race]], [[concepts/code-review-thread-isolation]], [[connections/silent-hang-detection-patterns]] (all already compiled)
+- Notes: Most 2026-04-20 concepts were already compiled. New articles cover the Files panel feature: lazy tree expansion, pending selection coordination, and Electron context menu icon workaround.
+
+## [2026-04-20T21:30:00-05:00] compile | daily/2026-04-20.md
+
+- Source: daily/2026-04-20.md
+- Note: Aggregate compile pass — article list and `flush-pipeline-failure-modes` burst data are already captured under **2026-04-20T20:00:00** and **2026-04-20T20:30:00** above; this entry records the same two-pass extraction without new artifacts.
+
+## [2026-04-20T21:00:00-05:00] compile | daily/2026-04-20.md (no-op, confirmed)
+
+- Source: daily/2026-04-20.md
+- Status: SKIPPED — already fully compiled across 2 prior passes (20:00:00 and 20:30:00)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. All knowledge from daily/2026-04-20.md was fully extracted across 2 substantive passes. 8 concept articles (react18-setstate-updater-timing-trap, websocket-silent-death-heartbeat, process-output-dual-pattern-matching, code-review-thread-isolation, nodejs-readline-close-race, lazy-file-tree-rpc-expansion, pending-selection-store-coordination, electron-context-menu-react-overlay) and 1 connection article (silent-hang-detection-patterns) cover all sessions. flush-pipeline-failure-modes updated with 2026-04-20 burst failures. No new knowledge to extract. Knowledge base remains at 74 entries (57 concepts + 17 connections).

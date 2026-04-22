@@ -55,15 +55,13 @@ export async function showFileContextMenu(input: ShowFileContextMenuInput): Prom
   if (!api) return;
   const absolutePath = toAbsolutePath(input.cwd, input.relativePath);
 
-  const hasDesktopBridge =
-    typeof window !== "undefined" && window.desktopBridge !== undefined;
+  const hasDesktopBridge = typeof window !== "undefined" && window.desktopBridge !== undefined;
 
   // Build the per-editor "View in <IDE>" items dynamically from the server's
   // `availableEditors` list so only installed IDEs show up. The `file-manager`
   // editor is duplicative with "View in Finder" so we skip it here.
   const editorItems = EDITORS.filter(
-    (editor) =>
-      editor.id !== "file-manager" && input.availableEditors.includes(editor.id),
+    (editor) => editor.id !== "file-manager" && input.availableEditors.includes(editor.id),
   ).map((editor) => ({
     id: `open-in-editor:${editor.id}` as MenuItemId,
     label: `View in ${editor.label}`,

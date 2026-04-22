@@ -25,7 +25,10 @@ export function DiffPanelShell(props: {
   return (
     <div
       className={cn(
-        "flex h-full min-w-0 flex-col bg-background",
+        // overflow-hidden prevents the inner tree / editor from bleeding past
+        // the sidebar boundary while the user is resizing; without it the tree
+        // rows poke into the chat column during the drag.
+        "flex h-full min-w-0 flex-col overflow-hidden bg-background",
         props.mode === "inline"
           ? "w-[42vw] min-w-[360px] max-w-[560px] shrink-0 border-l border-border"
           : "w-full",

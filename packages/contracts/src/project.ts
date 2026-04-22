@@ -1,7 +1,8 @@
 import { Schema } from "effect";
 import { PositiveInt, TrimmedNonEmptyString } from "./baseSchemas";
 
-const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
+/** Aligned with workspace index size (`WORKSPACE_INDEX_MAX_ENTRIES`) so full-index scans are valid. */
+export const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 25_000;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
 
 export const ProjectSearchEntriesInput = Schema.Struct({
@@ -81,7 +82,8 @@ export class ProjectReadFileError extends Schema.TaggedErrorClass<ProjectReadFil
 // `relativePath` may be the empty string to list the workspace root.
 // ---------------------------------------------------------------------------
 
-const PROJECT_LIST_DIRECTORY_MAX_ENTRIES = 1_000;
+/** Max children returned per `projects.listDirectory` call (server truncates beyond this). */
+export const PROJECT_LIST_DIRECTORY_MAX_ENTRIES = 1_000;
 
 export const ProjectListDirectoryInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
@@ -94,7 +96,7 @@ export type ProjectListDirectoryInput = typeof ProjectListDirectoryInput.Type;
 
 export const ProjectListDirectoryResult = Schema.Struct({
   relativePath: Schema.String,
-  entries: Schema.Array(ProjectEntry),
+  entries: Schema.Array(ProjectEntry).check(Schema.isMaxLength(PROJECT_LIST_DIRECTORY_MAX_ENTRIES)),
   truncated: Schema.Boolean,
 });
 export type ProjectListDirectoryResult = typeof ProjectListDirectoryResult.Type;
@@ -109,8 +111,9 @@ export class ProjectListDirectoryError extends Schema.TaggedErrorClass<ProjectLi
 
 // ---------------------------------------------------------------------------
 // File-contents search — ripgrep when available, bounded JS fallback otherwise.
-// Hits include byte offsets (`matchStart`/`matchEnd`) relative to the preview
-// line so the UI can highlight without re-running the regex.
+// Hits include UTF-16 code-unit indices (`matchStart`/`matchEnd`) into `preview`
+// so the UI can highlight without re-running the regex (ripgrep byte offsets are
+// converted server-side).
 // ---------------------------------------------------------------------------
 
 const PROJECT_SEARCH_FILE_CONTENTS_MAX_LIMIT = 500;

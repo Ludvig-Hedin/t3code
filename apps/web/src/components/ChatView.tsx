@@ -3813,8 +3813,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     if (!shouldAutoSendQueueRef.current) return;
     shouldAutoSendQueueRef.current = false;
 
-    const nextText = messageQueue.dequeue();
-    if (nextText) {
+    const { text: nextText, wasApplied } = messageQueue.dequeue();
+    if (wasApplied && nextText) {
       promptRef.current = nextText;
       setPrompt(nextText);
       requestAnimationFrame(() => {
@@ -3849,8 +3849,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return;
     }
 
-    const nextText = messageQueue.dequeue();
-    if (!nextText) return;
+    const { text: nextText, wasApplied } = messageQueue.dequeue();
+    if (!wasApplied || !nextText) return;
 
     promptRef.current = nextText;
     setPrompt(nextText);

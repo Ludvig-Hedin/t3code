@@ -237,7 +237,10 @@ describe("splitTopLevelShell", () => {
   it("splits on a single pipe but keeps logical OR (||) inside a segment", () => {
     expect(splitTopLevelShell("a|b", "|")).toEqual(["a", "b"]);
     expect(splitTopLevelShell("a||b", "|")).toEqual(["a||b"]);
-    expect(splitTopLevelShell("rg foo || true | head -n 1", "|")).toEqual(["rg foo || true", "head -n 1"]);
+    expect(splitTopLevelShell("rg foo || true | head -n 1", "|")).toEqual([
+      "rg foo || true",
+      "head -n 1",
+    ]);
   });
 
   it("still splits chained && the same way", () => {

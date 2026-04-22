@@ -191,6 +191,7 @@ const buildAppUnderTest = (options?: {
       devUrl,
       noBrowser: true,
       authToken: undefined,
+      enableInsecureQueryToken: false,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
       ...options?.config,

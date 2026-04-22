@@ -123,7 +123,10 @@ import {
   PreviewDetectAppsInput,
   PreviewError,
   PreviewEvent,
+  PreviewFileItem,
   PreviewGetSessionsInput,
+  PreviewListFilesInput,
+  PreviewOpenFileInput,
   PreviewSession,
   PreviewStartInput,
   PreviewStopInput,
@@ -221,6 +224,8 @@ export const WS_METHODS = {
   previewStart: "preview.start",
   previewStop: "preview.stop",
   previewGetSessions: "preview.getSessions",
+  previewListFiles: "preview.listFiles",
+  previewOpenFile: "preview.openFile",
   previewUpdateApp: "preview.updateApp",
   subscribePreviewEvents: "preview.subscribe",
 } as const;
@@ -535,6 +540,18 @@ export const WsPreviewGetSessionsRpc = Rpc.make(WS_METHODS.previewGetSessions, {
   error: PreviewError,
 });
 
+export const WsPreviewListFilesRpc = Rpc.make(WS_METHODS.previewListFiles, {
+  payload: PreviewListFilesInput,
+  success: Schema.Array(PreviewFileItem),
+  error: PreviewError,
+});
+
+export const WsPreviewOpenFileRpc = Rpc.make(WS_METHODS.previewOpenFile, {
+  payload: PreviewOpenFileInput,
+  success: PreviewApp,
+  error: PreviewError,
+});
+
 export const WsPreviewUpdateAppRpc = Rpc.make(WS_METHODS.previewUpdateApp, {
   payload: PreviewUpdateAppInput,
   success: PreviewApp,
@@ -711,6 +728,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewStartRpc,
   WsPreviewStopRpc,
   WsPreviewGetSessionsRpc,
+  WsPreviewListFilesRpc,
+  WsPreviewOpenFileRpc,
   WsPreviewUpdateAppRpc,
   WsSubscribePreviewEventsRpc,
   WsMcpListServersRpc,

@@ -5,7 +5,7 @@ import type {
   GitStatusResult,
   ThreadId,
 } from "@t3tools/contracts";
-import { DEFAULT_RUNTIME_MODE } from "@t3tools/contracts";
+import { DEFAULT_PROVIDER_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "@t3tools/contracts";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
@@ -58,7 +58,7 @@ import {
   invalidateGitStatusQuery,
 } from "~/lib/gitReactQuery";
 import { newCommandId, newMessageId, newThreadId, randomUUID } from "~/lib/utils";
-import { buildCodeReviewPrompt, runtimeModeForFixMode } from "~/lib/codeReview";
+import { buildCodeReviewPrompt, isDiffEmpty, runtimeModeForFixMode } from "~/lib/codeReview";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { readNativeApi } from "~/nativeApi";
 import { useSettings } from "~/hooks/useSettings";
@@ -284,6 +284,7 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
   const resumePushCallbackRef = useRef<(() => void) | null>(null);
   // Holds the review turn ID we are waiting for ("__waiting__" until it appears).
   const reviewTurnIdForPushRef = useRef<string | null>(null);
+  const reviewToastIdRef = useRef<ReturnType<typeof toastManager.add> | null>(null);
 
   /**
    * Opens a new thread pre-filled with a prompt to fix a git error.
@@ -487,6 +488,11 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
       latestTurnForReview?.turnId === sentinel &&
       latestTurnForReview.state === "completed"
     ) {
+      const toastId = reviewToastIdRef.current;
+      if (toastId) {
+        toastManager.close(toastId);
+        reviewToastIdRef.current = null;
+      }
       const resume = resumePushCallbackRef.current;
       reviewTurnIdForPushRef.current = null;
       resumePushCallbackRef.current = null;
@@ -538,57 +544,120 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
       skipAutoReview = false,
     }: RunGitActionWithToastInput) => {
       // ── Auto-review-before-push intercept ────────────────────────
-      // When enabled, pause push-type actions, run a code review turn first,
-      // and resume the push automatically once the review turn completes.
+      // When enabled, pause push-type actions, run a code review turn first
+      // in a NEW thread (so a stale/broken active-session never blocks the
+      // review), then resume the push automatically once the turn completes.
       const actionIncludesPush =
         action === "push" || action === "commit_push" || action === "commit_push_pr";
       if (autoReviewOnPush && actionIncludesPush && !skipAutoReview && gitCwd) {
         const api = readNativeApi();
-        if (api) {
-          toastManager.add({
-            type: "loading",
-            title: "Running code review before push…",
-            description: "The push will continue automatically when review completes.",
-            timeout: 0,
-            data: threadToastData ?? undefined,
-          });
+        // We need the API, a known project, and an active thread (for model/branch
+        // metadata) in order to create a properly-configured review thread.
+        if (api && activeProjectId && activeServerThread) {
           try {
             const ctx = await api.git.prepareReviewContext({ cwd: gitCwd });
-            const prompt = buildCodeReviewPrompt(ctx, codeReviewFixMode);
-            await api.orchestration.dispatchCommand({
-              type: "thread.turn.start",
-              commandId: newCommandId(),
-              threadId: activeThreadId!,
-              message: {
-                messageId: newMessageId(),
-                role: "user",
-                text: prompt,
-                attachments: [],
-              },
-              runtimeMode: runtimeModeForFixMode(codeReviewFixMode),
-              interactionMode: "default",
-              createdAt: new Date().toISOString(),
+
+            // ── Nothing to review: skip and proceed ───────────────
+            // If there are no commits or diff ahead of the base branch, don't
+            // dispatch a review turn at all — just continue with the push.
+            if (isDiffEmpty(ctx)) {
+              toastManager.add({
+                type: "info",
+                title: "Nothing to review",
+                description: `No changes ahead of ${ctx.baseBranch || "the base branch"} — proceeding with push.`,
+                data: threadToastData ?? undefined,
+              });
+              // fall through to the push logic below
+            } else {
+              const reviewToastId = toastManager.add({
+                type: "loading",
+                title: "Running code review before push…",
+                description: "The push will continue automatically when review completes.",
+                timeout: 0,
+                data: threadToastData ?? undefined,
+              });
+              reviewToastIdRef.current = reviewToastId;
+
+              // ── Dispatch to a new thread ───────────────────────
+              // Using a fresh threadId + bootstrap.createThread ensures we
+              // never reuse a broken session from the current active thread.
+              const reviewThreadId = newThreadId();
+              const createdAt = new Date().toISOString();
+              const runtimeMode = runtimeModeForFixMode(codeReviewFixMode);
+              const prompt = buildCodeReviewPrompt(ctx, codeReviewFixMode);
+
+              await api.orchestration.dispatchCommand({
+                type: "thread.turn.start",
+                commandId: newCommandId(),
+                threadId: reviewThreadId,
+                message: {
+                  messageId: newMessageId(),
+                  role: "user",
+                  text: prompt,
+                  attachments: [],
+                },
+                runtimeMode,
+                interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+                createdAt,
+                bootstrap: {
+                  createThread: {
+                    projectId: activeProjectId,
+                    title: "Code Review",
+                    // Inherit model from the active thread so the review uses
+                    // the same provider the user has configured.
+                    modelSelection: activeServerThread.modelSelection,
+                    runtimeMode,
+                    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+                    branch: activeServerThread.branch ?? null,
+                    worktreePath: activeServerThread.worktreePath ?? null,
+                    createdAt,
+                  },
+                },
+              });
+
+              // Navigate to the new review thread so the user can watch it.
+              void navigate({ to: "/$threadId", params: { threadId: reviewThreadId } });
+
+              // Store the resume callback so the useEffect can trigger the push
+              // after the review turn completes without a direct dep on runGitActionWithToast.
+              const pendingInput: RunGitActionWithToastInput = {
+                action,
+                skipDefaultBranchPrompt,
+                featureBranch,
+                skipAutoReview: true,
+                ...(commitMessage !== undefined ? { commitMessage } : {}),
+                ...(onConfirmed !== undefined ? { onConfirmed } : {}),
+                ...(statusOverride !== undefined ? { statusOverride } : {}),
+                ...(progressToastId !== undefined ? { progressToastId } : {}),
+                ...(filePaths !== undefined ? { filePaths } : {}),
+              };
+              resumePushCallbackRef.current = () => {
+                void runGitActionWithToast(pendingInput);
+              };
+              reviewTurnIdForPushRef.current = "__waiting__";
+              return;
+            }
+          } catch (err) {
+            const pendingReviewToast = reviewToastIdRef.current;
+            if (pendingReviewToast) {
+              toastManager.close(pendingReviewToast);
+              reviewToastIdRef.current = null;
+            }
+            reviewTurnIdForPushRef.current = null;
+            resumePushCallbackRef.current = null;
+            // Surface the error clearly instead of silently swallowing it.
+            // The user can decide whether to retry the push manually.
+            const description =
+              err instanceof Error
+                ? err.message
+                : "An unexpected error occurred. Please try again.";
+            toastManager.add({
+              type: "error",
+              title: "Code review failed — push cancelled",
+              description,
+              data: threadToastData ?? undefined,
             });
-            // Store the resume callback so the useEffect can trigger the push
-            // after the review turn completes without a direct dep on runGitActionWithToast.
-            const pendingInput: RunGitActionWithToastInput = {
-              action,
-              skipDefaultBranchPrompt,
-              featureBranch,
-              skipAutoReview: true,
-              ...(commitMessage !== undefined ? { commitMessage } : {}),
-              ...(onConfirmed !== undefined ? { onConfirmed } : {}),
-              ...(statusOverride !== undefined ? { statusOverride } : {}),
-              ...(progressToastId !== undefined ? { progressToastId } : {}),
-              ...(filePaths !== undefined ? { filePaths } : {}),
-            };
-            resumePushCallbackRef.current = () => {
-              void runGitActionWithToast(pendingInput);
-            };
-            reviewTurnIdForPushRef.current = "__waiting__";
             return;
-          } catch {
-            // If review dispatch fails, fall through and run the push normally
           }
         }
       }

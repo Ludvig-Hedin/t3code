@@ -1,6 +1,8 @@
 // apps/server/src/preview/appDetection.ts
 import path from "node:path";
 
+import type { PreviewFileItem } from "@t3tools/contracts";
+
 export type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
 export type PreviewType = "browser" | "logs";
 
@@ -62,6 +64,21 @@ function decodeStandalonePreviewCommand(command: string): StandalonePreviewPaylo
 
 export function parseStandalonePreviewCommand(command: string): StandalonePreviewPayload | null {
   return decodeStandalonePreviewCommand(command);
+}
+
+/** All previewable standalone files from scanned entries (not deduped by kind). */
+export function listPreviewFileItemsFromEntries(entries: DetectionEntry[]): PreviewFileItem[] {
+  const items: PreviewFileItem[] = [];
+  for (const entry of entries) {
+    const rel = entry.relativePath.replace(/\\/g, "/");
+    const base = path.basename(rel);
+    const rule = STANDALONE_FILE_PREVIEW_RULES.find((r) => base.toLowerCase().endsWith(r.ext));
+    if (rule) {
+      items.push({ relativePath: rel, label: base, kind: rule.kind });
+    }
+  }
+  items.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  return items;
 }
 
 /** Port patterns emitted by common dev servers. Returns port number or null. */

@@ -56,6 +56,8 @@ export interface ServerConfigShape extends ServerDerivedPaths {
   readonly devUrl: URL | undefined;
   readonly noBrowser: boolean;
   readonly authToken: string | undefined;
+  /** When true, HTTP auth may read `?token=` (leaks via logs/referrers). Prefer Authorization header. */
+  readonly enableInsecureQueryToken: boolean;
   readonly autoBootstrapProjectFromCwd: boolean;
   readonly logWebSocketEvents: boolean;
 }
@@ -149,6 +151,7 @@ export class ServerConfig extends ServiceMap.Service<ServerConfig, ServerConfigS
           port: 0,
           host: undefined,
           authToken: undefined,
+          enableInsecureQueryToken: false,
           staticDir: undefined,
           devUrl,
           noBrowser: false,

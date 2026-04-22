@@ -2,7 +2,7 @@
 
 - `bun run dev` — Starts contracts, server, and web in `turbo watch` mode.
 - `bun run dev:server` — Starts just the WebSocket server (uses Bun TypeScript execution).
-- `bun run dev:web` — Starts just the Vite dev server for the web app.
+- `bun run dev:web` — Starts the API server and the Vite dev server in parallel (browser UI needs the WebSocket API).
 - Dev commands default `T3CODE_STATE_DIR` to `~/.t3/dev` to keep dev state isolated from desktop/prod state.
 - Override server CLI-equivalent flags from root dev commands with `--`, for example:
   `bun run dev -- --base-dir ~/.t3-2`

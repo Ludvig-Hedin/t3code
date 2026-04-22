@@ -1,12 +1,16 @@
 import Foundation
+import Network
 
-enum MobileAPIClientError: Error, LocalizedError {
+enum MobileAPIClientError: Error, LocalizedError, Equatable {
   case invalidURL
   case invalidResponse
   case invalidResponseBody(String)
   case httpStatus(Int, String)
   case missingDeviceToken
-  case localNetworkUnavailable(String)
+  case localNetworkPermissionDenied
+  case desktopUnreachable(host: String, detail: String)
+  case networkOffline(String)
+  case atsBlocked(String)
 
   var errorDescription: String? {
     switch self {
@@ -20,8 +24,26 @@ enum MobileAPIClientError: Error, LocalizedError {
       return "Server error \(status): \(message)"
     case .missingDeviceToken:
       return "Pair Bird Code from the settings screen first."
-    case .localNetworkUnavailable:
-      return "Bird Code can't reach the desktop on your local network. Allow Local Network access for Bird Code in iPhone Settings, then pair again."
+    case .localNetworkPermissionDenied:
+      return "Bird Code needs Local Network access to reach your desktop on Wi-Fi. Tap Open Settings, turn on Local Network, then pair again."
+    case .desktopUnreachable(let host, let detail):
+      return "Can't reach the desktop at \(host). Make sure Bird Code is running on the Mac and that both devices are on the same Wi-Fi. (\(detail))"
+    case .networkOffline(let detail):
+      return "You appear to be offline. Check Wi-Fi and try again. (\(detail))"
+    case .atsBlocked(let detail):
+      return "iOS blocked the connection for transport security reasons. This is a build configuration bug — rebuild Bird Code with updated Info.plist. (\(detail))"
+    }
+  }
+
+  /// True if the error represents a transient network problem that should not
+  /// be treated as a revoked session or surfaced as an error banner on paired
+  /// screens. The WKWebView will retry on its own.
+  var isTransientNetworkIssue: Bool {
+    switch self {
+    case .localNetworkPermissionDenied, .desktopUnreachable, .networkOffline:
+      return true
+    default:
+      return false
     }
   }
 }
@@ -139,12 +161,7 @@ final class MobileAPIClient {
         throw MobileAPIClientError.invalidResponseBody(snippet)
       }
     } catch let urlError as URLError {
-      switch urlError.code {
-      case .notConnectedToInternet, .cannotConnectToHost, .dnsLookupFailed, .networkConnectionLost:
-        throw MobileAPIClientError.localNetworkUnavailable(urlError.localizedDescription)
-      default:
-        throw urlError
-      }
+      throw Self.classifyURLError(urlError, url: url)
     }
   }
 
@@ -180,12 +197,27 @@ final class MobileAPIClient {
         throw MobileAPIClientError.invalidResponseBody(snippet)
       }
     } catch let urlError as URLError {
-      switch urlError.code {
-      case .notConnectedToInternet, .cannotConnectToHost, .dnsLookupFailed, .networkConnectionLost:
-        throw MobileAPIClientError.localNetworkUnavailable(urlError.localizedDescription)
-      default:
-        throw urlError
-      }
+      throw Self.classifyURLError(urlError, url: url)
+    }
+  }
+
+  private static func classifyURLError(_ urlError: URLError, url: URL) -> Error {
+    let host = url.host ?? "the desktop"
+    let detail = urlError.localizedDescription
+    switch urlError.code {
+    case .notConnectedToInternet:
+      return MobileAPIClientError.networkOffline(detail)
+    case .appTransportSecurityRequiresSecureConnection:
+      return MobileAPIClientError.atsBlocked(detail)
+    case .cannotConnectToHost,
+         .timedOut,
+         .networkConnectionLost,
+         .cannotFindHost,
+         .dnsLookupFailed,
+         .resourceUnavailable:
+      return MobileAPIClientError.desktopUnreachable(host: host, detail: detail)
+    default:
+      return urlError
     }
   }
 
@@ -214,5 +246,102 @@ private struct AnyEncodable: Encodable {
 
   func encode(to encoder: Encoder) throws {
     try encodeClosure(encoder)
+  }
+}
+
+/// Result of probing iOS 14+ Local Network permission via `NWBrowser`.
+///
+/// iOS does not reliably show the Local Network permission prompt for a plain
+/// `URLSession` request to a LAN IP — starting an `NWBrowser` for a declared
+/// Bonjour service does. We use this both to trigger the prompt proactively on
+/// first launch and to distinguish a denied permission from a genuinely
+/// unreachable desktop when the pair request fails.
+enum LocalNetworkAuthorization {
+  case authorized
+  case denied
+  case unknown
+}
+
+@MainActor
+enum LocalNetworkProbe {
+  /// Starts an `NWBrowser` to force iOS to evaluate Local Network permission.
+  ///
+  /// - On first call: iOS shows the permission prompt. `.ready` after Allow,
+  ///   `.failed(.dns(-65570))` after Deny.
+  /// - On subsequent calls: the browser resolves to the cached decision.
+  ///
+  /// The probe uses the `_birdcode._tcp` Bonjour type declared in the app's
+  /// `NSBonjourServices` — the type doesn't have to match any real service for
+  /// permission purposes.
+  static func probe(timeout: TimeInterval = 3) async -> LocalNetworkAuthorization {
+    await withCheckedContinuation { (continuation: CheckedContinuation<LocalNetworkAuthorization, Never>) in
+      let params = NWParameters()
+      params.includePeerToPeer = true
+      let browser = NWBrowser(for: .bonjour(type: "_birdcode._tcp", domain: nil), using: params)
+      let resolver = ProbeResolver(continuation: continuation, browser: browser)
+
+      browser.stateUpdateHandler = { state in
+        switch state {
+        case .ready:
+          resolver.resolve(.authorized)
+        case .failed(let error):
+          resolver.resolve(Self.authorization(from: error))
+        case .waiting(let error):
+          if case .authorized = Self.authorization(from: error) {
+            // Keep waiting — transient dns setup.
+          } else if case .denied = Self.authorization(from: error) {
+            resolver.resolve(.denied)
+          }
+        case .cancelled:
+          resolver.resolve(.unknown)
+        case .setup:
+          break
+        @unknown default:
+          break
+        }
+      }
+
+      browser.start(queue: .main)
+
+      DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+        // If the user hasn't dismissed the system prompt yet, treat it as
+        // unknown so pairing can still proceed and let URLSession run.
+        resolver.resolve(.unknown)
+      }
+    }
+  }
+
+  nonisolated private static func authorization(from error: NWError) -> LocalNetworkAuthorization {
+    // kDNSServiceErr_PolicyDenied = -65570 — user denied Local Network access.
+    if case .dns(let code) = error, Int32(code) == -65570 {
+      return .denied
+    }
+    return .authorized
+  }
+
+  /// Tiny actor-like wrapper that guarantees the continuation is resumed
+  /// exactly once across the several `NWBrowser` state updates + timeout.
+  private final class ProbeResolver: @unchecked Sendable {
+    private var resolved = false
+    private let continuation: CheckedContinuation<LocalNetworkAuthorization, Never>
+    private let browser: NWBrowser
+    private let lock = NSLock()
+
+    init(
+      continuation: CheckedContinuation<LocalNetworkAuthorization, Never>,
+      browser: NWBrowser,
+    ) {
+      self.continuation = continuation
+      self.browser = browser
+    }
+
+    func resolve(_ result: LocalNetworkAuthorization) {
+      lock.lock()
+      defer { lock.unlock() }
+      guard !resolved else { return }
+      resolved = true
+      browser.cancel()
+      continuation.resume(returning: result)
+    }
   }
 }

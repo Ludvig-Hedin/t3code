@@ -166,12 +166,7 @@ function mapCursorLine(
           "Cursor agent encountered an error.";
 
         emitEvent(
-          makeThreadEvent(
-            "runtime.error",
-            threadId,
-            { message: errorText, detail: null },
-            turnId,
-          ),
+          makeThreadEvent("runtime.error", threadId, { message: errorText, detail: null }, turnId),
         );
         emitEvent(makeThreadEvent("turn.completed", threadId, { state: "failed" }, turnId));
       } else {
@@ -182,8 +177,7 @@ function mapCursorLine(
 
     // Generic / fallback format
     case "text": {
-      const content =
-        asString(parsed.content) ?? asString(parsed.text) ?? asString(parsed.delta);
+      const content = asString(parsed.content) ?? asString(parsed.text) ?? asString(parsed.delta);
       if (content) {
         emitEvent(
           makeThreadEvent(
@@ -205,11 +199,8 @@ function mapCursorLine(
     }
 
     case "error": {
-      const message =
-        asString(parsed.message) ?? asString(parsed.error) ?? "Cursor agent error.";
-      emitEvent(
-        makeThreadEvent("runtime.error", threadId, { message, detail: null }, turnId),
-      );
+      const message = asString(parsed.message) ?? asString(parsed.error) ?? "Cursor agent error.";
+      emitEvent(makeThreadEvent("runtime.error", threadId, { message, detail: null }, turnId));
       emitEvent(makeThreadEvent("turn.completed", threadId, { state: "failed" }, turnId));
       break;
     }

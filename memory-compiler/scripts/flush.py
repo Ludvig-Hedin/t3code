@@ -45,6 +45,44 @@ _FLUSH_MAX_ATTEMPTS = 3
 _FLUSH_BACKOFF_SEC = [0, 30, 120]
 
 
+def _claude_agent_sdk_version() -> str:
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        for dist_name in ("claude-agent-sdk", "claude_agent_sdk"):
+            try:
+                return version(dist_name)
+            except PackageNotFoundError:
+                continue
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _flush_env_diagnostics() -> dict:
+    """Non-secret hints for SDK/network failures (booleans and proxy hostnames only)."""
+    return {
+        "anthropic_api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
+        "aws_region": os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"),
+        "http_proxy_set": bool(os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")),
+        "https_proxy_set": bool(os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")),
+        "no_proxy_set": bool(os.environ.get("NO_PROXY") or os.environ.get("no_proxy")),
+        "claude_agent_sdk_version": _claude_agent_sdk_version(),
+    }
+
+
+def _exception_chain_text(exc: BaseException) -> str:
+    parts: list[str] = [f"{type(exc).__name__}: {exc}"]
+    cur: BaseException | None = exc
+    seen: set[int] = set()
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        cur = cur.__cause__ or cur.__context__
+        if cur is not None:
+            parts.append(f"caused by: {type(cur).__name__}: {cur}")
+    return " | ".join(parts)
+
+
 def _extract_subprocess_meta(exc: BaseException) -> dict:
     """Best-effort stderr/stdout/returncode for CLI/SDK exceptions."""
     out: dict = {}
@@ -209,12 +247,15 @@ respond with exactly: FLUSH_OK
             last_error = err_line
             ctx_hash, ctx_len = _context_log_fingerprint(context)
             logging.error(
-                "Agent SDK error (attempt %d/%d): %s\ncontext_sha256=%s context_len=%d\n%s",
+                "Agent SDK error (attempt %d/%d): %s\ncontext_sha256=%s context_len=%d\n"
+                "chain=%s\ndiagnostics=%s\n%s",
                 attempt,
                 _FLUSH_MAX_ATTEMPTS,
                 err_line,
                 ctx_hash,
                 ctx_len,
+                _exception_chain_text(e),
+                json.dumps(_flush_env_diagnostics(), default=str),
                 _sanitize_paths_for_log(traceback.format_exc()),
             )
             if attempt < _FLUSH_MAX_ATTEMPTS:

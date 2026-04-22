@@ -1,6 +1,6 @@
 import { ThreadId } from "@t3tools/contracts";
 import { createFileRoute, retainSearchParams, useNavigate } from "@tanstack/react-router";
-import { Suspense, lazy, type ReactNode, useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import ChatView from "../components/ChatView";
 import { DiffWorkerPoolProvider } from "../components/DiffWorkerPoolProvider";
@@ -29,11 +29,17 @@ const DIFF_INLINE_LAYOUT_MEDIA_QUERY = "(max-width: 1180px)";
 const DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY = "chat_diff_sidebar_width";
 const DIFF_INLINE_DEFAULT_WIDTH = "clamp(28rem,48vw,44rem)";
 const DIFF_INLINE_SIDEBAR_MIN_WIDTH = 26 * 16;
-// The Files panel defaults narrower than Diff because it mostly shows a tree;
-// it still uses the same composer-aware width constraint helper below.
+// Files panel hosts BOTH the tree and (when a file is open) the editor inside
+// its horizontal split, so the default is wide enough to show both panes
+// comfortably. Users can resize down to FILES_INLINE_SIDEBAR_MIN_WIDTH for a
+// tree-only view.
 const FILES_INLINE_SIDEBAR_WIDTH_STORAGE_KEY = "chat_files_sidebar_width";
-const FILES_INLINE_DEFAULT_WIDTH = "clamp(18rem,26vw,28rem)";
-const FILES_INLINE_SIDEBAR_MIN_WIDTH = 16 * 16;
+const FILES_INLINE_DEFAULT_WIDTH = "clamp(28rem,48vw,48rem)";
+// 30rem (480px) is wide enough that the horizontal split (editor + tree) stays
+// legible even at the smallest resize. Anything narrower collapses the editor
+// column to the point where CodeMirror starts wrapping unusably and the tree
+// overlaps the breadcrumb — the sidebar primitive's clamp enforces this.
+const FILES_INLINE_SIDEBAR_MIN_WIDTH = 30 * 16;
 const COMPOSER_COMPACT_MIN_LEFT_CONTROLS_WIDTH_PX = 208;
 
 const DiffPanelSheet = (props: {
@@ -150,6 +156,7 @@ const DiffPanelInlineSidebar = (props: {
       onOpenChange={onOpenChange}
       className="w-auto min-h-0 flex-none bg-transparent"
       style={{ "--sidebar-width": DIFF_INLINE_DEFAULT_WIDTH } as React.CSSProperties}
+      data-chat-diff-inline-wrapper=""
     >
       <Sidebar
         side="right"
@@ -185,9 +192,8 @@ const LazyFilesPanel = (props: { mode: DiffPanelMode }) => {
 };
 
 /**
- * Inline sidebar host for the Files panel. Mirrors DiffPanelInlineSidebar but
- * docks on the left so the layout reads as [app sidebar][files][chat][diff],
- * which matches VS Code's "explorer → editor → secondary" ordering.
+ * Inline sidebar host for the Files panel. Docks on the right, immediately
+ * left of the Diff panel, so the layout reads as [chat][file editor][files][diff].
  *
  * Both Files and Diff can be open at once, so we reuse the same composer-aware
  * width constraint to keep the composer usable when the user has
@@ -198,8 +204,39 @@ const FilesPanelInlineSidebar = (props: {
   onCloseFiles: () => void;
   onOpenFiles: () => void;
   renderFilesContent: boolean;
+  diffOpen: boolean;
 }) => {
-  const { filesOpen, onCloseFiles, onOpenFiles, renderFilesContent } = props;
+  const { filesOpen, onCloseFiles, onOpenFiles, renderFilesContent, diffOpen } = props;
+  // Both Files and Diff inline panels use shadcn's Sidebar primitive with
+  // collapsible="offcanvas", which positions the visible container with
+  // `position: fixed; right: 0`. When both are open, each panel reserves its
+  // horizontal space via its `sidebar-gap` div (so the chat is pushed left by
+  // files_width + diff_width), but both fixed containers collide at the
+  // viewport's right edge and overlap — leaving a visible empty band between
+  // the chat and the diff panel equal to the files panel's width.
+  //
+  // Fix: when the diff panel is also open, shift the files panel's fixed
+  // container left by the diff panel's current rendered width. We observe the
+  // diff wrapper's width directly so this stays correct across user resizes
+  // and the clamp(…) default.
+  const [diffInlineWidth, setDiffInlineWidth] = useState(0);
+  const diffWrapperRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!diffOpen) {
+      setDiffInlineWidth(0);
+      diffWrapperRef.current = null;
+      return;
+    }
+    const wrapper = document.querySelector<HTMLElement>("[data-chat-diff-inline-wrapper]");
+    if (!wrapper) return;
+    diffWrapperRef.current = wrapper;
+    setDiffInlineWidth(wrapper.offsetWidth);
+    const observer = new ResizeObserver(() => {
+      setDiffInlineWidth(wrapper.offsetWidth);
+    });
+    observer.observe(wrapper);
+    return () => observer.disconnect();
+  }, [diffOpen]);
   const onOpenChange = useCallback(
     (open: boolean) => {
       if (open) {
@@ -265,14 +302,19 @@ const FilesPanelInlineSidebar = (props: {
       style={{ "--sidebar-width": FILES_INLINE_DEFAULT_WIDTH } as React.CSSProperties}
     >
       <Sidebar
-        side="left"
+        side="right"
         collapsible="offcanvas"
-        className="border-r border-border bg-card text-foreground"
+        className="border-l border-border bg-card text-foreground"
         resizable={{
           minWidth: FILES_INLINE_SIDEBAR_MIN_WIDTH,
           shouldAcceptWidth: shouldAcceptInlineSidebarWidth,
           storageKey: FILES_INLINE_SIDEBAR_WIDTH_STORAGE_KEY,
         }}
+        style={
+          filesOpen && diffOpen && diffInlineWidth > 0
+            ? ({ right: `${diffInlineWidth}px` } as React.CSSProperties)
+            : undefined
+        }
       >
         {renderFilesContent ? <LazyFilesPanel mode="sidebar" /> : null}
         <SidebarRail />
@@ -296,7 +338,7 @@ const FilesPanelSheet = (props: {
       }}
     >
       <SheetPopup
-        side="left"
+        side="right"
         showCloseButton={false}
         keepMounted
         className="w-[min(88vw,560px)] max-w-[560px] p-0"
@@ -384,18 +426,23 @@ function ChatThreadRouteView() {
     return (
       <>
         {/*
-          Files sidebar sits to the left of the chat inset and to the right of
-          the app sidebar, so in DOM order it comes before <SidebarInset>.
+          Layout order (left → right):
+            App sidebar → Chat → Files panel (editor + tree) → Diff panel
+          The Files panel hosts its own editor internally via a horizontal split
+          when a file is open, so we intentionally avoid a separate
+          FileEditorInlineSidebar — two right-docked `fixed` sidebars would
+          otherwise stomp each other and leave a dead gap next to the chat.
         */}
+        <SidebarInset className="h-dvh  min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+          <ChatView threadId={threadId} />
+        </SidebarInset>
         <FilesPanelInlineSidebar
           filesOpen={filesOpen}
           onCloseFiles={closeFiles}
           onOpenFiles={openFiles}
           renderFilesContent={shouldRenderFilesContent}
+          diffOpen={diffOpen}
         />
-        <SidebarInset className="h-dvh  min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-          <ChatView threadId={threadId} />
-        </SidebarInset>
         <DiffPanelInlineSidebar
           diffOpen={diffOpen}
           onCloseDiff={closeDiff}

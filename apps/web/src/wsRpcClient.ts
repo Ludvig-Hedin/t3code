@@ -183,18 +183,79 @@ export interface WsRpcClient {
 }
 
 let sharedWsRpcClient: WsRpcClient | null = null;
+let sharedTransport: WsTransport | null = null;
+let sharedHeartbeatStop: (() => void) | null = null;
+let reconnectInProgress = false;
+
+/**
+ * Fully tear down the shared transport/client. Subscribers holding unsubscribe
+ * functions will see their streams quietly stop. A subsequent call to
+ * getWsRpcClient() will rebuild everything against a fresh WebSocket.
+ */
+function teardownSharedClient() {
+  sharedHeartbeatStop?.();
+  sharedHeartbeatStop = null;
+  const client = sharedWsRpcClient;
+  const transport = sharedTransport;
+  sharedWsRpcClient = null;
+  sharedTransport = null;
+  // Dispose async without awaiting — we want the next getWsRpcClient() to be able
+  // to build a fresh transport immediately.
+  void client?.dispose().catch(() => undefined);
+  void transport?.dispose().catch(() => undefined);
+}
+
+/**
+ * Called when the transport's heartbeat decides the connection is dead.
+ * In-flight requests are already timing out via the request timeout in
+ * WsTransport. We reload the page to rebuild all subscriptions cleanly —
+ * this is by far the simplest way to guarantee a coherent UI after a
+ * long silent disconnect (sleep/wake, VPN flap, proxy idle-timeout).
+ */
+function handleDeadConnection(reason: string) {
+  if (reconnectInProgress) return;
+  reconnectInProgress = true;
+  console.warn("[WsRpcClient] connection dead, reloading:", reason);
+  teardownSharedClient();
+  // Give any outstanding log flush a tick before navigating.
+  setTimeout(() => {
+    if (typeof window !== "undefined" && typeof window.location?.reload === "function") {
+      window.location.reload();
+    }
+  }, 50);
+}
 
 export function getWsRpcClient(): WsRpcClient {
-  if (sharedWsRpcClient) {
+  if (sharedWsRpcClient && sharedTransport && !sharedTransport.isDead) {
     return sharedWsRpcClient;
   }
-  sharedWsRpcClient = createWsRpcClient();
-  return sharedWsRpcClient;
+  if (sharedWsRpcClient || sharedTransport) {
+    teardownSharedClient();
+  }
+  const transport = new WsTransport(undefined, { onDead: handleDeadConnection });
+  const client = createWsRpcClient(transport);
+  sharedTransport = transport;
+  sharedWsRpcClient = client;
+  // Heartbeat: call a cheap in-memory RPC every 20s. If it fails twice in a
+  // row or exceeds 10s per call, the transport is marked dead and the page
+  // reloads. This is what actually detects silent connection death (sleep,
+  // NAT idle timeout, cloudflared reconnect) that WebSocket alone won't surface.
+  sharedHeartbeatStop = transport.startHeartbeat({
+    ping: () => client.server.getSettings(),
+  });
+  return client;
 }
 
 export async function __resetWsRpcClientForTests() {
-  await sharedWsRpcClient?.dispose();
+  sharedHeartbeatStop?.();
+  sharedHeartbeatStop = null;
+  const transport = sharedTransport;
+  const client = sharedWsRpcClient;
   sharedWsRpcClient = null;
+  sharedTransport = null;
+  reconnectInProgress = false;
+  await client?.dispose().catch(() => undefined);
+  await transport?.dispose().catch(() => undefined);
 }
 
 export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {

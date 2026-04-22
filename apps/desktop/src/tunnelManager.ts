@@ -222,6 +222,10 @@ export class TunnelManager extends EventEmitter {
    * Creates a named Cloudflare tunnel if one hasn't been created yet.
    * The tunnel UUID becomes the permanent URL: https://{uuid}.cfargotunnel.com
    * Returns the stable tunnel URL.
+   *
+   * If the tunnel name already exists on Cloudflare (e.g. from a previous
+   * failed setup where settings were never persisted), we look it up via
+   * `cloudflared tunnel list` instead of failing.
    */
   async ensureTunnel(): Promise<string> {
     // Re-use existing tunnel if already created.
@@ -236,6 +240,91 @@ export class TunnelManager extends EventEmitter {
       .slice(0, 8);
     const tunnelName = `birdcode-${machineId}`;
 
+    let createOutput: string | null = null;
+    try {
+      createOutput = await new Promise<string>((resolve, reject) => {
+        let combined = "";
+        let settled = false;
+        const settle = (fn: () => void) => {
+          if (!settled) {
+            settled = true;
+            fn();
+          }
+        };
+
+        const proc = ChildProcess.spawn(
+          this.binaryPath,
+          ["tunnel", "--no-autoupdate", "create", tunnelName],
+          { stdio: ["ignore", "pipe", "pipe"] },
+        );
+        // Track so stop() can kill this if called while tunnel creation is in progress.
+        this.activeSetupProcess = proc;
+
+        // Timeout guard: kill and reject if cloudflared doesn't exit in time.
+        const creationTimer = setTimeout(() => {
+          this.activeSetupProcess = null;
+          proc.kill("SIGKILL");
+          settle(() =>
+            reject(
+              new Error(
+                `cloudflared tunnel create timed out after ${TUNNEL_CREATE_TIMEOUT_MS / 1000}s.`,
+              ),
+            ),
+          );
+        }, TUNNEL_CREATE_TIMEOUT_MS);
+
+        proc.stdout?.on("data", (d: Buffer) => {
+          combined += d.toString();
+        });
+        proc.stderr?.on("data", (d: Buffer) => {
+          combined += d.toString();
+        });
+        proc.on("close", (code) => {
+          this.activeSetupProcess = null;
+          clearTimeout(creationTimer);
+          if (code === 0) {
+            settle(() => resolve(combined));
+          } else {
+            settle(() =>
+              reject(new Error(`cloudflared tunnel create failed (exit ${code}):\n${combined}`)),
+            );
+          }
+        });
+        proc.on("error", (err) => {
+          this.activeSetupProcess = null;
+          clearTimeout(creationTimer);
+          settle(() => reject(err));
+        });
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Cloudflare reports the tunnel already exists — this happens when a
+      // previous setup run created it but crashed before saving settings.
+      if (/already exist/i.test(msg)) {
+        return this._lookupExistingTunnel(tunnelName);
+      }
+      throw err;
+    }
+
+    // Parse UUID from output: "Created tunnel {name} with id {uuid}"
+    const match = /\bid ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(
+      createOutput,
+    );
+    if (!match) {
+      throw new Error(`Could not parse tunnel UUID from cloudflared output:\n${createOutput}`);
+    }
+    const uuid = match[1];
+    const tunnelUrl = `https://${uuid}.cfargotunnel.com`;
+
+    this.saveSettings({ tunnelName, tunnelUrl });
+    return tunnelUrl;
+  }
+
+  /**
+   * Looks up a previously-created tunnel by name using `cloudflared tunnel list --output json`.
+   * Used when `tunnel create` fails because the name already exists on Cloudflare.
+   */
+  private async _lookupExistingTunnel(tunnelName: string): Promise<string> {
     const output = await new Promise<string>((resolve, reject) => {
       let combined = "";
       let settled = false;
@@ -248,20 +337,18 @@ export class TunnelManager extends EventEmitter {
 
       const proc = ChildProcess.spawn(
         this.binaryPath,
-        ["tunnel", "--no-autoupdate", "create", tunnelName],
+        ["tunnel", "--no-autoupdate", "list", "--output", "json"],
         { stdio: ["ignore", "pipe", "pipe"] },
       );
-      // Track so stop() can kill this if called while tunnel creation is in progress.
       this.activeSetupProcess = proc;
 
-      // Timeout guard: kill and reject if cloudflared doesn't exit in time.
-      const creationTimer = setTimeout(() => {
+      const timer = setTimeout(() => {
         this.activeSetupProcess = null;
         proc.kill("SIGKILL");
         settle(() =>
           reject(
             new Error(
-              `cloudflared tunnel create timed out after ${TUNNEL_CREATE_TIMEOUT_MS / 1000}s.`,
+              `cloudflared tunnel list timed out after ${TUNNEL_CREATE_TIMEOUT_MS / 1000}s.`,
             ),
           ),
         );
@@ -275,32 +362,37 @@ export class TunnelManager extends EventEmitter {
       });
       proc.on("close", (code) => {
         this.activeSetupProcess = null;
-        clearTimeout(creationTimer);
-        if (code === 0) {
-          settle(() => resolve(combined));
-        } else {
+        clearTimeout(timer);
+        if (code === 0) settle(() => resolve(combined));
+        else
           settle(() =>
-            reject(new Error(`cloudflared tunnel create failed (exit ${code}):\n${combined}`)),
+            reject(new Error(`cloudflared tunnel list failed (exit ${code}):\n${combined}`)),
           );
-        }
       });
       proc.on("error", (err) => {
         this.activeSetupProcess = null;
-        clearTimeout(creationTimer);
+        clearTimeout(timer);
         settle(() => reject(err));
       });
     });
 
-    // Parse UUID from output: "Created tunnel {name} with id {uuid}"
-    const match = /\bid ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(
-      output,
-    );
-    if (!match) {
-      throw new Error(`Could not parse tunnel UUID from cloudflared output:\n${output}`);
+    let tunnels: unknown;
+    try {
+      tunnels = JSON.parse(output);
+    } catch {
+      throw new Error(`Could not parse cloudflared tunnel list output:\n${output}`);
     }
-    const uuid = match[1];
-    const tunnelUrl = `https://${uuid}.cfargotunnel.com`;
-
+    if (!Array.isArray(tunnels)) {
+      throw new Error(`Unexpected tunnel list format:\n${output}`);
+    }
+    const found = (tunnels as unknown[]).find(
+      (t): t is Record<string, unknown> =>
+        typeof t === "object" && t !== null && (t as Record<string, unknown>).name === tunnelName,
+    );
+    if (typeof found?.id !== "string") {
+      throw new Error(`Tunnel '${tunnelName}' not found in cloudflared account.`);
+    }
+    const tunnelUrl = `https://${found.id}.cfargotunnel.com`;
     this.saveSettings({ tunnelName, tunnelUrl });
     return tunnelUrl;
   }
@@ -324,6 +416,15 @@ export class TunnelManager extends EventEmitter {
 
   /** Stops the tunnel process and cancels any pending restart. */
   stop(): void {
+    this._resetState();
+    this.setStatus({ status: "idle" });
+  }
+
+  /**
+   * Tears down any active processes and timers without emitting a status event.
+   * Used internally so enable()-on-retry doesn't flash an "idle" state to the UI.
+   */
+  private _resetState(): void {
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
@@ -340,7 +441,6 @@ export class TunnelManager extends EventEmitter {
       this.tunnelProcess = null;
     }
     this.restartAttempts = 0;
-    this.setStatus({ status: "idle" });
   }
 
   private _spawnTunnel(): void {
@@ -381,9 +481,28 @@ export class TunnelManager extends EventEmitter {
     const onData = (chunk: Buffer) => {
       const text = chunk.toString();
 
+      // Prefer success detection: the same chunk can mention error-ish words while
+      // still registering; never treat that as fatal if readiness is also signaled.
+      const looksReady = /registered tunnel connection|ready to proxy/i.test(text);
+
+      // cloudflared emits this line when the tunnel is established.
+      if (!ready && looksReady) {
+        ready = true;
+        // Clear the startup timeout — normal flow proceeds.
+        clearTimeout(startupTimer);
+        proc.stdout?.removeListener("data", onData);
+        proc.stderr?.removeListener("data", onData);
+        this.setStatus({ status: "active", url: tunnelUrl });
+        return;
+      }
+
       // cloudflared reports errors before exiting (DNS, API connection failures, etc.)
-      // Detect common error patterns and fail fast instead of waiting for timeout.
-      if (!ready && /error|failed|refused|no such host|dial tcp|connection refused|permission denied/i.test(text)) {
+      // Use explicit phrases — avoid bare "error"/"refused", which match too loosely.
+      const looksFatalStartup =
+        /\bERR\b|\bfailed to\b|\bunable to\b|\bfailure\b|no such host|\bdial tcp\b|connection\s+refused|permission\s+denied/i.test(
+          text,
+        );
+      if (!ready && looksFatalStartup) {
         ready = true;
         clearTimeout(startupTimer);
         proc.stdout?.removeListener("data", onData);
@@ -394,17 +513,6 @@ export class TunnelManager extends EventEmitter {
           message: `Tunnel initialization failed: ${errorMessage}`,
         });
         proc.kill("SIGTERM");
-        return;
-      }
-
-      // cloudflared emits this line when the tunnel is established.
-      if (!ready && /registered tunnel connection|ready to proxy/i.test(text)) {
-        ready = true;
-        // Clear the startup timeout — normal flow proceeds.
-        clearTimeout(startupTimer);
-        proc.stdout?.removeListener("data", onData);
-        proc.stderr?.removeListener("data", onData);
-        this.setStatus({ status: "active", url: tunnelUrl });
       }
     };
     proc.stdout?.on("data", onData);
@@ -444,8 +552,19 @@ export class TunnelManager extends EventEmitter {
   async enable(): Promise<void> {
     // Concurrency guard: prevent double-click / concurrent IPC calls from
     // spawning multiple setup flows simultaneously.
-    if (this._enabling || this._status.status !== "idle") return;
+    if (this._enabling) return;
+    // Allow retry from error state; any other non-idle state means setup is
+    // already in progress.
+    if (this._status.status !== "idle" && this._status.status !== "error") return;
     this._enabling = true;
+    // Tear down lingering state from a previous failed attempt and immediately
+    // surface "connecting" so the UI transitions out of the error state the
+    // moment the user clicks retry — before the potentially-slow binary
+    // download or Cloudflare API call.
+    if (this._status.status === "error") {
+      this._resetState();
+      this.setStatus({ status: "connecting" });
+    }
     try {
       if (!this.isBinaryReady()) {
         await this.downloadBinary();

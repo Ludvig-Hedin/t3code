@@ -592,6 +592,35 @@ function createSnapshotWithPendingUserInput(): OrchestrationReadModel {
   };
 }
 
+/** Session stays `running` while the agent waits — composer phase is still "running". */
+function createSnapshotWithPendingUserInputRunningSession(): OrchestrationReadModel {
+  const base = createSnapshotWithPendingUserInput();
+  const turnId = "turn-pending-user-input" as TurnId;
+  return {
+    ...base,
+    threads: base.threads.map((thread) =>
+      thread.id === THREAD_ID
+        ? Object.assign({}, thread, {
+            latestTurn: {
+              turnId,
+              state: "running",
+              requestedAt: isoAt(998),
+              startedAt: isoAt(999),
+              completedAt: null,
+              assistantMessageId: null,
+            },
+            session: {
+              ...thread.session,
+              status: "running",
+              activeTurnId: turnId,
+              updatedAt: isoAt(1_000),
+            },
+          })
+        : thread,
+    ),
+  };
+}
+
 function createSnapshotWithPlanFollowUpPrompt(): OrchestrationReadModel {
   const snapshot = createSnapshotForTargetUser({
     targetMessageId: "msg-user-plan-follow-up-target" as MessageId,
@@ -2949,6 +2978,52 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
       await mounted.setContainerSize(COMPACT_FOOTER_VIEWPORT);
       await expectComposerActionsContained();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("submits pending questionnaire answers while session phase is still running (plan-mode pause)", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithPendingUserInputRunningSession(),
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return { sequence: fixture.snapshot.snapshotSequence + 1 };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      (await waitForButtonContainingText("Tight")).click();
+      await vi.waitFor(
+        () => {
+          expect(document.body.textContent).toContain(
+            "How aggressive should the imaginary plan be",
+          );
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      (await waitForButtonContainingText("Conservative")).click();
+
+      // Last question auto-advances ~200ms after selecting an option; with a running
+      // session that previously stalled `onSend` before the phase guard fix.
+      await vi.waitFor(
+        () => {
+          const respond = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === "thread.user-input.respond",
+          );
+          expect(respond).toMatchObject({
+            type: "thread.user-input.respond",
+            requestId: "req-browser-user-input",
+            answers: { scope: "Tight", risk: "Conservative" },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
     } finally {
       await mounted.cleanup();
     }

@@ -7,6 +7,10 @@ export const PreviewApp = Schema.Struct({
   id: Schema.String,
   projectId: ProjectId,
   label: Schema.String,
+  /** Whether the target is an auto-detected runnable app or an explicitly opened file. */
+  sourceKind: Schema.Union([Schema.Literal("app"), Schema.Literal("file")]),
+  /** Relative path for file-backed previews; null for runnable apps. */
+  relativePath: Schema.NullOr(Schema.String),
   /** Full shell command to run, e.g. "bun run dev" */
   command: Schema.String,
   /** Absolute working directory to spawn the command in */
@@ -17,6 +21,21 @@ export const PreviewApp = Schema.Struct({
   isManualOverride: Schema.Boolean,
 });
 export type PreviewApp = typeof PreviewApp.Type;
+
+export const PreviewFileKind = Schema.Union([
+  Schema.Literal("html"),
+  Schema.Literal("markdown"),
+  Schema.Literal("tsx"),
+  Schema.Literal("docx"),
+]);
+export type PreviewFileKind = typeof PreviewFileKind.Type;
+
+export const PreviewFileItem = Schema.Struct({
+  relativePath: Schema.String,
+  label: Schema.String,
+  kind: PreviewFileKind,
+});
+export type PreviewFileItem = typeof PreviewFileItem.Type;
 
 export const PreviewAppPatch = Schema.Struct({
   label: Schema.optional(Schema.String),
@@ -68,10 +87,18 @@ export const PreviewEvent = Schema.Union([
 ]);
 export type PreviewEvent = typeof PreviewEvent.Type;
 
-export const PreviewDetectAppsInput = Schema.Struct({ projectId: ProjectId });
+export const PreviewDetectAppsInput = Schema.Struct({
+  projectId: ProjectId,
+  cwd: Schema.optional(Schema.String),
+});
 export const PreviewStartInput = Schema.Struct({ projectId: ProjectId, appId: Schema.String });
 export const PreviewStopInput = Schema.Struct({ projectId: ProjectId, appId: Schema.String });
 export const PreviewGetSessionsInput = Schema.Struct({ projectId: ProjectId });
+export const PreviewListFilesInput = Schema.Struct({ projectId: ProjectId });
+export const PreviewOpenFileInput = Schema.Struct({
+  projectId: ProjectId,
+  relativePath: Schema.String,
+});
 export const PreviewUpdateAppInput = Schema.Struct({
   projectId: ProjectId,
   appId: Schema.String,

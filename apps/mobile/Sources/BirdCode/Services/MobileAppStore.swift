@@ -31,6 +31,10 @@ final class MobileAppStore {
   var isRefreshing = false
   var isLoadingDiff = false
   var errorMessage: String?
+  /// The last API error surfaced to the UI. When this is
+  /// `.localNetworkPermissionDenied` the pairing UI shows an "Open Settings"
+  /// button so the user can grant Local Network access in one tap.
+  var lastAPIError: MobileAPIClientError?
   var statusMessage: String?
   var lastPairCode: String?
 
@@ -134,13 +138,24 @@ final class MobileAppStore {
 
   func connectAndPair() async {
     guard let baseURL = normalizeServerURL(serverURLInput) else {
-      errorMessage = MobileAPIClientError.invalidURL.localizedDescription
+      setError(.invalidURL)
       return
     }
 
     isPairing = true
     errorMessage = nil
+    lastAPIError = nil
     defer { isPairing = false }
+
+    // Proactively evaluate iOS Local Network permission before the HTTP call.
+    // On first launch this shows the iOS prompt in-app so the user never has
+    // to open Settings. On a previous denial we fail fast with a clear message
+    // and an Open Settings shortcut, rather than a confusing "can't reach" error.
+    let authorization = await LocalNetworkProbe.probe()
+    if authorization == .denied {
+      setError(.localNetworkPermissionDenied)
+      return
+    }
 
     do {
       let response = try await apiClient.pair(
@@ -158,11 +173,39 @@ final class MobileAppStore {
         KeychainStore.writeString(desktopAuthTokenInput, account: StorageKey.desktopAuthToken)
       }
       errorMessage = nil
+      lastAPIError = nil
       saveConnectionPreferences()
       // Navigation to MobileWebView is driven by hasPairedSession becoming true.
     } catch {
+      // If URLSession failed with a "cannot connect to host"-style error but
+      // Local Network permission was never determined (authorization == .unknown
+      // because the user hadn't responded to the prompt yet at probe time),
+      // re-probe now that iOS has had time to settle — this catches the case
+      // where the user tapped Deny mid-way through the pair request.
+      if case .desktopUnreachable = (error as? MobileAPIClientError) {
+        let recheck = await LocalNetworkProbe.probe(timeout: 1)
+        if recheck == .denied {
+          setError(.localNetworkPermissionDenied)
+          return
+        }
+      }
+      setError(error)
+    }
+  }
+
+  private func setError(_ error: Error) {
+    if let apiError = error as? MobileAPIClientError {
+      lastAPIError = apiError
+      errorMessage = apiError.localizedDescription
+    } else {
+      lastAPIError = nil
       errorMessage = error.localizedDescription
     }
+  }
+
+  private func setError(_ apiError: MobileAPIClientError) {
+    lastAPIError = apiError
+    errorMessage = apiError.localizedDescription
   }
 
   func importPairingCode(_ rawValue: String) async {
@@ -180,7 +223,7 @@ final class MobileAppStore {
     if let baseURL = normalizeServerURL(payload.serverURL) {
       serverURLInput = baseURL.absoluteString
     } else {
-      errorMessage = MobileAPIClientError.invalidURL.localizedDescription
+      setError(.invalidURL)
       return
     }
 
@@ -197,6 +240,15 @@ final class MobileAppStore {
     saveConnectionPreferences()
 
     if let deviceToken = payload.deviceToken, !deviceToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      // Trigger the Local Network prompt before handing off to the WKWebView.
+      // Without this, the webview's first HTTP load silently fails when the
+      // user hasn't granted Local Network access yet.
+      let authorization = await LocalNetworkProbe.probe()
+      if authorization == .denied {
+        setError(.localNetworkPermissionDenied)
+        return
+      }
+
       self.deviceToken = deviceToken
       KeychainStore.writeString(deviceToken, account: StorageKey.deviceToken)
       if let deviceName = payload.deviceName, !deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -207,6 +259,7 @@ final class MobileAppStore {
         KeychainStore.writeString(desktopAuthTokenInput, account: StorageKey.desktopAuthToken)
       }
       errorMessage = nil
+      lastAPIError = nil
       // Navigation to MobileWebView is driven by hasPairedSession becoming true.
       return
     }
@@ -437,6 +490,7 @@ final class MobileAppStore {
 
   func clearSession() {
     errorMessage = nil
+    lastAPIError = nil
     statusMessage = nil
     deviceToken = nil
     snapshot = nil
@@ -456,6 +510,13 @@ final class MobileAppStore {
 
   func clearError() {
     errorMessage = nil
+    lastAPIError = nil
+  }
+
+  /// Fire the Local Network permission probe without blocking the UI so the
+  /// system prompt shows up as soon as the pairing screen appears.
+  func primeLocalNetworkPermission() {
+    Task { _ = await LocalNetworkProbe.probe(timeout: 5) }
   }
 
   private func applySnapshotEnvelope(_ envelope: MobileSnapshotEnvelope) {
@@ -478,9 +539,7 @@ final class MobileAppStore {
       return false
     }
 
-    if let clientError = error as? MobileAPIClientError,
-      case .localNetworkUnavailable = clientError
-    {
+    if let clientError = error as? MobileAPIClientError, clientError.isTransientNetworkIssue {
       return true
     }
 

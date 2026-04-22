@@ -7,9 +7,19 @@ import {
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
 import { CodeReviewControl } from "../CodeReviewControl";
-import { DiffIcon, ExternalLinkIcon, MonitorPlayIcon, TerminalSquareIcon } from "lucide-react";
+import {
+  DiffIcon,
+  EllipsisIcon,
+  ExternalLinkIcon,
+  FolderOpenIcon,
+  MonitorPlayIcon,
+  TerminalSquareIcon,
+} from "lucide-react";
+import { useFilesPanelStore } from "~/filesPanelStore";
+import { isMacPlatform } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
 import { Toggle } from "../ui/toggle";
@@ -51,6 +61,67 @@ interface ChatHeaderProps {
   onPopout: () => void;
 }
 
+function SecondaryControls({
+  activeThreadId,
+  activeProjectName,
+  activeProjectCwd,
+  openInCwd,
+  activeProjectScripts,
+  preferredScriptId,
+  keybindings,
+  availableEditors,
+  gitCwd,
+  isGitRepo,
+  onRunProjectScript,
+  onAddProjectScript,
+  onUpdateProjectScript,
+  onDeleteProjectScript,
+}: Pick<
+  ChatHeaderProps,
+  | "activeThreadId"
+  | "activeProjectName"
+  | "activeProjectCwd"
+  | "openInCwd"
+  | "activeProjectScripts"
+  | "preferredScriptId"
+  | "keybindings"
+  | "availableEditors"
+  | "gitCwd"
+  | "isGitRepo"
+  | "onRunProjectScript"
+  | "onAddProjectScript"
+  | "onUpdateProjectScript"
+  | "onDeleteProjectScript"
+>) {
+  return (
+    <>
+      {activeProjectScripts && (
+        <ProjectScriptsControl
+          scripts={activeProjectScripts}
+          keybindings={keybindings}
+          projectCwd={activeProjectCwd}
+          preferredScriptId={preferredScriptId}
+          onRunScript={onRunProjectScript}
+          onAddScript={onAddProjectScript}
+          onUpdateScript={onUpdateProjectScript}
+          onDeleteScript={onDeleteProjectScript}
+        />
+      )}
+      {activeProjectName && (
+        <OpenInPicker
+          keybindings={keybindings}
+          availableEditors={availableEditors}
+          openInCwd={openInCwd}
+        />
+      )}
+      {activeProjectName && <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />}
+      {activeProjectName && (
+        <CodeReviewControl gitCwd={gitCwd} activeThreadId={activeThreadId} isGitRepo={isGitRepo} />
+      )}
+    </>
+  );
+}
+
 export const ChatHeader = memo(function ChatHeader({
   activeThreadId,
   activeThreadTitle,
@@ -82,72 +153,114 @@ export const ChatHeader = memo(function ChatHeader({
   onToggleDiff,
   onPopout,
 }: ChatHeaderProps) {
+  const filesOpen = useFilesPanelStore((s) => s.open);
+  const toggleFiles = useFilesPanelStore((s) => s.toggle);
+  const isMac = typeof navigator !== "undefined" ? isMacPlatform(navigator.platform) : false;
+  const hasSecondaryControls = Boolean(activeProjectScripts) || Boolean(activeProjectName);
+  const secondaryControlsProps = {
+    activeThreadId,
+    activeProjectName,
+    activeProjectCwd,
+    openInCwd,
+    activeProjectScripts,
+    preferredScriptId,
+    keybindings,
+    availableEditors,
+    gitCwd,
+    isGitRepo,
+    onRunProjectScript,
+    onAddProjectScript,
+    onUpdateProjectScript,
+    onDeleteProjectScript,
+  } satisfies Parameters<typeof SecondaryControls>[0];
+
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
         <SidebarTrigger className="size-7 shrink-0 md:hidden" />
-        {/* Thread title hidden below lg so the project badge + action buttons get
-            more room on medium-sized screens. */}
         <h2
-          className="hidden min-w-0 shrink truncate text-sm font-medium text-foreground lg:block"
+          className="hidden min-w-0 shrink truncate text-sm font-medium text-foreground @[760px]/header-actions:block"
           title={activeThreadTitle}
         >
           {activeThreadTitle}
         </h2>
         {activeProjectName && (
-          <Badge variant="outline" className="min-w-0 max-w-[14rem] shrink overflow-hidden">
+          <Badge
+            variant="outline"
+            className="min-w-0 max-w-[9rem] shrink overflow-hidden @[640px]/header-actions:max-w-[11rem] @[900px]/header-actions:max-w-[14rem]"
+          >
             <span className="min-w-0 truncate">{activeProjectName}</span>
           </Badge>
         )}
         {activeProjectName && !isGitRepo && (
-          <Badge variant="outline" className="shrink-0 text-[10px] text-amber-700">
+          <Badge
+            variant="outline"
+            className="hidden shrink-0 text-[10px] text-amber-700 @[560px]/header-actions:inline-flex"
+          >
             No Git
           </Badge>
         )}
       </div>
-      {/* gap-1 keeps buttons compact; px-2 on each toggle overrides the xs
-          size's ~3px default padding so labels don't look smashed to the edges */}
       <div className="flex shrink-0 items-center justify-end gap-1">
-        {/* Secondary controls — hidden on mobile to avoid header overflow, visible md+ */}
-        <div className="hidden md:contents">
-          {activeProjectScripts && (
-            <ProjectScriptsControl
-              scripts={activeProjectScripts}
-              keybindings={keybindings}
-              projectCwd={activeProjectCwd}
-              preferredScriptId={preferredScriptId}
-              onRunScript={onRunProjectScript}
-              onAddScript={onAddProjectScript}
-              onUpdateScript={onUpdateProjectScript}
-              onDeleteScript={onDeleteProjectScript}
-            />
-          )}
-          {activeProjectName && (
-            <OpenInPicker
-              keybindings={keybindings}
-              availableEditors={availableEditors}
-              openInCwd={openInCwd}
-            />
-          )}
-          {activeProjectName && (
-            <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />
-          )}
-          {activeProjectName && (
-            <CodeReviewControl
-              gitCwd={gitCwd}
-              activeThreadId={activeThreadId}
-              isGitRepo={isGitRepo}
-            />
-          )}
+        <div className="hidden @[980px]/header-actions:contents">
+          <SecondaryControls {...secondaryControlsProps} />
         </div>
-        {/* Desktop-only panel toggles — preview, terminal, diff, and popout are not
-            available or useful inside the mobile WKWebView, so hide them below md. */}
+        {hasSecondaryControls && (
+          <Popover>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        aria-label="More thread controls"
+                        className="hidden shrink-0 md:flex @[980px]/header-actions:hidden"
+                      />
+                    }
+                  >
+                    <EllipsisIcon className="size-3" />
+                  </PopoverTrigger>
+                }
+              />
+              <TooltipPopup side="bottom">More thread controls</TooltipPopup>
+            </Tooltip>
+            <PopoverPopup side="bottom" align="end" sideOffset={6} className="min-w-52">
+              <div className="flex flex-wrap items-center gap-1">
+                <SecondaryControls {...secondaryControlsProps} />
+              </div>
+            </PopoverPopup>
+          </Popover>
+        )}
         <div className="hidden md:contents">
           <Tooltip>
             <TooltipTrigger
               render={
                 <Toggle
-                  className="relative shrink-0 px-2"
+                  className="shrink-0 px-1.5 @[1180px]/header-actions:px-2"
+                  pressed={filesOpen}
+                  onPressedChange={toggleFiles}
+                  aria-label="Toggle Files panel"
+                  variant="outline"
+                  size="xs"
+                >
+                  <FolderOpenIcon className="size-3" />
+                  <span className="hidden text-[10px] @[1180px]/header-actions:inline">Files</span>
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {filesOpen ? "Close Files panel" : "Open Files panel"} (
+              {isMac ? "⇧⌘E" : "Ctrl+Shift+E"})
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="relative shrink-0 px-1.5 @[1180px]/header-actions:px-2"
                   pressed={previewOpen}
                   onPressedChange={onTogglePreview}
                   aria-label="Toggle preview panel"
@@ -156,7 +269,9 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!previewAvailable}
                 >
                   <MonitorPlayIcon className="size-3" />
-                  <span className="text-[10px]">Preview</span>
+                  <span className="hidden text-[10px] @[1180px]/header-actions:inline">
+                    Preview
+                  </span>
                   {hasRunningPreviewApp && (
                     <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-green-500" />
                   )}
@@ -175,7 +290,7 @@ export const ChatHeader = memo(function ChatHeader({
             <TooltipTrigger
               render={
                 <Toggle
-                  className="shrink-0 px-2"
+                  className="shrink-0 px-1.5 @[1180px]/header-actions:px-2"
                   pressed={terminalOpen}
                   onPressedChange={onToggleTerminal}
                   aria-label="Toggle terminal drawer"
@@ -184,7 +299,9 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!terminalAvailable}
                 >
                   <TerminalSquareIcon className="size-3" />
-                  <span className="text-[10px]">Terminal</span>
+                  <span className="hidden text-[10px] @[1180px]/header-actions:inline">
+                    Terminal
+                  </span>
                 </Toggle>
               }
             />
@@ -200,7 +317,7 @@ export const ChatHeader = memo(function ChatHeader({
             <TooltipTrigger
               render={
                 <Toggle
-                  className="shrink-0 px-2"
+                  className="shrink-0 px-1.5 @[1180px]/header-actions:px-2"
                   pressed={diffOpen}
                   onPressedChange={onToggleDiff}
                   aria-label="Toggle diff panel"
@@ -209,12 +326,9 @@ export const ChatHeader = memo(function ChatHeader({
                   disabled={!isGitRepo}
                 >
                   <DiffIcon className="size-3" />
-                  {/* Replace the "Diff" text label with live +X / -Y stats in
-                      green/red so the button is informative at a glance.
-                      Falls back to icon-only when there are no working-tree changes. */}
                   {isGitRepo &&
                   hasNonZeroStat({ additions: diffInsertions, deletions: diffDeletions }) ? (
-                    <span className="flex items-center gap-0.5 text-[10px] font-medium tabular-nums">
+                    <span className="hidden items-center gap-0.5 text-[10px] font-medium tabular-nums @[1180px]/header-actions:flex">
                       <DiffStatLabel additions={diffInsertions} deletions={diffDeletions} />
                     </span>
                   ) : null}
@@ -229,7 +343,6 @@ export const ChatHeader = memo(function ChatHeader({
                   : "Toggle diff panel"}
             </TooltipPopup>
           </Tooltip>
-          {/* Popout button — opens this thread in a separate browser window */}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -238,11 +351,13 @@ export const ChatHeader = memo(function ChatHeader({
                   variant="outline"
                   size="xs"
                   aria-label="Pop out thread to new window"
-                  className="shrink-0 px-2"
+                  className="shrink-0 px-1.5 @[1180px]/header-actions:px-2"
                   onClick={onPopout}
                 >
                   <ExternalLinkIcon className="size-3" />
-                  <span className="text-[10px]">Pop out</span>
+                  <span className="hidden text-[10px] @[1180px]/header-actions:inline">
+                    Pop out
+                  </span>
                 </Button>
               }
             />

@@ -27,27 +27,32 @@ When feeding project knowledge into an AI coding assistant's system prompt, raw 
 Through analysis of what makes AI coding assistants effective, a clear priority order emerged:
 
 **Priority 1: Project Identity (must include)**
+
 - What is this project? What does it do?
 - Tech stack: framework, language, key libraries
 - Source: auto-extracted from `package.json` dependencies
 
 **Priority 2: Coding Standards (must include)**
+
 - How to write code in this project
 - Naming conventions, import patterns, component structure
 - Source: CLAUDE.md, eslint config, prettier config
 
 **Priority 3: Architecture (should include)**
+
 - How components/modules connect
 - Data flow patterns
 - Key directories and their purposes
 - Source: PROJECT.md, directory structure analysis
 
 **Priority 4: Current State (nice to have)**
+
 - What's been done recently
 - Active branches, recent commits
 - Source: git log, recent changes
 
 **Priority 5: File Structure (nice to have)**
+
 - Directory tree
 - Where specific types of files live
 - Source: auto-generated file tree
@@ -65,13 +70,13 @@ The original memory compiler concatenated all `.md` files from configured source
 
 The most reliable context comes from auto-extraction rather than manual documentation:
 
-| Source | Method | Reliability |
-|--------|--------|-------------|
-| Tech stack | Parse `package.json` dependencies | Always current |
-| File tree | Generate from filesystem | Always current |
-| Import patterns | Analyze source files | Always current |
-| Architecture docs | Manual (CLAUDE.md, PROJECT.md) | May be stale |
-| Coding standards | Manual + eslint/prettier config | Usually current |
+| Source            | Method                            | Reliability     |
+| ----------------- | --------------------------------- | --------------- |
+| Tech stack        | Parse `package.json` dependencies | Always current  |
+| File tree         | Generate from filesystem          | Always current  |
+| Import patterns   | Analyze source files              | Always current  |
+| Architecture docs | Manual (CLAUDE.md, PROJECT.md)    | May be stale    |
+| Coding standards  | Manual + eslint/prettier config   | Usually current |
 
 The improved compiler adds auto-generation for file trees and tech stack extraction from `package.json`, supplementing manual documentation with always-current structured data.
 
@@ -92,12 +97,12 @@ Content sections are assigned weight multipliers that determine how much of the 
 
 ```typescript
 const SECTION_WEIGHTS = {
-  'project-identity': 1.0,    // Always include fully
-  'coding-standards': 0.9,    // Almost always include fully
-  'architecture': 0.7,        // Include but may truncate
-  'file-structure': 0.5,      // Summarize if space is tight
-  'recent-changes': 0.3,      // First to be cut
-  'changelog': 0.1,           // Almost always excluded
+  "project-identity": 1.0, // Always include fully
+  "coding-standards": 0.9, // Almost always include fully
+  architecture: 0.7, // Include but may truncate
+  "file-structure": 0.5, // Summarize if space is tight
+  "recent-changes": 0.3, // First to be cut
+  changelog: 0.1, // Almost always excluded
 };
 ```
 

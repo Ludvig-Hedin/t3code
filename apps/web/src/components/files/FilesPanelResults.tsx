@@ -15,10 +15,7 @@ import { memo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileSearchIcon, FolderSearchIcon } from "lucide-react";
 
-import type {
-  ProjectEntry,
-  ProjectFileContentHit,
-} from "@t3tools/contracts";
+import type { ProjectEntry, ProjectFileContentHit } from "@t3tools/contracts";
 
 import {
   projectSearchEntriesQueryOptions,
@@ -36,10 +33,7 @@ export interface FilesPanelResultsProps {
   useRegex: boolean;
   resolvedTheme: "light" | "dark";
   activeRelativePath: string | null;
-  onOpenFile: (
-    relativePath: string,
-    selection?: { line: number; column: number } | null,
-  ) => void;
+  onOpenFile: (relativePath: string, selection?: { line: number; column: number } | null) => void;
   onContextMenuFile?:
     | ((relativePath: string, position: { x: number; y: number }) => void)
     | undefined;
@@ -56,9 +50,7 @@ export const FilesPanelResults = memo(function FilesPanelResults({
   onOpenFile,
   onContextMenuFile,
 }: FilesPanelResultsProps) {
-  const namesQuery = useQuery(
-    projectSearchEntriesQueryOptions({ cwd, query }),
-  );
+  const namesQuery = useQuery(projectSearchEntriesQueryOptions({ cwd, query }));
   const contentsQuery = useQuery(
     projectSearchFileContentsQueryOptions({
       cwd,
@@ -169,53 +161,54 @@ function NamesSection({
   onOpenFile,
   onContextMenuFile,
 }: NamesSectionProps) {
+  const fileEntries = query.filter((entry) => entry.kind === "file");
+  const fileCount = fileEntries.length;
+
   return (
     <section aria-label="Matching file names" className="mb-2">
       <SectionHeader
         icon={<FolderSearchIcon className="size-3 shrink-0 text-muted-foreground/70" />}
         title="Files"
-        count={query.length}
+        count={fileCount}
         truncated={truncated}
       />
       {isError ? (
         <SectionMessage tone="error">
           {error instanceof Error ? error.message : "Failed to search names."}
         </SectionMessage>
-      ) : query.length === 0 ? (
+      ) : fileCount === 0 ? (
         <SectionMessage tone="muted">
           {isLoading ? "Searching…" : "No files matched."}
         </SectionMessage>
       ) : (
-        query
-          .filter((entry) => entry.kind === "file")
-          .map((entry) => (
-            <button
-              key={`name:${entry.path}`}
-              type="button"
-              role="listitem"
-              data-active={entry.path === activeRelativePath ? "true" : undefined}
-              onClick={() => onOpenFile(entry.path)}
-              onContextMenu={(event) => {
-                if (!onContextMenuFile) return;
-                event.preventDefault();
-                onContextMenuFile(entry.path, { x: event.clientX, y: event.clientY });
-              }}
-              className={cn(
-                "group flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left hover:bg-accent/40",
-                entry.path === activeRelativePath && "bg-accent/50",
-              )}
-            >
-              <VscodeEntryIcon
-                pathValue={entry.path}
-                kind="file"
-                theme={resolvedTheme}
-                className="size-3.5 text-muted-foreground/70"
-              />
-              <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground">
-                {entry.path}
-              </span>
-            </button>
-          ))
+        fileEntries.map((entry) => (
+          <button
+            key={`name:${entry.path}`}
+            type="button"
+            role="listitem"
+            data-active={entry.path === activeRelativePath ? "true" : undefined}
+            onClick={() => onOpenFile(entry.path)}
+            onContextMenu={(event) => {
+              if (!onContextMenuFile) return;
+              event.preventDefault();
+              onContextMenuFile(entry.path, { x: event.clientX, y: event.clientY });
+            }}
+            className={cn(
+              "group flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left hover:bg-accent/40",
+              entry.path === activeRelativePath && "bg-accent/50",
+            )}
+          >
+            <VscodeEntryIcon
+              pathValue={entry.path}
+              kind="file"
+              theme={resolvedTheme}
+              className="size-3.5 text-muted-foreground/70"
+            />
+            <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground">
+              {entry.path}
+            </span>
+          </button>
+        ))
       )}
     </section>
   );
@@ -229,10 +222,7 @@ interface ContentsSectionProps {
   isError: boolean;
   error: unknown;
   activeRelativePath: string | null;
-  onOpenFile: (
-    relativePath: string,
-    selection?: { line: number; column: number } | null,
-  ) => void;
+  onOpenFile: (relativePath: string, selection?: { line: number; column: number } | null) => void;
   onContextMenuFile?:
     | ((relativePath: string, position: { x: number; y: number }) => void)
     | undefined;
@@ -292,21 +282,15 @@ function ContentsSection({
               <span className="truncate font-mono text-[11px] text-foreground/80">
                 {relativePath}
               </span>
-              <span className="text-[10px] text-muted-foreground/60">
-                {fileHits.length}
-              </span>
+              <span className="text-[10px] text-muted-foreground/60">{fileHits.length}</span>
             </div>
             {fileHits.map((hit, idx) => (
               <button
                 key={`content:${relativePath}:${hit.line}:${idx}`}
                 type="button"
                 role="listitem"
-                data-active={
-                  relativePath === activeRelativePath ? "true" : undefined
-                }
-                onClick={() =>
-                  onOpenFile(relativePath, { line: hit.line, column: hit.column })
-                }
+                data-active={relativePath === activeRelativePath ? "true" : undefined}
+                onClick={() => onOpenFile(relativePath, { line: hit.line, column: hit.column })}
                 className={cn(
                   "group flex w-full items-start gap-2 rounded-md px-2 py-0.5 text-left hover:bg-accent/40",
                 )}
@@ -327,9 +311,9 @@ function ContentsSection({
 }
 
 function HitPreview({ hit }: { hit: ProjectFileContentHit }) {
-  // `matchStart` / `matchEnd` are byte offsets into `preview` according to the
-  // server. Preview strings are short (bounded by the server), so substring
-  // slicing is fine.
+  // `matchStart` / `matchEnd` are UTF-16 code unit indices into `preview` (same
+  // as JS string indices): ripgrep byte offsets are converted on the server;
+  // the JS fallback uses `RegExp` indices directly.
   const safeStart = Math.max(0, Math.min(hit.matchStart, hit.preview.length));
   const safeEnd = Math.max(safeStart, Math.min(hit.matchEnd, hit.preview.length));
   const before = hit.preview.slice(0, safeStart);
@@ -338,9 +322,7 @@ function HitPreview({ hit }: { hit: ProjectFileContentHit }) {
   return (
     <>
       <span>{before}</span>
-      <mark className="bg-yellow-200/60 text-foreground dark:bg-yellow-400/30">
-        {match}
-      </mark>
+      <mark className="bg-yellow-200/60 text-foreground dark:bg-yellow-400/30">{match}</mark>
       <span>{after}</span>
     </>
   );

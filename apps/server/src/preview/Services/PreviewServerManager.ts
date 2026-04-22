@@ -8,7 +8,7 @@
  */
 import { Effect, ServiceMap, Stream } from "effect";
 
-import type { PreviewApp, PreviewEvent, PreviewSession } from "@t3tools/contracts";
+import type { PreviewApp, PreviewEvent, PreviewFileItem, PreviewSession } from "@t3tools/contracts";
 
 export interface PreviewServerManagerShape {
   /** Scan project cwd and return detected app candidates. */
@@ -35,6 +35,16 @@ export interface PreviewServerManagerShape {
 
   /** Get current app list for a project (detected + overrides). */
   readonly getApps: (projectId: string) => PreviewApp[];
+
+  /** List standalone previewable files under the project root (HTML, MD, TSX, DOCX, …). */
+  readonly listFiles: (projectId: string, cwd: string) => Effect.Effect<PreviewFileItem[], Error>;
+
+  /** Register or return a file-backed preview app for the given relative path. */
+  readonly openFile: (
+    projectId: string,
+    cwd: string,
+    relativePath: string,
+  ) => Effect.Effect<PreviewApp, Error>;
 
   /** Stream PreviewEvents for a project. Never ends unless the process itself dies. */
   readonly streamEvents: (projectId: string) => Stream.Stream<PreviewEvent>;

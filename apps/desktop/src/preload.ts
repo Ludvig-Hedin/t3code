@@ -20,6 +20,7 @@ const GET_DESKTOP_AUTH_TOKEN_CHANNEL = "desktop:get-desktop-auth-token";
 const GET_MOBILE_DEVICES_CHANNEL = "desktop:get-mobile-devices";
 const REVOKE_MOBILE_DEVICE_CHANNEL = "desktop:revoke-mobile-device";
 const REMOTE_SETTINGS_GET_CHANNEL = "desktop:remote-settings-get";
+const TUNNEL_GET_STATUS_CHANNEL = "desktop:tunnel-get-status";
 const TUNNEL_ENABLE_CHANNEL = "desktop:tunnel-enable";
 const TUNNEL_DISABLE_CHANNEL = "desktop:tunnel-disable";
 const KEEP_AWAKE_SET_CHANNEL = "desktop:keep-awake-set";
@@ -53,6 +54,17 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getRemoteSettings: () => {
     const result = ipcRenderer.sendSync(REMOTE_SETTINGS_GET_CHANNEL);
     return typeof result === "object" && result !== null ? result : null;
+  },
+  getTunnelStatus: () => {
+    const result = ipcRenderer.sendSync(TUNNEL_GET_STATUS_CHANNEL);
+    if (
+      typeof result === "object" &&
+      result !== null &&
+      typeof (result as Record<string, unknown>).status === "string"
+    ) {
+      return result as import("@t3tools/contracts").TunnelStatus;
+    }
+    return { status: "idle" } as import("@t3tools/contracts").TunnelStatus;
   },
   enableRemoteAccess: () => ipcRenderer.invoke(TUNNEL_ENABLE_CHANNEL),
   disableRemoteAccess: () => ipcRenderer.invoke(TUNNEL_DISABLE_CHANNEL),
@@ -90,8 +102,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   // Triggers the OS save-file dialog; main process calls webContents.downloadURL to bypass renderer CORS.
   downloadUrl: (url: string) => ipcRenderer.invoke(DOWNLOAD_URL_CHANNEL, url),
   // Fetches image via main-process net.fetch (no CORS) and writes it to the system clipboard.
-  writeImageToClipboard: (url: string) =>
-    ipcRenderer.invoke(WRITE_IMAGE_TO_CLIPBOARD_CHANNEL, url),
+  writeImageToClipboard: (url: string) => ipcRenderer.invoke(WRITE_IMAGE_TO_CLIPBOARD_CHANNEL, url),
   onUpdateState: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
       if (typeof state !== "object" || state === null) return;

@@ -19,6 +19,7 @@ export interface CodexAccountSnapshot {
 
 export const CODEX_DEFAULT_MODEL = "gpt-5.3-codex";
 export const CODEX_SPARK_MODEL = "gpt-5.3-codex-spark";
+export const CODEX_CHATGPT_UNSUPPORTED_MODEL = "gpt-5.1-codex-mini";
 const CODEX_SPARK_ENABLED_PLAN_TYPES = new Set<CodexPlanType>(["pro"]);
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
@@ -104,20 +105,32 @@ export function adjustCodexModelsForAccount(
   baseModels: ReadonlyArray<ServerProviderModel>,
   account: CodexAccountSnapshot | undefined,
 ): ReadonlyArray<ServerProviderModel> {
-  if (account?.sparkEnabled !== false) {
+  const unsupportedModels = new Set<string>();
+  if (account?.sparkEnabled === false) {
+    unsupportedModels.add(CODEX_SPARK_MODEL);
+  }
+  if (account?.type === "chatgpt") {
+    unsupportedModels.add(CODEX_CHATGPT_UNSUPPORTED_MODEL);
+  }
+
+  if (unsupportedModels.size === 0) {
     return baseModels;
   }
 
-  return baseModels.filter((model) => model.isCustom || model.slug !== CODEX_SPARK_MODEL);
+  return baseModels.filter((model) => model.isCustom || !unsupportedModels.has(model.slug));
 }
 
 export function resolveCodexModelForAccount(
   model: string | undefined,
   account: CodexAccountSnapshot,
 ): string | undefined {
-  if (model !== CODEX_SPARK_MODEL || account.sparkEnabled) {
-    return model;
+  if (model === CODEX_SPARK_MODEL && !account.sparkEnabled) {
+    return CODEX_DEFAULT_MODEL;
   }
 
-  return CODEX_DEFAULT_MODEL;
+  if (model === CODEX_CHATGPT_UNSUPPORTED_MODEL && account.type === "chatgpt") {
+    return CODEX_DEFAULT_MODEL;
+  }
+
+  return model;
 }

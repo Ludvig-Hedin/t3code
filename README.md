@@ -45,7 +45,7 @@ bun install
 bun run dev
 ```
 
-If you only want the web app, use `bun run dev:web`. For the desktop app, use `bun run dev:desktop`.
+If you only want the browser web UI (not Electron), use `bun run dev:web` — it starts the local API and Vite together so the page can connect. For the desktop app, use `bun run dev:desktop`.
 
 Optional transcription overrides live in [`.env.example`](./.env.example). You do not need to set them for the browser-local model path, but you can point the server fallback at a local Whisper-compatible HTTP endpoint if you want to override the default behavior.
 

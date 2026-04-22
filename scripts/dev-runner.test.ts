@@ -257,7 +257,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("keeps server offset stable for dev:web and only shifts web offset", () =>
+    it.effect("uses a shared port offset for dev:web (server + web dev server)", () =>
       Effect.gen(function* () {
         const taken = new Set([5733]);
         const offsets = yield* resolveModePortOffsets({
@@ -268,7 +268,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           checkPortAvailability: (port) => Effect.succeed(!taken.has(port)),
         });
 
-        assert.deepStrictEqual(offsets, { serverOffset: 0, webOffset: 1 });
+        assert.deepStrictEqual(offsets, { serverOffset: 1, webOffset: 1 });
       }),
     );
 

@@ -7,7 +7,7 @@ import * as nodePath from "node:path";
 
 import { Effect, Layer, PubSub, Stream } from "effect";
 import { ProjectId } from "@t3tools/contracts";
-import type { PreviewApp, PreviewEvent, PreviewSession } from "@t3tools/contracts";
+import type { PreviewApp, PreviewEvent, PreviewFileItem, PreviewSession } from "@t3tools/contracts";
 
 import {
   PreviewServerManager,
@@ -15,7 +15,9 @@ import {
 } from "../Services/PreviewServerManager";
 import {
   buildDetectionCandidates,
+  createStandalonePreviewCommand,
   detectPortFromLine,
+  listPreviewFileItemsFromEntries,
   parseStandalonePreviewCommand,
   type DetectionEntry,
 } from "../appDetection";
@@ -387,13 +389,18 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         const pid = ProjectId.makeUnsafe(projectId);
         const apps: PreviewApp[] = candidates.map((c) => {
           const override = overrides.get(c.id);
+          const command = override?.command ?? c.command;
+          const parsed = parseStandalonePreviewCommand(command);
+          const isFile = parsed !== null;
           return {
             id: c.id,
             projectId: pid,
             label: override?.label ?? c.label,
-            command: override?.command ?? c.command,
+            command,
             cwd: override?.cwd ?? c.cwd,
             type: override?.type ?? c.type,
+            sourceKind: isFile ? ("file" as const) : ("app" as const),
+            relativePath: isFile ? parsed.relativePath : null,
             isManualOverride: Boolean(override && Object.keys(override).length > 0),
           };
         });
@@ -603,6 +610,65 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
       }),
 
     getApps: (projectId) => projectApps.get(projectId) ?? [],
+
+    listFiles: (_projectId, cwd) =>
+      Effect.promise(async () => {
+        const entries = await scanProjectEntries(cwd);
+        return listPreviewFileItemsFromEntries(entries);
+      }),
+
+    openFile: (projectId, cwd, relativePath) =>
+      Effect.promise(async () => {
+        const normalized = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+        if (normalized.split("/").some((p) => p === "..")) {
+          throw new Error("Invalid path");
+        }
+        const abs = nodePath.join(cwd, normalized);
+        const rootReal = await fs.promises.realpath(cwd).catch(() => cwd);
+        let fileReal: string;
+        try {
+          fileReal = await fs.promises.realpath(abs);
+        } catch {
+          throw new Error("File not found");
+        }
+        if (fileReal !== rootReal && !fileReal.startsWith(rootReal + nodePath.sep)) {
+          throw new Error("Path outside project root");
+        }
+        const stat = await fs.promises.stat(fileReal);
+        if (!stat.isFile()) {
+          throw new Error("Not a file");
+        }
+        const items: PreviewFileItem[] = listPreviewFileItemsFromEntries([
+          { relativePath: normalized, hasDevScript: false, hasBunLock: false },
+        ]);
+        const item = items[0];
+        if (!item) {
+          throw new Error("Not a previewable file type");
+        }
+        const pid = ProjectId.makeUnsafe(projectId);
+        const appId = `file:${normalized}`;
+        const app: PreviewApp = {
+          id: appId,
+          projectId: pid,
+          label: nodePath.basename(normalized),
+          sourceKind: "file",
+          relativePath: normalized,
+          command: createStandalonePreviewCommand({
+            relativePath: normalized,
+            kind: item.kind,
+          }),
+          cwd: rootReal,
+          type: "browser",
+          isManualOverride: false,
+        };
+        const apps = projectApps.get(projectId) ?? [];
+        if (!apps.some((a) => a.id === appId)) {
+          const next = [...apps, app];
+          projectApps.set(projectId, next);
+          emitEvent({ type: "apps-updated", projectId: pid, apps: next });
+        }
+        return app;
+      }),
 
     // Subscribe to the global broadcast PubSub and filter to this project.
     // Each call creates a fresh independent subscription, so multiple callers

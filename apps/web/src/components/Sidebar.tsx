@@ -13,6 +13,7 @@ import {
   LayoutGridIcon,
   LoaderCircleIcon,
   MailIcon,
+  MailOpenIcon,
   PanelLeftIcon,
   PencilIcon,
   PinIcon,
@@ -1309,6 +1310,7 @@ export default function Sidebar() {
     })),
   );
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
+  const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
   const toggleProject = useUiStateStore((store) => store.toggleProject);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
   const pinnedToSidebarThreadIds = useUiStateStore((s) => s.pinnedToSidebarThreadIds);
@@ -1863,6 +1865,7 @@ export default function Sidebar() {
         [
           { id: "rename", label: "Rename thread", icon: <PencilIcon /> },
           { id: "mark-unread", label: "Mark unread", icon: <MailIcon /> },
+          { id: "mark-read", label: "Mark as read", icon: <MailOpenIcon /> },
           {
             id: isPinnedToSidebar ? "unpin-from-sidebar" : "pin-to-sidebar",
             label: isPinnedToSidebar ? "Unpin from sidebar" : "Pin to sidebar",
@@ -1896,6 +1899,10 @@ export default function Sidebar() {
 
       if (clicked === "mark-unread") {
         markThreadUnread(threadId, thread.latestTurn?.completedAt);
+        return;
+      }
+      if (clicked === "mark-read") {
+        markThreadVisited(threadId);
         return;
       }
       if (clicked === "pin-to-sidebar") {
@@ -1954,6 +1961,7 @@ export default function Sidebar() {
       copyThreadIdToClipboard,
       deleteThread,
       markThreadUnread,
+      markThreadVisited,
       pinToProject,
       pinToSidebar,
       pinnedToProjectThreadIds,
@@ -1976,6 +1984,7 @@ export default function Sidebar() {
       const clicked = await showContextMenu(
         [
           { id: "mark-unread", label: `Mark unread (${count})`, icon: <MailIcon /> },
+          { id: "mark-read", label: `Mark as read (${count})`, icon: <MailOpenIcon /> },
           {
             id: "delete",
             label: `Delete (${count})`,
@@ -1991,6 +2000,14 @@ export default function Sidebar() {
         for (const id of ids) {
           const thread = sidebarThreadsById[id];
           markThreadUnread(id, thread?.latestTurn?.completedAt);
+        }
+        clearSelection();
+        return;
+      }
+
+      if (clicked === "mark-read") {
+        for (const id of ids) {
+          markThreadVisited(id);
         }
         clearSelection();
         return;
@@ -2019,6 +2036,7 @@ export default function Sidebar() {
       clearSelection,
       deleteThread,
       markThreadUnread,
+      markThreadVisited,
       removeFromSelection,
       selectedThreadIds,
       showContextMenu,

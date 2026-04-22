@@ -13,6 +13,7 @@
  * @module workspace/contentSearch
  */
 import fsPromises from "node:fs/promises";
+import path from "node:path";
 import { spawn } from "node:child_process";
 
 import { Effect } from "effect";
@@ -22,6 +23,7 @@ import {
   type ProjectFileContentHit,
   type ProjectSearchFileContentsInput,
   type ProjectSearchFileContentsResult,
+  PROJECT_SEARCH_ENTRIES_MAX_LIMIT,
   ProjectSearchFileContentsError,
 } from "@t3tools/contracts";
 
@@ -59,6 +61,26 @@ function truncatePreview(line: string): string {
   return `${line.slice(0, PREVIEW_MAX_LENGTH)}…`;
 }
 
+/**
+ * Ripgrep JSON submatch `start` / `end` are UTF-8 **byte** offsets into the
+ * matched line. The UI highlights using JavaScript string indices (UTF-16 code
+ * units), so we map byte positions to code-unit indices.
+ */
+function utf8ByteOffsetToCodeUnitIndex(line: string, byteOffset: number): number {
+  if (byteOffset <= 0) return 0;
+  let utf8Pos = 0;
+  let codeUnitIndex = 0;
+  for (const ch of line) {
+    const charUtf8Len = Buffer.byteLength(ch, "utf8");
+    if (utf8Pos + charUtf8Len > byteOffset) {
+      return codeUnitIndex;
+    }
+    utf8Pos += charUtf8Len;
+    codeUnitIndex += ch.length;
+  }
+  return codeUnitIndex;
+}
+
 function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -92,12 +114,14 @@ function runRipgrep(
   >((resume) => {
     const child = spawn("rg", buildRipgrepArgs(input), {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      // stderr is unused; piping it without a consumer can stall the process.
+      stdio: ["ignore", "pipe", "ignore"],
     });
 
     const hits: ProjectFileContentHit[] = [];
     let truncated = false;
     let buffer = "";
+    let settled = false;
 
     const timeoutHandle = setTimeout(() => {
       // rg ran too long — terminate it and return what we have so far rather
@@ -106,13 +130,29 @@ function runRipgrep(
       child.kill("SIGTERM");
     }, RIPGREP_TIMEOUT_MS);
 
+    const detachStreams = () => {
+      child.stdout?.removeAllListeners();
+      child.removeAllListeners();
+    };
+
     const finish = (result: { hits: ProjectFileContentHit[]; truncated: boolean }) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeoutHandle);
+      detachStreams();
       resume(Effect.succeed(result));
     };
 
     const fail = (cause: unknown) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeoutHandle);
+      detachStreams();
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // Ignore if the process is already gone.
+      }
       resume(
         Effect.fail(
           new ProjectSearchFileContentsError({
@@ -137,19 +177,27 @@ function runRipgrep(
       const previewLine = data.lines?.text ?? "";
       const lineNumber = data.line_number ?? 1;
       const firstSubmatch = data.submatches?.[0];
-      const start = firstSubmatch?.start ?? 0;
-      const end = firstSubmatch?.end ?? start;
+      const startBytes = firstSubmatch?.start ?? 0;
+      const endBytes = firstSubmatch?.end ?? startBytes;
       if (!relativePath) return;
 
-      // Column is 1-based in VS Code's conventions. rg's `start` is a byte
-      // offset into the preview line.
+      const displayLine = previewLine.replace(/\r?\n$/u, "");
+      let matchStart = utf8ByteOffsetToCodeUnitIndex(displayLine, startBytes);
+      let matchEnd = utf8ByteOffsetToCodeUnitIndex(displayLine, endBytes);
+      const preview = truncatePreview(displayLine);
+      const previewLen = preview.length;
+      matchStart = Math.min(matchStart, previewLen);
+      matchEnd = Math.min(Math.max(matchEnd, matchStart), previewLen);
+
+      // Column is 1-based (VS Code-style). matchStart/matchEnd are code-unit
+      // indices into `preview` for highlighting.
       hits.push({
         relativePath,
         line: Math.max(1, lineNumber),
-        column: Math.max(1, start + 1),
-        preview: truncatePreview(previewLine.replace(/\r?\n$/u, "")),
-        matchStart: start,
-        matchEnd: end,
+        column: Math.max(1, Math.min(matchStart + 1, Math.max(1, previewLen))),
+        preview,
+        matchStart,
+        matchEnd,
       });
 
       if (hits.length >= input.limit) {
@@ -173,6 +221,19 @@ function runRipgrep(
     child.on("close", () => {
       if (buffer.length > 0) processLine(buffer);
       finish({ hits, truncated });
+    });
+
+    // On interruption, nudge the child to exit; `close` runs `finish` so we
+    // still resume exactly once. Do not strip listeners here — that would
+    // strand the callback without `resume`.
+    return Effect.sync(() => {
+      clearTimeout(timeoutHandle);
+      if (settled) return;
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // Ignore if the process is already gone.
+      }
     });
   });
 }
@@ -220,7 +281,7 @@ function runJsGrep(
 
         let content: string;
         try {
-          content = await fsPromises.readFile(`${cwd}/${entry.path}`, "utf8");
+          content = await fsPromises.readFile(path.join(cwd, entry.path), "utf8");
         } catch {
           // Binary / permissions — skip silently.
           continue;
@@ -235,13 +296,17 @@ function runJsGrep(
           const line = lines[i] ?? "";
           const match = matcher(line);
           if (!match) continue;
+          const preview = truncatePreview(line);
+          const previewLen = preview.length;
+          const matchStart = Math.min(match.start, previewLen);
+          const matchEnd = Math.min(Math.max(match.end, matchStart), previewLen);
           hits.push({
             relativePath: entry.path,
             line: i + 1,
-            column: match.start + 1,
-            preview: truncatePreview(line),
-            matchStart: match.start,
-            matchEnd: match.end,
+            column: Math.max(1, Math.min(matchStart + 1, Math.max(1, previewLen))),
+            preview,
+            matchStart,
+            matchEnd,
           });
           perFileMatches += 1;
           if (perFileMatches >= PER_FILE_MATCH_CAP) break;
@@ -291,11 +356,11 @@ export const searchFileContents = Effect.fn("workspace.contentSearch.searchFileC
       return result;
     }
 
-    // Fallback: grep the workspace index. We pull a large slice (the index
-    // already caps itself at 25k entries) and let `runJsGrep` short-circuit
-    // once `limit` is reached.
+    // Fallback: grep the workspace index. Match the index cap so large
+    // projects are not silently skipped; `truncated` reflects either hit-limit or
+    // index truncation.
     const index = yield* workspaceEntries
-      .search({ cwd: input.cwd, query: "", limit: 200 })
+      .search({ cwd: input.cwd, query: "", limit: PROJECT_SEARCH_ENTRIES_MAX_LIMIT })
       .pipe(
         Effect.mapError(
           (cause) =>
@@ -309,7 +374,7 @@ export const searchFileContents = Effect.fn("workspace.contentSearch.searchFileC
     const { hits, truncated } = yield* runJsGrep(input.cwd, index.entries, input);
     const result: ProjectSearchFileContentsResult = {
       hits,
-      truncated,
+      truncated: truncated || index.truncated,
       ripgrepAvailable: false,
     };
     return result;

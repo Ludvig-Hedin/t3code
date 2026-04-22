@@ -43,18 +43,45 @@ function makeLatestTurn(overrides?: {
 }
 
 describe("hasUnseenCompletion", () => {
+  const baseHasUnseenInput = {
+    hasActionableProposedPlan: false,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    interactionMode: "default" as const,
+    session: null,
+  };
+
   it("returns true when a thread completed after its last visit", () => {
     expect(
       hasUnseenCompletion({
-        hasActionableProposedPlan: false,
-        hasPendingApprovals: false,
-        hasPendingUserInput: false,
-        interactionMode: "default",
+        ...baseHasUnseenInput,
         latestTurn: makeLatestTurn(),
         lastVisitedAt: "2026-03-09T10:04:00.000Z",
-        session: null,
       }),
     ).toBe(true);
+  });
+
+  it("returns false when a turn was interrupted, even if completedAt is set", () => {
+    // The interrupt handler sets a synthetic completedAt timestamp, but an
+    // interrupted turn is not an AI completion — the user stopped it. It must
+    // never surface as an unread completion dot.
+    expect(
+      hasUnseenCompletion({
+        ...baseHasUnseenInput,
+        latestTurn: { ...makeLatestTurn(), state: "interrupted" as const },
+        lastVisitedAt: "2026-03-09T10:04:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for an interrupted turn even when it was never visited", () => {
+    expect(
+      hasUnseenCompletion({
+        ...baseHasUnseenInput,
+        latestTurn: { ...makeLatestTurn(), state: "interrupted" as const },
+        lastVisitedAt: undefined,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -440,6 +467,22 @@ describe("resolveThreadStatusPill", () => {
         thread: baseThread,
       }),
     ).toMatchObject({ label: "Working", pulse: true });
+  });
+
+  it("does not show Working or Completed when the session is running but the latest turn was interrupted", () => {
+    // Reproduces: user manually stops a frozen thread. The server emits
+    // thread.turn-interrupt-requested which sets latestTurn.state to
+    // "interrupted" but leaves session.status as "running". Neither the
+    // spinner ("Working") nor the unread completion dot ("Completed") should
+    // appear — the user stopped it intentionally.
+    const result = resolveThreadStatusPill({
+      thread: {
+        ...baseThread,
+        latestTurn: { ...makeLatestTurn(), state: "interrupted" as const },
+      },
+    });
+    expect(result).not.toMatchObject({ label: "Working" });
+    expect(result).not.toMatchObject({ label: "Completed" });
   });
 
   it("shows plan ready when a settled plan turn has a proposed plan ready for follow-up", () => {

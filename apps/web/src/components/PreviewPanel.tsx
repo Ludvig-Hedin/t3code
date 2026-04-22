@@ -518,12 +518,14 @@ function PreviewPanelInner({ projectId, onDetach }: PreviewPanelProps) {
                   // Live output received during the session — most complete view
                   activeLogs.map((line, i) => (
                     // eslint-disable-next-line react/no-array-index-key
-                    <div key={i} className="whitespace-pre-wrap break-all leading-5 text-foreground">
+                    <div
+                      key={i}
+                      className="whitespace-pre-wrap break-all leading-5 text-foreground"
+                    >
                       {line}
                     </div>
                   ))
-                ) : activeSession.errorMessage &&
-                  activeSession.errorMessage.includes("\n") ? (
+                ) : activeSession.errorMessage && activeSession.errorMessage.includes("\n") ? (
                   // No live logs but server captured output in the process buffer —
                   // show it in full so the user gets the same context they'd have
                   // seen in a terminal (exit code + last output block).

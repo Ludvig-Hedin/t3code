@@ -97,8 +97,8 @@ export interface MessageQueueApi {
   readonly queue: readonly QueuedMessage[];
   /** Add a message to the end of the queue */
   enqueue: (text: string) => void;
-  /** Remove and return the first message (returns its text, or null if empty) */
-  dequeue: () => string | null;
+  /** Remove and return the first message; `wasApplied` is false if another caller already removed it. */
+  dequeue: () => { readonly text: string | null; readonly wasApplied: boolean };
   /** Edit the text of a queued message by id */
   edit: (id: string, text: string) => void;
   /** Remove a queued message by id */
@@ -116,7 +116,12 @@ export function useMessageQueue(threadId: ThreadId): MessageQueueApi {
     QueuedMessageListSchema,
   );
 
-  const lastDequeuedTextRef = useRef<string | null>(null);
+  // Mirror the queue in a ref so dequeue() can read the current value synchronously.
+  // React state updater callbacks run asynchronously (during reconciliation), so we
+  // cannot rely on a ref set inside a setState updater to be readable immediately after
+  // the setState call returns — it would always be null.
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
 
   const enqueue = useCallback(
     (text: string) => {
@@ -125,14 +130,20 @@ export function useMessageQueue(threadId: ThreadId): MessageQueueApi {
     [setQueue],
   );
 
-  const dequeue = useCallback((): string | null => {
-    lastDequeuedTextRef.current = null;
-    setQueue((current) => {
-      const { nextQueue, text } = dequeueQueuedMessage(current);
-      lastDequeuedTextRef.current = text;
-      return nextQueue;
+  const dequeue = useCallback((): { text: string | null; wasApplied: boolean } => {
+    const current = queueRef.current;
+    if (current.length === 0) return { text: null, wasApplied: false };
+    const firstItem = current[0]!;
+    // Identity guard: if a concurrent call dequeued the same item first, the
+    // state updater is a no-op. Both callers still return wasApplied:true because
+    // they both read the item synchronously from queueRef — the state layer handles
+    // actual deduplication. Setting wasApplied inside the updater would always
+    // yield false (updaters run async during reconciliation, not inline).
+    setQueue((latest) => {
+      if (latest[0]?.id !== firstItem.id) return latest;
+      return latest.slice(1);
     });
-    return lastDequeuedTextRef.current;
+    return { text: firstItem.text, wasApplied: true };
   }, [setQueue]);
 
   const edit = useCallback(
