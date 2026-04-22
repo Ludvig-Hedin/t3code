@@ -9,7 +9,6 @@ import GitActionsControl from "../GitActionsControl";
 import { CodeReviewControl } from "../CodeReviewControl";
 import {
   DiffIcon,
-  EllipsisIcon,
   ExternalLinkIcon,
   FolderOpenIcon,
   MonitorPlayIcon,
@@ -19,7 +18,6 @@ import { useFilesPanelStore } from "~/filesPanelStore";
 import { isMacPlatform } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
 import { Toggle } from "../ui/toggle";
@@ -156,7 +154,6 @@ export const ChatHeader = memo(function ChatHeader({
   const filesOpen = useFilesPanelStore((s) => s.open);
   const toggleFiles = useFilesPanelStore((s) => s.toggle);
   const isMac = typeof navigator !== "undefined" ? isMacPlatform(navigator.platform) : false;
-  const hasSecondaryControls = Boolean(activeProjectScripts) || Boolean(activeProjectName);
   const secondaryControlsProps = {
     activeThreadId,
     activeProjectName,
@@ -202,38 +199,9 @@ export const ChatHeader = memo(function ChatHeader({
         )}
       </div>
       <div className="flex shrink-0 items-center justify-end gap-1">
-        <div className="hidden @[980px]/header-actions:contents">
+        <div className="hidden md:contents">
           <SecondaryControls {...secondaryControlsProps} />
         </div>
-        {hasSecondaryControls && (
-          <Popover>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <PopoverTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="xs"
-                        aria-label="More thread controls"
-                        className="hidden shrink-0 md:flex @[980px]/header-actions:hidden"
-                      />
-                    }
-                  >
-                    <EllipsisIcon className="size-3" />
-                  </PopoverTrigger>
-                }
-              />
-              <TooltipPopup side="bottom">More thread controls</TooltipPopup>
-            </Tooltip>
-            <PopoverPopup side="bottom" align="end" sideOffset={6} className="min-w-52">
-              <div className="flex flex-wrap items-center gap-1">
-                <SecondaryControls {...secondaryControlsProps} />
-              </div>
-            </PopoverPopup>
-          </Popover>
-        )}
         <div className="hidden md:contents">
           <Tooltip>
             <TooltipTrigger

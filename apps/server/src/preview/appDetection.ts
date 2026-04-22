@@ -9,7 +9,8 @@ export type PreviewType = "browser" | "logs";
 export interface DetectionEntry {
   /** Relative path from project root, e.g. "apps/web/package.json" */
   relativePath: string;
-  hasDevScript: boolean;
+  /** All scripts defined in package.json (name → command value). Empty for non-package files. */
+  scripts: Record<string, string>;
   hasBunLock: boolean;
 }
 
@@ -143,18 +144,28 @@ const STANDALONE_FILE_PREVIEW_RULES: Array<{
 }> = [
   { ext: ".html", kind: "html", id: "html", label: "HTML" },
   { ext: ".htm", kind: "html", id: "html", label: "HTML" },
-  { ext: ".md", kind: "markdown", id: "markdown", label: "Markdown" },
-  { ext: ".mdx", kind: "markdown", id: "markdown", label: "Markdown" },
   { ext: ".tsx", kind: "tsx", id: "tsx", label: "TSX" },
   { ext: ".jsx", kind: "tsx", id: "tsx", label: "JSX" },
   { ext: ".docx", kind: "docx", id: "docx", label: "Docx" },
 ];
 
-function devCommand(pm: PackageManager): string {
-  if (pm === "bun") return "bun run dev";
-  if (pm === "pnpm") return "pnpm run dev";
-  if (pm === "yarn") return "yarn dev";
-  return "npm run dev";
+function runScriptCommand(pm: PackageManager, scriptName: string): string {
+  if (pm === "bun") return `bun run ${scriptName}`;
+  if (pm === "pnpm") return `pnpm run ${scriptName}`;
+  // yarn omits the "run" prefix for user-defined scripts
+  if (pm === "yarn") return `yarn ${scriptName}`;
+  return `npm run ${scriptName}`;
+}
+
+/**
+ * Script names that are build/lint/test pipelines rather than long-running dev servers.
+ * Anything NOT matching this list is considered a runnable dev-server script.
+ */
+const NON_RUNNABLE_SCRIPT_RE =
+  /^(build|lint|typecheck|type-check|format|clean|prepare|postinstall|preinstall|release|publish|test|e2e|ci|validate|verify|check|generate|codegen|db:|prisma:|knex:)(\b|:|-|$)/i;
+
+function getRunnableScripts(scripts: Record<string, string>): string[] {
+  return Object.keys(scripts).filter((name) => !NON_RUNNABLE_SCRIPT_RE.test(name));
 }
 
 /** Build detection candidates from a list of scanned filesystem entries. */
@@ -249,7 +260,10 @@ export function buildDetectionCandidates(
     }
 
     // --- package.json files ---
-    if (!rel.endsWith("package.json") || !entry.hasDevScript) continue;
+    if (!rel.endsWith("package.json")) continue;
+
+    const runnableScripts = getRunnableScripts(entry.scripts);
+    if (runnableScripts.length === 0) continue;
 
     const dir = path.dirname(rel); // ".", "apps/web", etc.
     const absCwd = dir === "." ? projectRoot : path.join(projectRoot, dir);
@@ -262,48 +276,43 @@ export function buildDetectionCandidates(
     // Skip packages/ dirs
     if (known && known.id === "") continue;
 
-    // Root package.json
+    // Determine the base id/label/type for this package.json
+    let baseId: string;
+    let baseLabel: string;
+    let baseType: PreviewType;
+
     if (dir === ".") {
-      const id = "web";
+      baseId = "web";
+      baseLabel = "Web";
+      baseType = "browser";
+    } else if (known) {
+      baseId = known.id;
+      baseLabel = known.label;
+      baseType = known.type;
+    } else {
+      const dirName = path.basename(dir);
+      baseId = dirName || "app";
+      baseLabel = dirName || "App";
+      baseType = "browser";
+    }
+
+    // Create one candidate per runnable script.
+    // If there is only one script, use the base id/label unchanged (backward compat).
+    // If there are multiple, suffix with the script name so each gets a unique tab.
+    for (const scriptName of runnableScripts) {
+      const id = runnableScripts.length === 1 ? baseId : `${baseId}-${scriptName}`;
+      const label =
+        runnableScripts.length === 1 ? baseLabel : `${baseLabel} (${scriptName})`;
       if (!seenIds.has(id)) {
         seenIds.add(id);
         candidates.push({
           id,
-          label: "Web",
-          command: devCommand(pm),
-          cwd: projectRoot,
-          type: "browser",
-        });
-      }
-      continue;
-    }
-
-    if (known) {
-      if (!seenIds.has(known.id)) {
-        seenIds.add(known.id);
-        candidates.push({
-          id: known.id,
-          label: known.label,
-          command: devCommand(pm),
+          label,
+          command: runScriptCommand(pm, scriptName),
           cwd: absCwd,
-          type: known.type,
+          type: baseType,
         });
       }
-      continue;
-    }
-
-    // Unknown package.json with dev script — use directory name as id
-    const dirName = path.basename(dir);
-    const unknownId = dirName || "app";
-    if (!seenIds.has(unknownId)) {
-      seenIds.add(unknownId);
-      candidates.push({
-        id: unknownId,
-        label: dirName,
-        command: devCommand(pm),
-        cwd: absCwd,
-        type: "browser",
-      });
     }
   }
 
@@ -315,11 +324,12 @@ export function buildDetectionCandidates(
   }
 
   candidates.sort((left, right) => {
+    // Strip script suffix (e.g. "web-dev" → "web") to look up the base priority.
+    const baseId = (id: string) => id.replace(/-[^-]+$/, "");
     const order: Record<string, number> = {
       html: 0,
-      markdown: 1,
-      tsx: 2,
-      docx: 3,
+      tsx: 1,
+      docx: 2,
       web: 10,
       api: 20,
       app: 30,
@@ -328,8 +338,8 @@ export function buildDetectionCandidates(
       mobile: 60,
       marketing: 70,
     };
-    const leftOrder = order[left.id] ?? 100;
-    const rightOrder = order[right.id] ?? 100;
+    const leftOrder = order[baseId(left.id)] ?? 100;
+    const rightOrder = order[baseId(right.id)] ?? 100;
     if (leftOrder !== rightOrder) return leftOrder - rightOrder;
     return left.label.localeCompare(right.label);
   });

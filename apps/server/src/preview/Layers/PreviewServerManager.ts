@@ -48,7 +48,7 @@ async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
         };
         entries.push({
           relativePath: "package.json",
-          hasDevScript: Boolean(pkg.scripts?.["dev"] || pkg.scripts?.["start"]),
+          scripts: pkg.scripts ?? {},
           hasBunLock,
         });
       } catch {
@@ -59,25 +59,23 @@ async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
     // Scan manage.py / pyproject.toml / Cargo.toml at root
     for (const f of ["manage.py", "pyproject.toml", "Cargo.toml"]) {
       if (rootFiles.includes(f)) {
-        entries.push({ relativePath: f, hasDevScript: false, hasBunLock: false });
+        entries.push({ relativePath: f, scripts: {}, hasBunLock: false });
       }
     }
 
-    // Standalone file previews at the repo root.
+    // Standalone file previews at the repo root (markdown excluded — use files explorer instead).
     for (const f of rootFiles) {
       const lower = f.toLowerCase();
       if (
         lower.endsWith(".html") ||
         lower.endsWith(".htm") ||
-        lower.endsWith(".md") ||
-        lower.endsWith(".mdx") ||
         lower.endsWith(".tsx") ||
         lower.endsWith(".jsx") ||
         lower.endsWith(".docx")
       ) {
         entries.push({
           relativePath: f,
-          hasDevScript: false,
+          scripts: {},
           hasBunLock: false,
         });
       }
@@ -100,7 +98,7 @@ async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
             };
             entries.push({
               relativePath: `apps/${appDir}/package.json`,
-              hasDevScript: Boolean(pkg.scripts?.["dev"] || pkg.scripts?.["start"]),
+              scripts: pkg.scripts ?? {},
               hasBunLock,
             });
           } catch {
@@ -112,7 +110,7 @@ async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
         if (subFiles.some((f) => f.endsWith(".xcodeproj"))) {
           entries.push({
             relativePath: `apps/${appDir}/mobile`,
-            hasDevScript: false,
+            scripts: {},
             hasBunLock,
           });
         }

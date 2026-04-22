@@ -189,41 +189,88 @@ const previewProxyHandler = Effect.gen(function* () {
   );
 
   // -------------------------------------------------------------------------
-  // Post-processing: CORS override + absolute-URL rewriting
+  // Post-processing: CORS override + URL rewriting
   // -------------------------------------------------------------------------
-  // Build mutable copies so we can patch headers and body without mutating the
-  // resolved value (which is still referenced in the Effect pipeline).
   const proxyBase = `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(appId)}`;
   const responseHeaders: Record<string, string> = { ...result.headers };
   let responseBody = result.body;
 
-  // Override CORS: Vite's dev server emits Access-Control-Allow-Origin set to
-  // its own origin (e.g. http://localhost:5733). Sandboxed iframes have the
-  // opaque origin "null", which Vite and most dev servers reject.  Setting "*"
-  // lets the null-origin iframe fetch all proxied assets.
+  // Override CORS: sandboxed iframes have opaque origin "null", which dev
+  // servers reject. Setting "*" lets the null-origin iframe fetch all assets.
   responseHeaders["access-control-allow-origin"] = "*";
-  // credentials flags are incompatible with a wildcard allow-origin.
   delete responseHeaders["access-control-allow-credentials"];
 
-  // Rewrite absolute dev-server URLs in HTML and JavaScript response bodies.
-  // Vite embeds http://localhost:{port}/… references for @vite/client, HMR
-  // overlay, and other internal endpoints.  Replacing them with proxy paths
-  // keeps every resource fetch routed through Bird Code's server (which adds
-  // the CORS * header) rather than hitting the upstream directly and being
-  // blocked by the null-origin CORS check.
   const contentType = responseHeaders["content-type"] ?? "";
-  const isRewritable =
-    contentType.includes("text/html") ||
-    contentType.includes("text/javascript") ||
-    contentType.includes("application/javascript");
+  const isHtml = contentType.includes("text/html");
+  const isCss = contentType.includes("text/css");
+  const isJs =
+    contentType.includes("text/javascript") || contentType.includes("application/javascript");
 
-  if (isRewritable) {
-    const bodyStr = responseBody.toString("utf8");
+  if (isHtml || isCss || isJs) {
+    let bodyStr = responseBody.toString("utf8");
+
+    // 1. Rewrite absolute http://localhost:{port}/… and http://127.0.0.1:{port}/… URLs.
+    //    Vite and Next.js embed these in their generated HTML/JS for @vite/client,
+    //    HMR overlays, and similar internal endpoints.
     const devServerPattern = new RegExp(`http://(?:localhost|127\\.0\\.0\\.1):${port}`, "g");
-    const rewritten = bodyStr.replace(devServerPattern, proxyBase);
-    if (rewritten !== bodyStr) {
-      responseBody = Buffer.from(rewritten, "utf8");
-      // content-length must match the new byte length after rewriting.
+    bodyStr = bodyStr.replace(devServerPattern, proxyBase);
+
+    if (isHtml) {
+      // 2. Rewrite root-relative paths in HTML src/href/action/srcset attributes.
+      //    Dev servers (Vite, Next.js, CRA) emit paths like `src="/@vite/client"` or
+      //    `src="/src/main.tsx"`.  Without rewriting, the browser resolves these
+      //    against the Bird Code server origin, not the proxied dev server — causing
+      //    every asset to 404 and the page to show a white screen.
+      //    We replace leading "/" (but not "//", which is protocol-relative) in
+      //    attribute values so they route through the proxy instead.
+      bodyStr = bodyStr.replace(
+        /((?:src|href|action|srcset)=["'])\/(?!\/)/gi,
+        `$1${proxyBase}/`,
+      );
+
+      // 3. Inject <base> and a console-capture script at the start of <head>.
+      //    The <base> tag fixes any remaining relative paths missed by the regex.
+      //    The console script monkey-patches console.* and window.onerror so the
+      //    Preview Panel can display browser-side logs without needing DevTools.
+      const injectHead =
+        `<base href="${proxyBase}/">` +
+        `<script>(function(){` +
+        `var _c={log:console.log.bind(console),warn:console.warn.bind(console),` +
+        `error:console.error.bind(console),info:console.info.bind(console),` +
+        `debug:console.debug.bind(console)};` +
+        `function ser(v){if(v===null)return'null';if(v===undefined)return'undefined';` +
+        `if(typeof v==='string')return v;` +
+        `if(typeof v==='number'||typeof v==='boolean')return String(v);` +
+        `try{return JSON.stringify(v)}catch(e){return String(v)}}` +
+        `function send(level,args){try{window.parent.postMessage(` +
+        `{__birdcode:1,level:level,args:Array.prototype.map.call(args,ser),ts:Date.now()},'*'` +
+        `)}catch(e){}}` +
+        `['log','warn','error','info','debug'].forEach(function(m){` +
+        `console[m]=function(){_c[m].apply(console,arguments);send(m,arguments)};});` +
+        `window.addEventListener('error',function(e){` +
+        `send('error',[e.message+(e.filename?' ('+e.filename+':'+e.lineno+'%)':'')]);});` +
+        `window.addEventListener('unhandledrejection',function(e){` +
+        `send('error',['Unhandled rejection: '+ser(e.reason)]);});` +
+        `})()</script>`;
+
+      if (/<head>/i.test(bodyStr)) {
+        bodyStr = bodyStr.replace(/<head>/i, `<head>${injectHead}`);
+      } else if (/<html[^>]*>/i.test(bodyStr)) {
+        // HTML without explicit <head> — wrap injection in a <head> block
+        bodyStr = bodyStr.replace(/<html([^>]*)>/i, `<html$1><head>${injectHead}</head>`);
+      } else {
+        bodyStr = injectHead + bodyStr;
+      }
+    }
+
+    if (isCss) {
+      // 4. Rewrite root-relative url('/...') in CSS files (fonts, images, imports).
+      bodyStr = bodyStr.replace(/url\((['"]?)\/(?!\/)/g, `url($1${proxyBase}/`);
+    }
+
+    const newBody = Buffer.from(bodyStr, "utf8");
+    if (newBody.byteLength !== responseBody.byteLength || newBody.toString() !== responseBody.toString("utf8")) {
+      responseBody = newBody;
       if (responseHeaders["content-length"]) {
         responseHeaders["content-length"] = String(responseBody.byteLength);
       }

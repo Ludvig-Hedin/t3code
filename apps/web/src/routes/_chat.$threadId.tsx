@@ -24,7 +24,11 @@ import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/component
 import { AppLoadingScreen } from "../components/AppLoadingScreen";
 
 const DiffPanel = lazy(() => import("../components/DiffPanel"));
-const FilesPanel = lazy(() => import("../components/FilesPanel"));
+// Preload FilesPanel eagerly — avoids Suspense suspension on the very first click
+// (which causes the sheet to open then immediately close due to the Suspense
+// render cycle interacting with @base-ui/react dialog's dismiss handlers).
+const filesPanelImport = import("../components/FilesPanel");
+const FilesPanel = lazy(() => filesPanelImport);
 const DIFF_INLINE_LAYOUT_MEDIA_QUERY = "(max-width: 1180px)";
 const DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY = "chat_diff_sidebar_width";
 const DIFF_INLINE_DEFAULT_WIDTH = "clamp(28rem,48vw,44rem)";
@@ -456,7 +460,11 @@ function ChatThreadRouteView() {
   return (
     <>
       <FilesPanelSheet filesOpen={filesOpen} onCloseFiles={closeFiles}>
-        {shouldRenderFilesContent ? <LazyFilesPanel mode="sheet" /> : null}
+        {/* Always render in sheet mode: the portal is keepMounted so the content
+            stays in the hidden popup. Avoids the null→LazyFilesPanel Suspense
+            transition firing while the dialog's dismiss handlers are initializing,
+            which caused the panel to close immediately on the very first click. */}
+        <LazyFilesPanel mode="sheet" />
       </FilesPanelSheet>
       <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
         <ChatView threadId={threadId} />

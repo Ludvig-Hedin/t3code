@@ -11,6 +11,15 @@ import type { PreviewApp, PreviewEvent, PreviewSession } from "@t3tools/contract
 import { create } from "zustand";
 
 const MAX_LOG_LINES = 1000;
+const MAX_CONSOLE_ENTRIES = 500;
+
+export type ConsoleLevel = "log" | "warn" | "error" | "info" | "debug";
+
+export interface ConsoleEntry {
+  level: ConsoleLevel;
+  args: string[];
+  timestamp: number;
+}
 
 /** `${projectId}:${appId}` */
 type SessionKey = string;
@@ -29,6 +38,7 @@ function sessionKey(projectId: string, appId: string): SessionKey {
  */
 const EMPTY_APPS: PreviewApp[] = [];
 const EMPTY_LOGS: string[] = [];
+const EMPTY_CONSOLE: ConsoleEntry[] = [];
 
 export type DetectionStatus = "idle" | "detecting" | "done" | "error";
 
@@ -36,6 +46,7 @@ interface PreviewState {
   apps: Record<string, PreviewApp[]>;
   sessions: Record<SessionKey, PreviewSession>;
   logs: Record<SessionKey, string[]>;
+  consoleLogs: Record<SessionKey, ConsoleEntry[]>;
   activeAppId: Record<string, string>;
   /** Tracks per-project scan progress so the UI can show a loading state. */
   detectionStatus: Record<string, DetectionStatus>;
@@ -47,12 +58,15 @@ interface PreviewStore extends PreviewState {
   applyEvent: (event: PreviewEvent) => void;
   setActiveApp: (projectId: string, appId: string) => void;
   clearProject: (projectId: string) => void;
+  appendConsoleLog: (projectId: string, appId: string, entry: ConsoleEntry) => void;
+  clearConsoleLogs: (projectId: string, appId: string) => void;
 }
 
 export const usePreviewStore = create<PreviewStore>((set) => ({
   apps: {},
   sessions: {},
   logs: {},
+  consoleLogs: {},
   activeAppId: {},
   detectionStatus: {},
 
@@ -109,24 +123,46 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
       activeAppId: { ...state.activeAppId, [projectId]: appId },
     })),
 
+  appendConsoleLog: (projectId, appId, entry) =>
+    set((state) => {
+      const key = sessionKey(projectId, appId);
+      const existing = state.consoleLogs[key] ?? [];
+      const next =
+        existing.length >= MAX_CONSOLE_ENTRIES
+          ? [...existing.slice(existing.length - MAX_CONSOLE_ENTRIES + 1), entry]
+          : [...existing, entry];
+      return { consoleLogs: { ...state.consoleLogs, [key]: next } };
+    }),
+
+  clearConsoleLogs: (projectId, appId) =>
+    set((state) => {
+      const key = sessionKey(projectId, appId);
+      const next = { ...state.consoleLogs };
+      delete next[key];
+      return { consoleLogs: next };
+    }),
+
   clearProject: (projectId) =>
     set((state) => {
       const nextApps = { ...state.apps };
       delete nextApps[projectId];
       const nextSessions = { ...state.sessions };
       const nextLogs = { ...state.logs };
+      const nextConsole = { ...state.consoleLogs };
       const nextActive = { ...state.activeAppId };
       delete nextActive[projectId];
       for (const key of Object.keys(nextSessions)) {
         if (key.startsWith(`${projectId}:`)) {
           delete nextSessions[key];
           delete nextLogs[key];
+          delete nextConsole[key];
         }
       }
       return {
         apps: nextApps,
         sessions: nextSessions,
         logs: nextLogs,
+        consoleLogs: nextConsole,
         activeAppId: nextActive,
       };
     }),
@@ -165,6 +201,12 @@ export const selectDetectionStatus =
   (projectId: string) =>
   (state: PreviewStore): DetectionStatus =>
     state.detectionStatus[projectId] ?? "idle";
+
+/** Convenience selector: browser console log entries for a specific app. Returns stable EMPTY_CONSOLE constant when absent. */
+export const selectConsoleLogs =
+  (projectId: string, appId: string) =>
+  (state: PreviewStore): ConsoleEntry[] =>
+    state.consoleLogs[sessionKey(projectId, appId)] ?? EMPTY_CONSOLE;
 
 /** Convenience selector: true if any app in the project is running or starting */
 export const selectHasRunningApp =
