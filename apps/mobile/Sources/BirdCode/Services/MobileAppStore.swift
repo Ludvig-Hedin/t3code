@@ -177,12 +177,12 @@ final class MobileAppStore {
       saveConnectionPreferences()
       // Navigation to MobileWebView is driven by hasPairedSession becoming true.
     } catch {
-      // If URLSession failed with a "cannot connect to host"-style error but
+      // If URLSession failed with a local-network reachability error but
       // Local Network permission was never determined (authorization == .unknown
       // because the user hadn't responded to the prompt yet at probe time),
       // re-probe now that iOS has had time to settle — this catches the case
       // where the user tapped Deny mid-way through the pair request.
-      if case .desktopUnreachable = (error as? MobileAPIClientError) {
+      if shouldRecheckLocalNetworkPermission(after: error) {
         let recheck = await LocalNetworkProbe.probe(timeout: 1)
         if recheck == .denied {
           setError(.localNetworkPermissionDenied)
@@ -544,6 +544,15 @@ final class MobileAppStore {
     }
 
     return false
+  }
+
+  private func shouldRecheckLocalNetworkPermission(after error: Error) -> Bool {
+    switch error as? MobileAPIClientError {
+    case .desktopUnreachable, .localNetworkUnavailable:
+      return true
+    default:
+      return false
+    }
   }
 
   private func handleSessionRevocation(_ error: Error) -> Bool {

@@ -8,6 +8,7 @@ enum MobileAPIClientError: Error, LocalizedError, Equatable {
   case httpStatus(Int, String)
   case missingDeviceToken
   case localNetworkPermissionDenied
+  case localNetworkUnavailable(host: String, detail: String)
   case desktopUnreachable(host: String, detail: String)
   case networkOffline(String)
   case atsBlocked(String)
@@ -26,6 +27,8 @@ enum MobileAPIClientError: Error, LocalizedError, Equatable {
       return "Pair Bird Code from the settings screen first."
     case .localNetworkPermissionDenied:
       return "Bird Code needs Local Network access to reach your desktop on Wi-Fi. Tap Open Settings, turn on Local Network, then pair again."
+    case .localNetworkUnavailable(let host, let detail):
+      return "iOS reported the local Wi-Fi connection to \(host) as offline. This usually means Local Network access is off, the Mac firewall blocked Bird Code, or the pairing QR contains a Mac address your phone cannot reach. (\(detail))"
     case .desktopUnreachable(let host, let detail):
       return "Can't reach the desktop at \(host). Make sure Bird Code is running on the Mac and that both devices are on the same Wi-Fi. (\(detail))"
     case .networkOffline(let detail):
@@ -40,7 +43,7 @@ enum MobileAPIClientError: Error, LocalizedError, Equatable {
   /// screens. The WKWebView will retry on its own.
   var isTransientNetworkIssue: Bool {
     switch self {
-    case .localNetworkPermissionDenied, .desktopUnreachable, .networkOffline:
+    case .localNetworkPermissionDenied, .localNetworkUnavailable, .desktopUnreachable, .networkOffline:
       return true
     default:
       return false
@@ -206,6 +209,9 @@ final class MobileAPIClient {
     let detail = urlError.localizedDescription
     switch urlError.code {
     case .notConnectedToInternet:
+      if MobileNetworkAddress.isLocalNetworkURL(url) {
+        return MobileAPIClientError.localNetworkUnavailable(host: host, detail: detail)
+      }
       return MobileAPIClientError.networkOffline(detail)
     case .appTransportSecurityRequiresSecureConnection:
       return MobileAPIClientError.atsBlocked(detail)
@@ -234,6 +240,54 @@ final class MobileAPIClient {
     }
     let prefix = collapsed.prefix(240)
     return "\(prefix)…"
+  }
+}
+
+enum MobileNetworkAddress {
+  static func isLocalNetworkURL(_ url: URL) -> Bool {
+    guard let host = url.host(percentEncoded: false)?.lowercased() else {
+      return false
+    }
+    return isLocalNetworkHost(host)
+  }
+
+  static func isLocalNetworkHost(_ host: String) -> Bool {
+    let normalizedHost = host.lowercased()
+    if normalizedHost == "localhost" || normalizedHost.hasSuffix(".local") {
+      return true
+    }
+
+    if let ipv4 = parseIPv4(normalizedHost) {
+      return isPrivateOrLinkLocalIPv4(ipv4)
+    }
+
+    guard normalizedHost.contains(":") else {
+      return false
+    }
+
+    return normalizedHost == "::1" ||
+      normalizedHost.hasPrefix("fe80:") ||
+      normalizedHost.hasPrefix("fc") ||
+      normalizedHost.hasPrefix("fd")
+  }
+
+  private static func parseIPv4(_ host: String) -> [Int]? {
+    let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 4 else { return nil }
+    let octets = parts.compactMap { Int($0) }
+    guard octets.count == 4, octets.allSatisfy({ (0...255).contains($0) }) else {
+      return nil
+    }
+    return octets
+  }
+
+  private static func isPrivateOrLinkLocalIPv4(_ octets: [Int]) -> Bool {
+    let first = octets[0]
+    let second = octets[1]
+    return first == 10 ||
+      (first == 172 && (16...31).contains(second)) ||
+      (first == 192 && second == 168) ||
+      (first == 169 && second == 254)
   }
 }
 

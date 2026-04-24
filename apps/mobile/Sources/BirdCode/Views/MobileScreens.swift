@@ -169,6 +169,8 @@ struct MobilePairingView: View {
     switch store.lastAPIError {
     case .localNetworkPermissionDenied:
       return "Local Network access needed"
+    case .localNetworkUnavailable:
+      return "Local network issue"
     case .desktopUnreachable:
       return "Can't reach the desktop"
     case .networkOffline:
@@ -180,7 +182,7 @@ struct MobilePairingView: View {
 
   private var primaryBannerAction: MobileBannerAction? {
     switch store.lastAPIError {
-    case .localNetworkPermissionDenied:
+    case .localNetworkPermissionDenied, .localNetworkUnavailable:
       return MobileBannerAction(title: "Open Settings") {
         openAppSettings()
       }

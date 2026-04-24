@@ -136,7 +136,7 @@ private struct WebViewRepresentable: UIViewRepresentable {
   @Binding var webViewRef: WKWebView?
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(onLoadFinished: onLoadFinished, onLoadFailed: onLoadFailed)
+    Coordinator(serverURL: serverURL, onLoadFinished: onLoadFinished, onLoadFailed: onLoadFailed)
   }
 
   func makeUIView(context: Context) -> WKWebView {
@@ -197,13 +197,16 @@ private struct WebViewRepresentable: UIViewRepresentable {
   @MainActor
   final class Coordinator: NSObject, WKNavigationDelegate {
     weak var webView: WKWebView?
+    private let serverURL: URL
     private let onLoadFinished: () -> Void
     private let onLoadFailed: (String) -> Void
 
     init(
+      serverURL: URL,
       onLoadFinished: @escaping () -> Void,
       onLoadFailed: @escaping (String) -> Void
     ) {
+      self.serverURL = serverURL
       self.onLoadFinished = onLoadFinished
       self.onLoadFailed = onLoadFailed
     }
@@ -218,7 +221,7 @@ private struct WebViewRepresentable: UIViewRepresentable {
       didFail navigation: WKNavigation!,
       withError error: Error
     ) {
-      let message = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+      let message = Self.loadFailureMessage(error, serverURL: serverURL)
       onLoadFailed(message)
     }
 
@@ -230,8 +233,20 @@ private struct WebViewRepresentable: UIViewRepresentable {
       let nsError = error as NSError
       // -999 is NSURLErrorCancelled — happens on redirect, not a real failure.
       guard nsError.code != NSURLErrorCancelled else { return }
-      let message = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+      let message = Self.loadFailureMessage(error, serverURL: serverURL)
       onLoadFailed(message)
+    }
+
+    private static func loadFailureMessage(_ error: Error, serverURL: URL) -> String {
+      let detail = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+      guard
+        (error as? URLError)?.code == .notConnectedToInternet,
+        MobileNetworkAddress.isLocalNetworkURL(serverURL),
+        let host = serverURL.host(percentEncoded: false)
+      else {
+        return detail
+      }
+      return "iOS reported the local Wi-Fi connection to \(host) as offline. Check Bird Code's Local Network permission in Settings, confirm the Mac firewall allows inbound connections, and make sure the QR address is reachable from this iPhone. (\(detail))"
     }
 
     // Allow all navigations — the desktop server may serve sub-routes.
