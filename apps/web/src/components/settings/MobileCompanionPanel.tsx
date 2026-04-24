@@ -65,6 +65,14 @@ function resolveDesktopPairingUrl(): string | null {
   }
 }
 
+export function resolveDesktopPairingCode(): string | null {
+  if (typeof window === "undefined") return null;
+  const desktopPairingCode = window.desktopBridge?.getPairingCode?.();
+  if (typeof desktopPairingCode !== "string") return null;
+  const trimmed = desktopPairingCode.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function buildPairingPayload(serverURL: string): PairingPayload {
   const desktopAuthToken = window.desktopBridge?.getDesktopAuthToken?.();
   return {
@@ -276,7 +284,7 @@ export function BirdCodeMobileCompanionPanel() {
   const serverURL = useMemo(() => resolveDesktopPairingUrl(), [tunnelStatus.status]);
   const pairingCode = useMemo(() => {
     if (!serverURL) return "";
-    return buildPairingCode(buildPairingPayload(serverURL));
+    return resolveDesktopPairingCode() ?? buildPairingCode(buildPairingPayload(serverURL));
   }, [serverURL]);
 
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -605,6 +613,14 @@ export function BirdCodeMobileCompanionPanel() {
                 <p className="text-xs text-muted-foreground">
                   Click to copy, then paste it into Bird Code on your device.
                 </p>
+                <div className="rounded-xl border bg-background/60 px-3 py-2">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    Desktop address in this QR
+                  </p>
+                  <p className="mt-1 break-all font-mono text-[10px] leading-relaxed text-foreground">
+                    {serverURL}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={handleCopyCode}

@@ -147,16 +147,6 @@ final class MobileAppStore {
     lastAPIError = nil
     defer { isPairing = false }
 
-    // Proactively evaluate iOS Local Network permission before the HTTP call.
-    // On first launch this shows the iOS prompt in-app so the user never has
-    // to open Settings. On a previous denial we fail fast with a clear message
-    // and an Open Settings shortcut, rather than a confusing "can't reach" error.
-    let authorization = await LocalNetworkProbe.probe()
-    if authorization == .denied {
-      setError(.localNetworkPermissionDenied)
-      return
-    }
-
     do {
       let response = try await apiClient.pair(
         baseURL: baseURL,
@@ -177,11 +167,6 @@ final class MobileAppStore {
       saveConnectionPreferences()
       // Navigation to MobileWebView is driven by hasPairedSession becoming true.
     } catch {
-      // If URLSession failed with a local-network reachability error but
-      // Local Network permission was never determined (authorization == .unknown
-      // because the user hadn't responded to the prompt yet at probe time),
-      // re-probe now that iOS has had time to settle — this catches the case
-      // where the user tapped Deny mid-way through the pair request.
       if shouldRecheckLocalNetworkPermission(after: error) {
         let recheck = await LocalNetworkProbe.probe(timeout: 1)
         if recheck == .denied {
@@ -240,15 +225,6 @@ final class MobileAppStore {
     saveConnectionPreferences()
 
     if let deviceToken = payload.deviceToken, !deviceToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      // Trigger the Local Network prompt before handing off to the WKWebView.
-      // Without this, the webview's first HTTP load silently fails when the
-      // user hasn't granted Local Network access yet.
-      let authorization = await LocalNetworkProbe.probe()
-      if authorization == .denied {
-        setError(.localNetworkPermissionDenied)
-        return
-      }
-
       self.deviceToken = deviceToken
       KeychainStore.writeString(deviceToken, account: StorageKey.deviceToken)
       if let deviceName = payload.deviceName, !deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -511,12 +487,6 @@ final class MobileAppStore {
   func clearError() {
     errorMessage = nil
     lastAPIError = nil
-  }
-
-  /// Fire the Local Network permission probe without blocking the UI so the
-  /// system prompt shows up as soon as the pairing screen appears.
-  func primeLocalNetworkPermission() {
-    Task { _ = await LocalNetworkProbe.probe(timeout: 5) }
   }
 
   private func applySnapshotEnvelope(_ envelope: MobileSnapshotEnvelope) {

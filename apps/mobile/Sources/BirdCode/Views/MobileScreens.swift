@@ -45,10 +45,6 @@ struct MobileRootView: View {
     }
     .fontDesign(.default)
     .task {
-      // Always prime the iOS Local Network prompt on launch. If we're already
-      // paired and headed into the webview, this guarantees the prompt shows
-      // *before* WKWebView's first HTTP load fails silently.
-      store.primeLocalNetworkPermission()
       await store.restoreSessionIfPossible()
     }
   }
@@ -156,13 +152,6 @@ struct MobilePairingView: View {
       }
     }
     .fontDesign(.default)
-    // Trigger the iOS Local Network permission prompt as soon as the user
-    // lands on the pairing screen. This way the system dialog appears before
-    // they tap "Pair device" — if they tap Allow, the first pair request
-    // succeeds on a cold install without a single Settings trip.
-    .task {
-      store.primeLocalNetworkPermission()
-    }
   }
 
   private var bannerTitle: String {
@@ -719,7 +708,9 @@ struct MobileSettingsSheet: View {
       .frame(maxWidth: .infinity, alignment: .topLeading)
     }
     .scrollIndicators(.visible)
-    .scrollDismissesKeyboard(.interactively)
+    // Keep this in sync with the first-run pairing screen. `.interactively`
+    // can freeze focus on iOS 17+ when a TextField lives inside this ScrollView.
+    .scrollDismissesKeyboard(.immediately)
   }
 
   private var settingsDevicesTab: some View {

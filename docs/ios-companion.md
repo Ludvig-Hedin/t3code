@@ -44,6 +44,7 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 - The pairing code is now a shareable payload, not a raw `localhost` URL, so Bird Code can reconnect without a manual token entry step.
 - On the first connection, iPhone will still prompt for Local Network access. Allow it so Bird Code can reach the desktop over your LAN.
 - If iOS reports `The Internet connection appears to be offline` while pairing to a `192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`, or `.local` desktop address, treat it as a local-network reachability failure first: check Bird Code's Local Network permission, macOS firewall inbound access, and whether the QR address is reachable from the phone.
+- The desktop Mobile panel shows the exact address encoded in the QR. On macOS the desktop app now prefers the Wi-Fi interface for this address before falling back to other private interfaces.
 - Bird Code suppresses stale local-network warnings after a successful pair so the UI does not show a green connection state and a red connection failure at the same time.
 - Bird Code caches the last successful snapshot locally so it can show the last synced threads after a restart even before the next refresh succeeds.
 - Bird Code exposes an explicit disconnect action so you can clear a stale session and pair again without reinstalling the app.

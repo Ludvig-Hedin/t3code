@@ -272,9 +272,52 @@ function isPrivateIpv4Address(address: string): boolean {
   );
 }
 
+function resolveDarwinWifiDeviceNames(): string[] {
+  if (process.platform !== "darwin") return [];
+
+  try {
+    const output = ChildProcess.execFileSync("networksetup", ["-listallhardwareports"], {
+      encoding: "utf8",
+      timeout: 1_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const names: string[] = [];
+    const blocks = output.split(/\n\s*\n/g);
+    for (const block of blocks) {
+      if (!/^Hardware Port:\s*Wi-Fi$/im.test(block)) continue;
+      const match = /^Device:\s*(\S+)$/im.exec(block);
+      if (match?.[1]) {
+        names.push(match[1]);
+      }
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
+function resolveInterfacePrivateIpv4(interfaceName: string): string | null {
+  const entries = OS.networkInterfaces()[interfaceName] ?? [];
+  for (const entry of entries) {
+    const family = (entry as { family: string | number }).family;
+    const isIpv4 = family === "IPv4" || family === 4;
+    if (isIpv4 && !entry.internal && isPrivateIpv4Address(entry.address)) {
+      return entry.address;
+    }
+  }
+  return null;
+}
+
 function resolvePairingHttpHost(): string | null {
   const interfaces = OS.networkInterfaces();
   let fallback: string | null = null;
+
+  for (const interfaceName of resolveDarwinWifiDeviceNames()) {
+    const wifiAddress = resolveInterfacePrivateIpv4(interfaceName);
+    if (wifiAddress) {
+      return wifiAddress;
+    }
+  }
 
   for (const entries of Object.values(interfaces)) {
     for (const entry of entries ?? []) {
