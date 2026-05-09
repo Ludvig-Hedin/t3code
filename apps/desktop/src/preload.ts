@@ -39,7 +39,18 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   },
   getPairingCode: () => {
     const result = ipcRenderer.sendSync(GET_PAIRING_CODE_CHANNEL);
-    return typeof result === "string" ? result : null;
+    if (typeof result === "string") return result;
+    // Pass through structured `{ ok: false, reason }` so the renderer can
+    // distinguish "no Wi-Fi available" from any other failure.
+    if (
+      typeof result === "object" &&
+      result !== null &&
+      (result as { ok?: unknown }).ok === false &&
+      typeof (result as { reason?: unknown }).reason === "string"
+    ) {
+      return result as { ok: false; reason: "wifi-required" };
+    }
+    return null;
   },
   getDesktopAuthToken: () => {
     const result = ipcRenderer.sendSync(GET_DESKTOP_AUTH_TOKEN_CHANNEL);

@@ -17,9 +17,9 @@ targets:
     sources:
       - path: Sources/BirdCode
       - path: Resources
-        type: syncedFolder
-        explicitFolders:
-          - Assets.xcassets
+        excludes:
+          - Info.plist
+          - .gitkeep
     info:
       path: Resources/Info.plist
       properties:
@@ -33,6 +33,14 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations: {}
+        # Deep-link scheme used by `birdcode://pair?payload=...` from the desktop
+        # share sheet. Must live in `info.properties` so xcodegen preserves it
+        # across regenerations — declaring it only in the manually-tracked
+        # Info.plist gets silently overwritten on `xcodegen generate`.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ludvighedin.birdcodemobile
+            CFBundleURLSchemes:
+              - birdcode
         NSCameraUsageDescription: Scan Bird Code pairing QR codes from your desktop or other devices.
         NSLocalNetworkUsageDescription: Bird Code needs local network access to reach your desktop session for pairing and syncing.
         # Bonjour services must be declared for iOS to grant Local Network access
@@ -50,5 +58,6 @@ targets:
           NSAllowsArbitraryLoadsInWebContent: true
     settings:
       base:
+        DEVELOPMENT_TEAM: XDBG7P4V96
         PRODUCT_BUNDLE_IDENTIFIER: com.ludvighedin.birdcodemobile
         GENERATE_INFOPLIST_FILE: NO

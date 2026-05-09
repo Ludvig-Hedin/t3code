@@ -13,6 +13,10 @@ final class MobileAppStore {
     static let lastSnapshot = "birdcode.mobile.lastSnapshot"
     /// Persisted so WKWebView can inject window.__BC_WS_TOKEN__ after app restarts.
     static let desktopAuthToken = "birdcode.mobile.desktopAuthToken"
+    /// Stable 4-char base36 suffix appended to a generic UIDevice.current.name
+    /// (e.g. "iPhone") so the server's deviceName-based dedupe doesn't collide
+    /// when two default-named iPhones pair against the same desktop.
+    static let deviceNameSuffix = "com.birdcode.deviceNameSuffix"
   }
 
   private let apiClient: MobileAPIClient
@@ -24,12 +28,9 @@ final class MobileAppStore {
   var snapshot: MobileReadModel?
   var threadSummaries: [MobileThreadSummary] = []
   var selectedThreadID: String?
-  var draftMessage: String = ""
-  var diffEnvelope: MobileDiffEnvelope?
   var devices: [MobileDevice] = []
   var isPairing = false
   var isRefreshing = false
-  var isLoadingDiff = false
   var errorMessage: String?
   /// The last API error surfaced to the UI. When this is
   /// `.localNetworkPermissionDenied` the pairing UI shows an "Open Settings"
@@ -39,6 +40,11 @@ final class MobileAppStore {
   var lastPairCode: String?
 
   @ObservationIgnored private var refreshTask: Task<Void, Never>?
+  /// Tracks whether we've already kicked off a Local Network permission probe
+  /// this launch. iOS only shows the system prompt the first time an app does
+  /// a Bonjour browse, so we want to fire it as soon as the user opens the
+  /// pairing screen — but only once per launch.
+  @ObservationIgnored private var didPrimeLocalNetworkPermission = false
   // NOT @ObservationIgnored — deviceToken must be observable so hasPairedSession
   // and pairedServerURL (computed from it) trigger SwiftUI re-renders on change.
   private(set) var deviceToken: String?
@@ -47,7 +53,7 @@ final class MobileAppStore {
     self.apiClient = apiClient
     self.serverURLInput = UserDefaults.standard.string(forKey: StorageKey.serverURL) ?? ""
     self.deviceNameInput = UserDefaults.standard.string(forKey: StorageKey.deviceName)
-      ?? UIDevice.current.name
+      ?? Self.defaultDeviceName()
     self.deviceToken = KeychainStore.readString(account: StorageKey.deviceToken)
     // Restore desktopAuthToken so WKWebView can inject __BC_WS_TOKEN__ after an app restart.
     self.desktopAuthTokenInput = KeychainStore.readString(account: StorageKey.desktopAuthToken) ?? ""
@@ -79,24 +85,6 @@ final class MobileAppStore {
 
   var isConnected: Bool {
     hasPairedSession
-  }
-
-  var selectedThread: MobileThread? {
-    guard let snapshot else { return nil }
-    if let selectedThreadID {
-      return snapshot.threads.first { $0.id == selectedThreadID }
-    }
-    return snapshot.threads.first
-  }
-
-  var selectedSummary: MobileThreadSummary? {
-    guard let selectedThreadID else { return threadSummaries.first }
-    return threadSummaries.first { $0.id == selectedThreadID }
-  }
-
-  var selectedPendingApprovals: [MobilePendingApproval] {
-    guard let selectedThread else { return [] }
-    return pendingApprovals(for: selectedThread)
   }
 
   func normalizeServerURL(_ rawValue: String) -> URL? {
@@ -131,6 +119,20 @@ final class MobileAppStore {
     // Nothing to do here — pairedServerURL drives the routing to MobileWebView on launch.
   }
 
+  /// Proactively triggers iOS's Local Network permission prompt by starting a
+  /// short-lived Bonjour browse. iOS won't surface the prompt until the app
+  /// actually attempts a local-network discovery, so calling this when the
+  /// pairing UI appears means the user can grant access *before* their first
+  /// pair attempt — instead of seeing it fail silently. Gated to once per
+  /// launch; the result is intentionally discarded.
+  func primeLocalNetworkPermission() {
+    guard !didPrimeLocalNetworkPermission else { return }
+    didPrimeLocalNetworkPermission = true
+    Task {
+      _ = await LocalNetworkProbe.probe(timeout: 1)
+    }
+  }
+
   func saveConnectionPreferences() {
     UserDefaults.standard.set(serverURLInput, forKey: StorageKey.serverURL)
     UserDefaults.standard.set(deviceNameInput, forKey: StorageKey.deviceName)
@@ -153,8 +155,20 @@ final class MobileAppStore {
         deviceName: deviceNameInput,
         desktopAuthToken: desktopAuthTokenInput.isEmpty ? nil : desktopAuthTokenInput,
       )
+      // Write to the keychain BEFORE setting the in-memory token so a write
+      // failure aborts pairing instead of leaving an orphaned in-memory
+      // session that vanishes on next launch.
+      let tokenWritten = KeychainStore.writeString(
+        response.deviceToken,
+        account: StorageKey.deviceToken,
+      )
+      guard tokenWritten else {
+        errorMessage =
+          "Couldn't save the pairing token to the keychain. Make sure the device is unlocked and try again."
+        lastAPIError = nil
+        return
+      }
       self.deviceToken = response.deviceToken
-      KeychainStore.writeString(response.deviceToken, account: StorageKey.deviceToken)
       KeychainStore.writeString(response.device.pairCode, account: StorageKey.pairCode)
       lastPairCode = response.device.pairCode
       pairedDevice = response.device
@@ -165,6 +179,11 @@ final class MobileAppStore {
       errorMessage = nil
       lastAPIError = nil
       saveConnectionPreferences()
+      // Refresh server-side device list and snapshot so the Devices tab is
+      // populated immediately after pairing instead of showing
+      // "No connected devices yet" until the user manually pulls to refresh.
+      await refreshDevices()
+      await refreshSnapshot()
       // Navigation to MobileWebView is driven by hasPairedSession becoming true.
     } catch {
       if shouldRecheckLocalNetworkPermission(after: error) {
@@ -236,6 +255,10 @@ final class MobileAppStore {
       }
       errorMessage = nil
       lastAPIError = nil
+      // Same as connectAndPair — load server-side device list + snapshot so
+      // the Devices tab isn't blank when the user navigates there.
+      await refreshDevices()
+      await refreshSnapshot()
       // Navigation to MobileWebView is driven by hasPairedSession becoming true.
       return
     }
@@ -292,142 +315,6 @@ final class MobileAppStore {
     }
   }
 
-  func sendPrompt() async {
-    guard let baseURL = normalizeServerURL(serverURLInput), let deviceToken else {
-      errorMessage = MobileAPIClientError.missingDeviceToken.localizedDescription
-      return
-    }
-    guard let thread = selectedThread else {
-      errorMessage = "Select a thread first."
-      return
-    }
-    let trimmedMessage = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedMessage.isEmpty else {
-      errorMessage = "Write a prompt before sending."
-      return
-    }
-
-    statusMessage = nil
-    errorMessage = nil
-    do {
-      let command = MobileThreadTurnStartCommand(
-        commandId: UUID().uuidString,
-        threadId: thread.id,
-        message: MobileStartTurnMessage(
-          messageId: UUID().uuidString,
-          role: "user",
-          text: trimmedMessage,
-          attachments: [],
-        ),
-        modelSelection: thread.modelSelection,
-        titleSeed: thread.title,
-        runtimeMode: thread.runtimeMode,
-        interactionMode: thread.interactionMode,
-        bootstrap: nil,
-        sourceProposedPlan: nil,
-        createdAt: Date(),
-      )
-      let response = try await apiClient.dispatch(
-        baseURL: baseURL,
-        deviceToken: deviceToken,
-        command: command,
-      )
-      applySnapshotEnvelope(
-        MobileSnapshotEnvelope(
-          snapshot: response.snapshot,
-          threadSummaries: response.threadSummaries,
-          device: response.device,
-          serverTime: Date(),
-          deviceToken: nil,
-          paired: nil,
-        ),
-      )
-      draftMessage = ""
-      errorMessage = nil
-      statusMessage = "Prompt sent to \(thread.title)"
-      await refreshDevices()
-    } catch {
-      if handleSessionRevocation(error) {
-        return
-      }
-      errorMessage = error.localizedDescription
-    }
-  }
-
-  func respondToApproval(requestId: String, decision: String) async {
-    guard let baseURL = normalizeServerURL(serverURLInput), let deviceToken else {
-      errorMessage = MobileAPIClientError.missingDeviceToken.localizedDescription
-      return
-    }
-    guard let thread = selectedThread else {
-      errorMessage = "Select a thread first."
-      return
-    }
-
-    do {
-      let command = MobileApprovalRespondCommand(
-        commandId: UUID().uuidString,
-        threadId: thread.id,
-        requestId: requestId,
-        decision: decision,
-        createdAt: Date(),
-      )
-      let response = try await apiClient.dispatch(
-        baseURL: baseURL,
-        deviceToken: deviceToken,
-        command: command,
-      )
-      applySnapshotEnvelope(
-        MobileSnapshotEnvelope(
-          snapshot: response.snapshot,
-          threadSummaries: response.threadSummaries,
-          device: response.device,
-          serverTime: Date(),
-          deviceToken: nil,
-          paired: nil,
-        ),
-      )
-      errorMessage = nil
-      statusMessage = "Approval updated."
-      await refreshDevices()
-    } catch {
-      if handleSessionRevocation(error) {
-        return
-      }
-      errorMessage = error.localizedDescription
-    }
-  }
-
-  func loadDiff(for thread: MobileThread) async {
-    guard let baseURL = normalizeServerURL(serverURLInput), let deviceToken else {
-      errorMessage = MobileAPIClientError.missingDeviceToken.localizedDescription
-      return
-    }
-
-    let turnCount = thread.checkpoints.last?.checkpointTurnCount ?? 0
-    guard turnCount > 0 else {
-      errorMessage = "No checkpoint diff is available yet."
-      return
-    }
-
-    isLoadingDiff = true
-    defer { isLoadingDiff = false }
-
-    do {
-      diffEnvelope = try await apiClient.fetchDiff(
-        baseURL: baseURL,
-        deviceToken: deviceToken,
-        threadId: thread.id,
-        toTurnCount: turnCount,
-      )
-    } catch {
-      if handleSessionRevocation(error) {
-        return
-      }
-      errorMessage = error.localizedDescription
-    }
-  }
-
   func revokeDevice(_ device: MobileDevice) async {
     guard let baseURL = normalizeServerURL(serverURLInput), let deviceToken else {
       errorMessage = MobileAPIClientError.missingDeviceToken.localizedDescription
@@ -460,10 +347,6 @@ final class MobileAppStore {
     }
   }
 
-  func selectThread(id: String) {
-    selectedThreadID = id
-  }
-
   func clearSession() {
     errorMessage = nil
     lastAPIError = nil
@@ -473,7 +356,6 @@ final class MobileAppStore {
     threadSummaries = []
     pairedDevice = nil
     selectedThreadID = nil
-    diffEnvelope = nil
     devices = []
     lastPairCode = nil
     desktopAuthTokenInput = ""
@@ -494,7 +376,6 @@ final class MobileAppStore {
     threadSummaries = envelope.threadSummaries
     pairedDevice = envelope.device
     lastPairCode = envelope.device.pairCode
-    Self.writeCachedSnapshotEnvelope(envelope)
     if selectedThreadID == nil {
       selectedThreadID = envelope.threadSummaries.first?.id
     } else if let currentSelectedThreadID = selectedThreadID,
@@ -541,112 +422,37 @@ final class MobileAppStore {
     return status == 401
   }
 
-  private func startPolling() {
-    stopPolling()
-    guard deviceToken != nil else {
-      return
-    }
-    refreshTask = Task { [weak self] in
-      guard let self else { return }
-      while !Task.isCancelled {
-        try? await Task.sleep(for: .seconds(4))
-        await self.refreshSnapshot()
-      }
-    }
-  }
-
   private func stopPolling() {
     refreshTask?.cancel()
     refreshTask = nil
   }
 
-  private func pendingApprovals(for thread: MobileThread) -> [MobilePendingApproval] {
-    var openByRequestId: [String: MobilePendingApproval] = [:]
-    let orderedActivities = thread.activities.sorted {
-      if let leftSequence = $0.sequence, let rightSequence = $1.sequence, leftSequence != rightSequence {
-        return leftSequence < rightSequence
-      }
-      if $0.sequence != nil {
-        return false
-      }
-      if $1.sequence != nil {
-        return true
-      }
-      if $0.createdAt != $1.createdAt {
-        return $0.createdAt < $1.createdAt
-      }
-      return $0.id < $1.id
-    }
-
-    for activity in orderedActivities {
-      let payload = activity.payload
-      let requestId = payload?.requestId
-      let requestKind = (payload?.requestKind ?? requestKindFromRequestType(payload?.requestType))
-      let detail = payload?.detail
-
-      if activity.kind == "approval.requested", let requestId, let requestKind {
-        openByRequestId[requestId] = MobilePendingApproval(
-          id: requestId,
-          requestId: requestId,
-          requestKind: requestKind,
-          summary: activity.summary,
-          detail: detail,
-        )
-        continue
-      }
-
-      if activity.kind == "approval.resolved", let requestId {
-        openByRequestId.removeValue(forKey: requestId)
-        continue
-      }
-
-      if
-        activity.kind == "provider.approval.respond.failed",
-        let requestId,
-        isStalePendingRequestFailureDetail(detail)
-      {
-        openByRequestId.removeValue(forKey: requestId)
-      }
-    }
-
-    return openByRequestId.values.sorted { left, right in
-      left.id < right.id
-    }
+  /// Returns a device name suitable for the initial `deviceNameInput`. When
+  /// `UIDevice.current.name` is generic on iOS 16+ (exactly "iPhone", "iPad",
+  /// or empty), append a stable 4-char base36 suffix so the server's
+  /// deviceName-based dedupe doesn't collide between two default-named
+  /// devices. The suffix is persisted in UserDefaults and reused across
+  /// launches. User edits to the field are preserved by the caller — this
+  /// only runs when no saved deviceName exists yet.
+  private static func defaultDeviceName() -> String {
+    let raw = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let isGeneric = raw.isEmpty || raw == "iPhone" || raw == "iPad"
+    guard isGeneric else { return raw.isEmpty ? "iPhone" : raw }
+    let suffix = persistedDeviceNameSuffix()
+    let base = raw.isEmpty ? "iPhone" : raw
+    return "\(base) (\(suffix))"
   }
 
-  private func requestKindFromRequestType(_ requestType: String?) -> String? {
-    switch requestType {
-    case "command_execution_approval", "exec_command_approval":
-      return "command"
-    case "file_read_approval":
-      return "file-read"
-    case "file_change_approval", "apply_patch_approval":
-      return "file-change"
-    default:
-      return nil
+  private static func persistedDeviceNameSuffix() -> String {
+    if let existing = UserDefaults.standard.string(forKey: StorageKey.deviceNameSuffix),
+       !existing.isEmpty
+    {
+      return existing
     }
+    let alphabet = Array("0123456789abcdefghijklmnopqrstuvwxyz")
+    let suffix = String((0..<4).compactMap { _ in alphabet.randomElement() })
+    UserDefaults.standard.set(suffix, forKey: StorageKey.deviceNameSuffix)
+    return suffix
   }
 
-  private func isStalePendingRequestFailureDetail(_ detail: String?) -> Bool {
-    guard let detail = detail?.lowercased() else { return false }
-    return detail.contains("stale pending approval request") ||
-      detail.contains("stale pending user-input request") ||
-      detail.contains("unknown pending approval request") ||
-      detail.contains("unknown pending permission request") ||
-      detail.contains("unknown pending user-input request")
-  }
-
-  private static func readCachedSnapshotEnvelope() -> MobileSnapshotEnvelope? {
-    guard let data = UserDefaults.standard.data(forKey: StorageKey.lastSnapshot) else {
-      return nil
-    }
-    return try? JSONDecoder.birdCode().decode(MobileSnapshotEnvelope.self, from: data)
-  }
-
-  private static func writeCachedSnapshotEnvelope(_ envelope: MobileSnapshotEnvelope) {
-    guard let data = try? JSONEncoder.birdCode().encode(envelope) else {
-      return
-    }
-    UserDefaults.standard.set(data, forKey: StorageKey.lastSnapshot)
-  }
 }

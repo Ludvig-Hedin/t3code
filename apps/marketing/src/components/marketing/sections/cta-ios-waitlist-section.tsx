@@ -24,7 +24,10 @@ export function CtaIosWaitlistSection({
     e.preventDefault();
     const endpoint = import.meta.env.PUBLIC_IOS_WAITLIST_ENDPOINT as string | undefined;
     if (!endpoint) {
-      setStatus("sent");
+      // In production this means the env var was forgotten — surface an error
+      // instead of pretending the email was captured. Dev keeps the optimistic
+      // "sent" state so the form is testable without a backend.
+      setStatus(import.meta.env.DEV ? "sent" : "error");
       return;
     }
     void (async () => {

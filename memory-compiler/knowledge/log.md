@@ -4,10 +4,69 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-20"
+updated: "2026-04-24"
 ---
 
 # Build Log
+
+## [2026-04-23T20:29:10+0000] compile | daily/2026-04-19.md (no-op, confirmed)
+
+- Source: daily/2026-04-19.md
+- Status: SKIPPED — already fully compiled on 2026-04-19T23:04:00-05:00
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. Verified against index.md and log.md. All knowledge from daily/2026-04-19.md was fully extracted in the original compile pass on 2026-04-19 at 23:04:00. Coverage includes 5 concept articles: [[concepts/inactivity-watchdog-fiber-pattern]] (watchdog fiber detects frozen streams via lastActivityAtMs tracking), [[concepts/effect-timeoutoption-clean-error-types]] (Effect.timeoutOption keeps error channel clean by returning Option instead of adding TimeoutException), [[concepts/stream-takewhile-freeze-limitation]] (Stream.takeWhile predicate never evaluates when source is frozen), [[concepts/late-event-ingestion-guard]] (reject terminal events for stopped/completed sessions to prevent zombie event UI re-activation), [[concepts/phase-derivation-turn-id-guard]] (require activeTurnId alongside status === "running" to prevent stale spinner). Connection article [[connections/frozen-stream-defense-in-depth]] synthesizes all four layers (watchdog + interrupt timeout + late-event guard + phase guard) as a complete defense-in-depth pattern for handling frozen provider streams. The session documented a multi-provider chat app debugging scenario where AI froze indefinitely and the stop button flickered — the four-layer solution addressed autonomous freezes (watchdog), user-initiated stops hanging (interrupt timeout), server-side zombie events (late-event guard), and client-side stale phase derivation (turn-ID guard). No new knowledge to extract. Knowledge base remains at 74 entries (57 concepts + 17 connections).
+
+## [2026-04-23T20:35:00+0000] compile | daily/2026-04-20.md (no-op, confirmed)
+
+- Source: daily/2026-04-20.md
+- Status: SKIPPED — already fully compiled across 2 prior passes (2026-04-20T20:00:00 and 2026-04-20T20:30:00)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. All knowledge from daily/2026-04-20.md was fully extracted across 2 substantive compilation passes. The log covers 13 sessions spanning diverse topics. All concepts and connections have been extracted: 8 concept articles created (react18-setstate-updater-timing-trap, websocket-silent-death-heartbeat, process-output-dual-pattern-matching, code-review-thread-isolation, nodejs-readline-close-race, lazy-file-tree-rpc-expansion, pending-selection-store-coordination, electron-context-menu-react-overlay) and 1 connection article (silent-hang-detection-patterns). The flush-pipeline-failure-modes article was updated with 2026-04-20 burst failure data (5 FLUSH_ERROR entries at 22:19 UTC and 23:00 UTC). Sessions covered: (1) Code review dispatch bug fix — creating fresh threads vs reusing stale activeThreadId. (2) Tunnel failure detection — dual-pattern matching for error and success in cloudflared output. (3) Files panel implementation — full-stack with lazy tree, CodeMirror editor, search, context menus. (4) WebSocket silent death — heartbeat with window.location.reload() recovery. (5) React 18 setState timing trap — queueRef pattern for synchronous reads alongside async state updates. (6) Readline close race — coordinating child.on('close') + readline close events. (7) File creation operations — full-stack createFile/createDirectory RPC implementation across contracts, server, client, tests. Sessions (20:30) and (21:23) contain substantial file creation implementation work, but the core patterns are already covered in existing articles (lazy-file-tree-rpc-expansion for RPC expansion, rpc-layer-expansion-pattern for the general pattern). No new extractable concepts or connections identified. Knowledge base remains at 74 entries (57 concepts + 17 connections).
+
+## [2026-04-23T20:40:00+0000] compile | daily/2026-04-21.md (no-op)
+
+- Source: daily/2026-04-21.md
+- Status: SKIPPED — no extractable knowledge content
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Daily log 2026-04-21.md contains only two FLUSH_OK memory flush entries with "Nothing worth saving from this session." No substantive sessions, concepts, debugging insights, architectural decisions, or connection patterns to extract. Knowledge base remains at 74 entries (57 concepts + 17 connections).
+
+## [2026-04-23T20:45:00+0000] compile | daily/2026-04-22.md
+
+- Source: daily/2026-04-22.md
+- Articles created: [[concepts/context-token-counter-accuracy]]
+- Articles updated: (none)
+- Summary: Daily log 2026-04-22.md contained mostly FLUSH_OK memory flush entries (4 entries with "Nothing worth saving from this session") and one substantive session at 23:53. The session documented the initiation of an investigation into why the context token counter displays inflated numbers (300k tokens) when the context window is much smaller, with the issue relating to provider-side compaction not being reflected in the displayed token count. Extracted one concept article documenting the counter accuracy problem: how UI token counts may show pre-compaction cumulative totals while the actual post-compaction context sent to the model is significantly smaller, creating user confusion. Article covers the display problem, diagnostic questions, and potential fixes (server-authoritative count, client recalculation from active messages, or dual display of cumulative/active counts). No implementation or debugging solutions were captured since the session ended at task assignment. Knowledge base updated to 75 entries (58 concepts + 17 connections).
+
+## [2026-04-24T02:30:00+0000] compile | daily/2026-04-23.md
+
+- Source: daily/2026-04-23.md
+- Articles created: [[concepts/design-panel-integration-pattern]], [[concepts/websocket-resilience-defense-layers]], [[concepts/project-overview-dashboard-pattern]], [[concepts/cross-provider-session-import]], [[connections/visual-editing-requires-infrastructure-alignment]]
+- Articles updated: (none)
+- Summary: Daily log 2026-04-23.md documented 9 substantive sessions plus 16 FLUSH*ERROR entries (continuing the failure pattern from 2026-04-17 and 2026-04-22). Extracted 4 concept articles and 1 connection article covering major features and architectural patterns: (1) Design panel integration — full-stack visual editing with server RPC, client UI, OID stamper/resolver runtime bridge, inspector with live style updates, and structural editing operations (wrap/unwrap/duplicate/delete); critical lesson on reusing Preview infrastructure for app detection to prevent blank iframes from ID mismatches. (2) WebSocket resilience — four-layer defense pattern addressing thread freezing: unbounded orchestration timeouts (prevent replay failures on large threads), forgiving heartbeat (3×20s instead of 2×20s), exponential backoff on retry (250ms → 5s cap), force replay after reconnect (catch "stream died while agent thinking" case). (3) Project overview dashboard — landing page with groups/todos/markdown notes, localStorage persistence via Zustand, dual-purpose sidebar navigation (project name → navigate to overview, chevron → expand/collapse threads). (4) Cross-provider session import — parse .jsonl files from Claude Code (~/.claude/projects/*/[uuid].jsonl) and Codex (~/.codex/sessions/YYYY/MM/DD/rollout-\_.jsonl); extract real titles from first non-boilerplate user message; group by workspace cwd; smoke test discovered 733 Claude threads (19 projects) + 495 Codex threads (17 projects). (5) Connection article linking Design panel dependency on Preview infrastructure — explains how duplicate detection logic led to ID mismatches and blank iframes, and why extension layers must reuse foundation APIs rather than reimplementing. Other sessions: chat message bubble padding adjustment, v0.1.1 release tag/push, bug audit triaged parallel agent findings (fixed preview error formatting typo, Inspector error routing UX). Knowledge base updated to 80 entries (62 concepts + 18 connections).
+
+## [2026-04-24T19:11:00] compile | Daily Log 2026-04-24
+
+- Source: daily/2026-04-24.md
+- Articles created: (none)
+- Articles updated: (none)
+- Note: Session contained only memory maintenance flush with no substantive content to extract
+
+## [2026-04-24T19:20:00] compile | Daily Log 2026-04-24
+
+- Source: daily/2026-04-24.md
+- Articles created: [[concepts/tanstack-router-active-route-params]], [[concepts/project-feature-expansion-pattern]]
+- Articles updated: [[concepts/project-overview-dashboard-pattern]] (added daily/2026-04-24.md as source for five new features implementation)
+- Summary: Daily log 2026-04-24.md contained one substantive session (19:19) documenting project overview UI enhancements. Session covered two distinct patterns: (1) Active state highlighting pattern — user requested active background on selected project in sidebar (matching thread active state). Implemented using `Route.useParams()` to extract `routeProjectId` and match against project items, applying same `bg-accent/85` style as thread rows. Key insight: route params are the authoritative source of truth for active state, surviving URL changes, browser navigation, and page refreshes. (2) Multi-feature expansion pattern — user requested five related features: docs section showing .md files, thread list capped at 10 with show more/less + status badges, full-screen file explorer modal, group management with drag-to-group and bulk actions, and file creation capability. Implemented all five features in one comprehensive update to ProjectOverviewPage.tsx. Key insight: batching related features (3-7) that share data sources, UI patterns, and state management enables faster development and better coherence than incremental single-feature additions. Reused existing patterns (SidebarMenuButton, lucide icons, shadcn components, resolveThreadStatusPill for status badges) rather than creating new ones. Also updated project-overview-dashboard-pattern article to add 2026-04-24 as source since the session implemented five new features for that dashboard. Knowledge base updated to 82 entries (64 concepts + 18 connections).
+
+## [2026-04-24T19:46:00] compile | Daily Log 2026-04-24 (Design Scanner)
+
+- Source: daily/2026-04-24.md
+- Articles created: [[concepts/design-scanner-detection-resilience]], [[concepts/diagnostic-empty-states]]
+- Articles updated: [[concepts/project-feature-expansion-pattern]] (added daily/2026-04-24.md sources for UI patterns and Zustand store)
+- Summary: Daily log 2026-04-24.md second substantive session (19:46) documented comprehensive improvements to the Design panel's React app scanner. Session covered two major patterns: (1) Design scanner detection resilience — enhanced scanner with broad directory traversal beyond conventional `apps/*` structure to find apps in `frontend/`, `client/`, `web/`, `packages/*/*`, and root locations. Implements multi-criteria validation (React dependency check, dev script presence, library package exclusion) and provides diagnostic feedback explaining rejection reasons. Key insight: detection systems must handle diverse project structures without manual configuration through comprehensive glob patterns and clear failure feedback. (2) Diagnostic empty states — when automated detection finds nothing, showing "0 results" leaves users confused about whether the tool is broken or setup is incomplete. Pattern surfaces why detection failed: how many locations were scanned, what criteria were used, and specific rejection reasons for each candidate ("no react", "no dev script", "library package"). Includes re-scan button with toast feedback and distinguishes tool failures from legitimate setup issues. Both patterns share backward-compatible optional `diagnostics` field in RPC response schema. Also updated project-feature-expansion-pattern to add two sources from this session about reusing existing UI patterns and Zustand store persistence. Knowledge base updated to 84 entries (66 concepts + 18 connections).
 
 ## [2026-04-09T20:01:32+02:00] compile | daily/2026-04-09.md
 

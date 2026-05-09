@@ -47,3 +47,30 @@ export function writeRemoteSettings(userDataPath: string, settings: RemoteSettin
   const filePath = Path.join(userDataPath, SETTINGS_FILE);
   FS.writeFileSync(filePath, JSON.stringify(settings, null, 2), "utf8");
 }
+
+// Promise-chain mutex so concurrent callers (keep-awake IPC handler + tunnel
+// manager) don't read-modify-write `remote-settings.json` and clobber each
+// other. All updates funnel through `updateRemoteSettings` and run serially.
+let writeQueue: Promise<RemoteSettings> = Promise.resolve(defaultRemoteSettings);
+
+/**
+ * Atomically read-modify-write the remote-settings file. The merger receives
+ * the latest persisted settings and returns the patch (or full settings) to
+ * persist. Returns the resulting merged settings.
+ */
+export function updateRemoteSettings(
+  userDataPath: string,
+  merger: (current: RemoteSettings) => Partial<RemoteSettings>,
+): Promise<RemoteSettings> {
+  const next = writeQueue.then(() => {
+    const current = readRemoteSettings(userDataPath);
+    const patch = merger(current);
+    const merged: RemoteSettings = { ...current, ...patch };
+    writeRemoteSettings(userDataPath, merged);
+    return merged;
+  });
+  // Keep the queue alive even if a step rejects, so subsequent updates still
+  // run. We swallow the error here for the chain — callers see it via `next`.
+  writeQueue = next.catch(() => readRemoteSettings(userDataPath));
+  return next;
+}

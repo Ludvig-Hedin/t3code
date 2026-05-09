@@ -6,7 +6,7 @@ import { EventEmitter } from "node:events";
 import * as ChildProcess from "node:child_process";
 
 import type { TunnelStatus, RemoteSettings } from "@t3tools/contracts";
-import { readRemoteSettings, writeRemoteSettings } from "./remoteSettings";
+import { readRemoteSettings, updateRemoteSettings } from "./remoteSettings";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -62,8 +62,14 @@ export class TunnelManager extends EventEmitter {
   }
 
   private saveSettings(patch: Partial<RemoteSettings>): void {
+    // Optimistic local update so subsequent reads in this manager see the
+    // patch immediately. The on-disk write is serialized via the shared
+    // mutex in remoteSettings.ts so it can't race with the keep-awake
+    // IPC handler. Fire-and-forget — write errors only surface in logs.
     this.settings = { ...this.settings, ...patch };
-    writeRemoteSettings(this.userDataPath, this.settings);
+    void updateRemoteSettings(this.userDataPath, () => patch).catch((err) => {
+      console.warn("[tunnelManager] saveSettings persist failed", err);
+    });
   }
 
   /** Returns true if the cloudflared binary is already present and executable. */
@@ -301,7 +307,22 @@ export class TunnelManager extends EventEmitter {
       // Cloudflare reports the tunnel already exists — this happens when a
       // previous setup run created it but crashed before saving settings.
       if (/already exist/i.test(msg)) {
-        return this._lookupExistingTunnel(tunnelName);
+        try {
+          return await this._lookupExistingTunnel(tunnelName);
+        } catch (lookupErr: unknown) {
+          // Lookup failure after "already exists" usually means the local
+          // cert.pem doesn't match the account that owns the tunnel (e.g.
+          // user logged into a different Cloudflare account). Surface a
+          // user-actionable error and gate retry behind the user — do NOT
+          // auto-retry, otherwise enable() would silently loop here.
+          const lookupMsg = lookupErr instanceof Error ? lookupErr.message : String(lookupErr);
+          const friendly =
+            `Tunnel '${tunnelName}' already exists on Cloudflare but couldn't be looked up: ${lookupMsg}. ` +
+            `This usually means cloudflared is authenticated against a different account. ` +
+            `Re-run authentication from the remote-access settings (the local cert.pem may need to be removed).`;
+          this.setStatus({ status: "error", message: friendly });
+          throw new Error(friendly, { cause: lookupErr });
+        }
       }
       throw err;
     }

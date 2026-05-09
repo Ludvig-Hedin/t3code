@@ -4,7 +4,7 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-20"
+updated: "2026-04-24"
 ---
 
 # Knowledge Base Index
@@ -91,3 +91,13 @@ updated: "2026-04-20"
 | [[concepts/lazy-file-tree-rpc-expansion]]                        | Lazy per-directory RPC loading for file trees; binary file guard; CodeMirror lazy language loading                                         | daily/2026-04-20.md | 2026-04-20 |
 | [[concepts/pending-selection-store-coordination]]                | Store-mediated deferred action pattern: component A writes pending selection, editor B consumes on ready                                   | daily/2026-04-20.md | 2026-04-20 |
 | [[concepts/electron-context-menu-react-overlay]]                 | Native Electron menus lack icon support; replace with React overlay + virtual anchor at cursor position                                    | daily/2026-04-20.md | 2026-04-20 |
+| [[concepts/context-token-counter-accuracy]]                      | Context token counters may show inflated pre-compaction counts; provider-side compaction not reflected in UI display                       | daily/2026-04-22.md | 2026-04-23 |
+| [[concepts/design-panel-integration-pattern]]                    | Full-stack visual editing: server RPC, client UI, runtime bridge (OID stamper), inspector with live updates                                | daily/2026-04-23.md | 2026-04-23 |
+| [[concepts/websocket-resilience-defense-layers]]                 | Four-layer resilience: unbounded orchestration timeouts, forgiving heartbeat, exponential backoff, force replay on reconnect               | daily/2026-04-23.md | 2026-04-23 |
+| [[concepts/project-overview-dashboard-pattern]]                  | Project landing page with groups, todos, markdown notes; localStorage persistence via Zustand; dual-purpose sidebar navigation             | daily/2026-04-23.md | 2026-04-23 |
+| [[concepts/cross-provider-session-import]]                       | Parse .jsonl sessions from Claude Code/Codex; extract real titles, filter boilerplate, group by workspace cwd                              | daily/2026-04-23.md | 2026-04-23 |
+| [[concepts/tanstack-router-active-route-params]]                 | Use Route.useParams() for active state highlighting; survives URL changes and navigation                                                   | daily/2026-04-24.md | 2026-04-24 |
+| [[concepts/project-feature-expansion-pattern]]                   | Implement multiple related features together for faster development and better coherence                                                   | daily/2026-04-24.md | 2026-04-24 |
+| [[concepts/design-scanner-detection-resilience]]                 | Broad directory traversal across frontend/, client/, web/, packages/\* with diagnostic rejection reasons                                   | daily/2026-04-24.md | 2026-04-24 |
+| [[concepts/diagnostic-empty-states]]                             | Surface why detection failed: search scope, rejection reasons, next steps instead of silent "0 results"                                    | daily/2026-04-24.md | 2026-04-24 |
+| [[connections/visual-editing-requires-infrastructure-alignment]] | Design panel depends on Preview infrastructure; reuse scanProjectEntries to prevent ID mismatches and blank iframes                        | daily/2026-04-23.md | 2026-04-23 |

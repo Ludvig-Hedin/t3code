@@ -14,6 +14,7 @@ import {
   nativeImage,
   nativeTheme,
   net,
+  Notification,
   protocol,
   shell,
 } from "electron";
@@ -49,7 +50,7 @@ import {
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
 import { TunnelManager } from "./tunnelManager";
 import { KeepAwakeManager } from "./keepAwakeManager";
-import { readRemoteSettings, writeRemoteSettings } from "./remoteSettings";
+import { readRemoteSettings, updateRemoteSettings } from "./remoteSettings";
 
 syncShellEnvironment();
 
@@ -104,8 +105,10 @@ let backendProcess: ChildProcess.ChildProcess | null = null;
 let backendPort = 0;
 let backendAuthToken = "";
 let backendWsUrl = "";
-let backendPairingUrl = "";
-let backendPairingCode = "";
+// Null when there is no usable LAN address (e.g. Wi-Fi off and no Ethernet).
+// IPC handlers surface this as `{ ok: false, reason: "wifi-required" }`.
+let backendPairingUrl: string | null = "";
+let backendPairingCode: string | null = "";
 let restartAttempt = 0;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let isQuitting = false;
@@ -336,15 +339,19 @@ function resolvePairingHttpHost(): string | null {
   return fallback;
 }
 
-function resolvePairingHttpUrl(): string {
+function resolvePairingHttpUrl(): string | null {
   const host = resolvePairingHttpHost();
   if (host) {
     return `http://${host}:${backendPort}`;
   }
-  return `http://localhost:${backendPort}`;
+  // No usable LAN address — pairing requires Wi-Fi (or another non-loopback
+  // private network). Returning null lets the IPC handler surface a distinct
+  // "wifi-required" reason instead of handing the device a useless localhost.
+  return null;
 }
 
-function resolvePairingCode(): string {
+function resolvePairingCode(): string | null {
+  if (!backendPairingUrl) return null;
   const payload = JSON.stringify({
     kind: "birdcode-pairing",
     version: 1,
@@ -1258,6 +1265,24 @@ function configureAutoUpdater(): void {
   autoUpdater.on("update-downloaded", (info) => {
     setUpdateState(reduceDesktopUpdateStateOnDownloadComplete(updateState, info.version));
     console.info(`[desktop-updater] Update downloaded: ${info.version}`);
+    // macOS dock badge — visual cue that there's something pending. Other
+    // platforms ignore setBadgeCount or treat it as a launcher count.
+    if (process.platform === "darwin") {
+      app.setBadgeCount(1);
+    }
+    // Native notification with click-to-install. We reuse installDownloadedUpdate()
+    // so the flow is identical to the renderer-driven install IPC handler.
+    if (Notification.isSupported()) {
+      const notification = new Notification({
+        title: "Bird Code update ready",
+        body: "Click to install",
+        silent: false,
+      });
+      notification.on("click", () => {
+        void installDownloadedUpdate();
+      });
+      notification.show();
+    }
   });
 
   clearUpdatePollTimer();
@@ -1456,11 +1481,17 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeAllListeners(GET_PAIRING_URL_CHANNEL);
   ipcMain.on(GET_PAIRING_URL_CHANNEL, (event) => {
+    // null indicates Wi-Fi (or any non-loopback private network) is required.
+    // Renderer falls back to its own messaging when getPairingUrl returns null.
     event.returnValue = backendPairingUrl;
   });
 
   ipcMain.removeAllListeners(GET_PAIRING_CODE_CHANNEL);
   ipcMain.on(GET_PAIRING_CODE_CHANNEL, (event) => {
+    if (backendPairingCode === null) {
+      event.returnValue = { ok: false, reason: "wifi-required" } as const;
+      return;
+    }
     event.returnValue = backendPairingCode;
   });
 
@@ -1796,14 +1827,15 @@ function registerIpcHandlers(): void {
     if (!keepAwakeManager) {
       return { ok: false, error: "keepAwakeManager not initialized" };
     }
-    const settings = readRemoteSettings(app.getPath("userData"));
     if (enabled) {
       keepAwakeManager.enable();
-      writeRemoteSettings(app.getPath("userData"), { ...settings, keepAwakeEnabled: true });
     } else {
       keepAwakeManager.disable();
-      writeRemoteSettings(app.getPath("userData"), { ...settings, keepAwakeEnabled: false });
     }
+    // Routed through updateRemoteSettings so it serializes with tunnel-manager
+    // writes — prevents read-modify-write races that would clobber the other
+    // path's fields in remote-settings.json.
+    await updateRemoteSettings(app.getPath("userData"), () => ({ keepAwakeEnabled: enabled }));
     return { ok: true };
   });
 }
@@ -1833,6 +1865,27 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  // Block in-frame navigation away from the desktop scheme; only allow
+  // navigation back into our `t3://app/` shell. External URLs go through
+  // setWindowOpenHandler -> shell.openExternal.
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith(`${DESKTOP_SCHEME}://app/`)) {
+      event.preventDefault();
+    }
+  });
+
+  // Reject any attempt to attach a <webview>; we never use Electron's
+  // <webview> tag and don't want renderer code to opt into it.
+  window.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
+  });
+
+  // Deny all permission requests (camera, microphone, geolocation, etc.) at
+  // the Electron layer — Bird Code's renderer doesn't need any of these.
+  window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => {
+    callback(false);
   });
 
   window.webContents.on("context-menu", (event, params) => {
@@ -1944,6 +1997,20 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
+// Single-instance lock — must run before any `app.whenReady()` or window
+// creation. If a second copy launches, surface the existing window instead.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  process.exit(0);
+}
+app.on("second-instance", () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
+
 // Override Electron's userData path before the `ready` event so that
 // Chromium session data uses a filesystem-friendly directory name.
 // Must be called synchronously at the top level — before `app.whenReady()`.
@@ -1970,11 +2037,22 @@ async function bootstrap(): Promise<void> {
   keepAwakeManager = new KeepAwakeManager();
 
   // When tunnel status changes, update backendPairingUrl and push to all renderer windows.
+  // Critical: any non-active terminal status (idle, error) must fall back to
+  // the LAN pairing URL. Without the `error` branch, a tunnel crash leaves
+  // backendPairingUrl pointing at the dead cfargotunnel.com URL forever and
+  // every subsequent QR scan from the iOS app fails silently.
   tunnelManager.on("status", (status: import("@t3tools/contracts").TunnelStatus) => {
     if (status.status === "active") {
       backendPairingUrl = status.url;
       backendPairingCode = resolvePairingCode();
-    } else if (status.status === "idle") {
+    } else if (
+      status.status === "idle" ||
+      status.status === "error" ||
+      status.status === "downloading" ||
+      status.status === "authenticating"
+    ) {
+      // `connecting` is intentionally excluded — it only fires during a
+      // graceful restart after `active`, so the existing URL is still valid.
       backendPairingUrl = resolvePairingHttpUrl();
       backendPairingCode = resolvePairingCode();
     }
@@ -1985,12 +2063,13 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  // Restore keep-awake and tunnel from previous session.
+  // Restore keep-awake from previous session. Tunnel resume is deferred until
+  // after startBackend() so cloudflared doesn't start proxying to a backend
+  // that isn't accepting connections yet.
   const savedSettings = readRemoteSettings(app.getPath("userData"));
   if (savedSettings.keepAwakeEnabled) {
     keepAwakeManager.enable();
   }
-  void tunnelManager.resumeIfEnabled();
 
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`);
   writeDesktopLogHeader(`bootstrap resolved pairing endpoint url=${backendPairingUrl}`);
@@ -1999,15 +2078,66 @@ async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap ipc handlers registered");
   startBackend();
   writeDesktopLogHeader("bootstrap backend start requested");
+  // Resume tunnel only after backend has been requested to start, so the
+  // tunnel doesn't proxy to a port that isn't yet accepting connections.
+  void tunnelManager.resumeIfEnabled();
   mainWindow = createWindow();
   writeDesktopLogHeader("bootstrap main window created");
 }
 
-app.on("before-quit", () => {
+/**
+ * Stops auxiliary subprocesses (cloudflared via tunnelManager, caffeinate via
+ * keepAwakeManager) on app shutdown. Capped at 2s so a hung child doesn't
+ * block quit. Safe to call from sync handlers — fire-and-forget.
+ */
+function stopAuxiliaryProcessesOnQuit(): void {
+  try {
+    const result: unknown = tunnelManager?.stop();
+    if (result && typeof (result as { then?: unknown }).then === "function") {
+      const timeout = new Promise<void>((resolve) => {
+        setTimeout(resolve, 2_000).unref();
+      });
+      void Promise.race([result as Promise<unknown>, timeout]);
+    }
+  } catch (error) {
+    console.warn("[desktop] tunnelManager.stop failed on quit", error);
+  }
+  try {
+    keepAwakeManager?.disable();
+  } catch (error) {
+    console.warn("[desktop] keepAwakeManager.disable failed on quit", error);
+  }
+}
+
+// Tracks whether the user has already confirmed the active-mobile/tunnel quit
+// dialog so the second `before-quit` (after `app.quit()`) flows through.
+let beforeQuitConfirmed = false;
+
+app.on("before-quit", (event) => {
+  if (!beforeQuitConfirmed) {
+    const tunnelActive = tunnelManager?.status?.status === "active";
+    if (tunnelActive) {
+      const choice = dialog.showMessageBoxSync({
+        type: "warning",
+        buttons: ["Cancel", "Quit"],
+        defaultId: 0,
+        cancelId: 0,
+        title: "Quit Bird Code?",
+        message: "Quit Bird Code?",
+        detail: "Paired mobile devices will disconnect.",
+      });
+      if (choice === 0) {
+        event.preventDefault();
+        return;
+      }
+    }
+    beforeQuitConfirmed = true;
+  }
   isQuitting = true;
   updateInstallInFlight = false;
   writeDesktopLogHeader("before-quit received");
   clearUpdatePollTimer();
+  stopAuxiliaryProcessesOnQuit();
   stopBackend();
   restoreStdIoCapture?.();
 });
@@ -2046,6 +2176,7 @@ if (process.platform !== "win32") {
     isQuitting = true;
     writeDesktopLogHeader("SIGINT received");
     clearUpdatePollTimer();
+    stopAuxiliaryProcessesOnQuit();
     stopBackend();
     restoreStdIoCapture?.();
     app.quit();
@@ -2056,6 +2187,7 @@ if (process.platform !== "win32") {
     isQuitting = true;
     writeDesktopLogHeader("SIGTERM received");
     clearUpdatePollTimer();
+    stopAuxiliaryProcessesOnQuit();
     stopBackend();
     restoreStdIoCapture?.();
     app.quit();

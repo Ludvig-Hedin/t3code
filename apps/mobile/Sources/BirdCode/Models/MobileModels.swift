@@ -127,14 +127,6 @@ struct MobileMessage: Codable, Identifiable, Hashable {
   let updatedAt: Date
 }
 
-struct MobilePendingApproval: Identifiable, Hashable {
-  let id: String
-  let requestId: String
-  let requestKind: String
-  let summary: String
-  let detail: String?
-}
-
 struct MobileLatestTurn: Codable, Hashable {
   let turnId: String
   let state: String
