@@ -8,6 +8,14 @@ import {
   type A2aRegisterAgentInput,
   type A2aRemoveAgentInput,
   type A2aTask,
+  type DesignApplyEditInput,
+  type DesignApplyEditResult,
+  type DesignEligibleAppsInput,
+  type DesignEligibleAppsResult,
+  type DesignPrimeAppInput,
+  type DesignPrimeAppResult,
+  type DesignResolveOidInput,
+  type DesignResolveOidResult,
   type GitActionProgressEvent,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
@@ -31,6 +39,7 @@ import { Effect, Stream } from "effect";
 
 import { type WsRpcProtocolClient } from "./rpc/protocol";
 import { WsTransport } from "./wsTransport";
+import { setConnectionStatus } from "./connectionStatusStore";
 
 type RpcTag = keyof WsRpcProtocolClient & string;
 type RpcMethod<TTag extends RpcTag> = WsRpcProtocolClient[TTag];
@@ -170,6 +179,12 @@ export interface WsRpcClient {
     }) => Promise<PreviewApp>;
     readonly onEvent: (projectId: ProjectId, listener: (event: PreviewEvent) => void) => () => void;
   };
+  readonly design: {
+    readonly eligibleApps: (input: DesignEligibleAppsInput) => Promise<DesignEligibleAppsResult>;
+    readonly primeApp: (input: DesignPrimeAppInput) => Promise<DesignPrimeAppResult>;
+    readonly resolveOid: (input: DesignResolveOidInput) => Promise<DesignResolveOidResult>;
+    readonly applyEdit: (input: DesignApplyEditInput) => Promise<DesignApplyEditResult>;
+  };
   readonly a2a: {
     readonly listAgents: () => Promise<readonly A2aAgentCard[]>;
     readonly registerAgent: (input: A2aRegisterAgentInput) => Promise<A2aAgentCard>;
@@ -211,18 +226,23 @@ function teardownSharedClient() {
  * WsTransport. We reload the page to rebuild all subscriptions cleanly —
  * this is by far the simplest way to guarantee a coherent UI after a
  * long silent disconnect (sleep/wake, VPN flap, proxy idle-timeout).
+ *
+ * Before reloading, we surface a banner via connectionStatusStore so the user
+ * understands why the page is about to refresh — silent reloads broke trust.
  */
+const RECONNECT_BANNER_MS = 1500;
+
 function handleDeadConnection(reason: string) {
   if (reconnectInProgress) return;
   reconnectInProgress = true;
   console.warn("[WsRpcClient] connection dead, reloading:", reason);
+  setConnectionStatus("reconnecting", reason);
   teardownSharedClient();
-  // Give any outstanding log flush a tick before navigating.
   setTimeout(() => {
     if (typeof window !== "undefined" && typeof window.location?.reload === "function") {
       window.location.reload();
     }
-  }, 50);
+  }, RECONNECT_BANNER_MS);
 }
 
 export function getWsRpcClient(): WsRpcClient {
@@ -436,6 +456,15 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
           (client) => client[WS_METHODS.subscribePreviewEvents]({ projectId }),
           listener,
         ),
+    },
+    design: {
+      eligibleApps: (input) =>
+        transport.request((client) => client[WS_METHODS.designEligibleApps](input)),
+      primeApp: (input) => transport.request((client) => client[WS_METHODS.designPrimeApp](input)),
+      resolveOid: (input) =>
+        transport.request((client) => client[WS_METHODS.designResolveOid](input)),
+      applyEdit: (input) =>
+        transport.request((client) => client[WS_METHODS.designApplyEdit](input)),
     },
     a2a: {
       listAgents: () =>

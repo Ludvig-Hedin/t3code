@@ -65,6 +65,8 @@ import { Mem0ServiceLive } from "./memory/Layers/Mem0Service";
 import { MemoryReactorLive } from "./memory/Layers/MemoryReactor";
 import { PreviewServerManagerLive } from "./preview/Layers/PreviewServerManager";
 import { previewProxyRouteLayer } from "./preview/previewProxyRoute";
+import { attachPreviewUpgradeHandler } from "./preview/previewUpgrade";
+import { DesignServiceLive } from "./design/Layers/DesignService";
 import { McpServiceLive } from "./mcp";
 import { PluginServiceLive } from "./plugins";
 import { TranscriptionServiceLive } from "./transcription/Layers/TranscriptionService";
@@ -105,7 +107,16 @@ const HttpServerLive = Layer.unwrap(
         Effect.promise(() => import("@effect/platform-node/NodeHttpServer")),
         Effect.promise(() => import("node:http")),
       ]);
-      return NodeHttpServer.layer(NodeHttp.createServer, {
+      // Wrap createServer so we can attach the preview WebSocket upgrade
+      // handler before the server starts listening. Without this hook,
+      // Vite/Next HMR (which uses ws://localhost:port literals) breaks for
+      // every remote/tunneled client even after we rewrite the URLs.
+      const create = () => {
+        const server = NodeHttp.createServer();
+        attachPreviewUpgradeHandler(server);
+        return server;
+      };
+      return NodeHttpServer.layer(create, {
         host: config.host,
         port: config.port,
       });
@@ -240,6 +251,7 @@ const AuxiliaryServicesLive = Layer.mergeAll(
   SkillServiceLive,
   Mem0ServiceLive,
   PreviewServerManagerLive,
+  DesignServiceLive,
   McpServiceLive,
   PluginServiceLive,
   TranscriptionServiceLive,

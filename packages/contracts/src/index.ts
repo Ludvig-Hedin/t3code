@@ -17,6 +17,7 @@ export * from "./rpc";
 export * from "./skills";
 export * from "./promptImprovement";
 export * from "./preview";
+export * from "./design";
 export * from "./importHistory";
 export * from "./a2a";
 export * from "./transcription";

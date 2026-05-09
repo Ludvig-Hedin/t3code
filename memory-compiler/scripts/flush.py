@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -40,9 +41,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# Max attempts when the Agent SDK fails transiently (e.g. subprocess exit 1); backoff caps noise.
-_FLUSH_MAX_ATTEMPTS = 3
-_FLUSH_BACKOFF_SEC = [0, 30, 120]
+# Max attempts when the Agent SDK fails transiently (e.g. subprocess exit 1); backoff + jitter caps noise.
+_FLUSH_MAX_ATTEMPTS = 5
+_FLUSH_BACKOFF_SEC = [0, 15, 45, 90, 180]
 
 
 def _claude_agent_sdk_version() -> str:
@@ -233,6 +234,12 @@ respond with exactly: FLUSH_OK
                     max_turns=2,
                 ),
             ):
+                if isinstance(message, dict) and message.get("error") is not None:
+                    logging.error(
+                        "Flush query stream error payload: %s",
+                        json.dumps(message, default=str)[:4000],
+                    )
+                    raise RuntimeError(f"Stream error: {message.get('error')}")
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
                         if isinstance(block, TextBlock):
@@ -259,15 +266,16 @@ respond with exactly: FLUSH_OK
                 _sanitize_paths_for_log(traceback.format_exc()),
             )
             if attempt < _FLUSH_MAX_ATTEMPTS:
-                delay = _FLUSH_BACKOFF_SEC[
+                base = _FLUSH_BACKOFF_SEC[
                     min(attempt - 1, len(_FLUSH_BACKOFF_SEC) - 1)
                 ]
+                delay = base * (0.5 + random.random()) if base else 0.0
                 if delay:
-                    logging.info("Flush retry in %ds", delay)
+                    logging.info("Flush retry in %.1fs (jittered backoff)", delay)
                     await asyncio.sleep(delay)
 
     logging.critical(
-        "FLUSH_PERSISTENT_FAILURE: Exhausted %d flush attempts; operators were NOT notified "
+        "FLUSH_PERSISTENT_FAILURE (circuit open after %d attempts): operators were NOT notified "
         "automatically — manual intervention may be required. Last error line: %s",
         _FLUSH_MAX_ATTEMPTS,
         last_error or "<none>",

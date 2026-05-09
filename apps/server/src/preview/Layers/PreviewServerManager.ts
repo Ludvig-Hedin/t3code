@@ -21,6 +21,7 @@ import {
   parseStandalonePreviewCommand,
   type DetectionEntry,
 } from "../appDetection";
+import { registerPreviewSessionLookup } from "../previewUpgrade";
 
 interface RunningSession {
   session: PreviewSession;
@@ -33,38 +34,96 @@ interface StandaloneServerSession {
   server: Server;
 }
 
-/** Scan a directory shallowly for known config files. Does not throw. */
-async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
-  const entries: DetectionEntry[] = [];
+/**
+ * Directory names we never descend into when scanning a project. These are
+ * build outputs, vendored deps, or VCS metadata — never a runnable app.
+ */
+const SCAN_IGNORE_DIRS = new Set<string>([
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".vercel",
+  ".cache",
+  ".parcel-cache",
+  ".yarn",
+  ".pnpm-store",
+  ".idea",
+  ".vscode",
+  "dist",
+  "build",
+  "out",
+  "output",
+  "coverage",
+  "tmp",
+  "temp",
+  "target", // Rust
+  "vendor",
+]);
+
+function shouldSkipDirName(name: string): boolean {
+  if (SCAN_IGNORE_DIRS.has(name)) return true;
+  // Skip hidden directories (e.g. `.turbo`, `.cache`) not already listed.
+  if (name.startsWith(".")) return true;
+  return false;
+}
+
+function tryReadPkgScripts(pkgPath: string): Record<string, string> | null {
   try {
-    const rootFiles = fs.readdirSync(cwd);
-    const hasBunLock = rootFiles.includes("bun.lock") || rootFiles.includes("bun.lockb");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      scripts?: Record<string, string>;
+    };
+    return pkg.scripts ?? {};
+  } catch {
+    return null;
+  }
+}
 
-    // Scan root package.json
-    if (rootFiles.includes("package.json")) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(nodePath.join(cwd, "package.json"), "utf-8")) as {
-          scripts?: Record<string, string>;
-        };
-        entries.push({
-          relativePath: "package.json",
-          scripts: pkg.scripts ?? {},
-          hasBunLock,
-        });
-      } catch {
-        /* ignore malformed package.json */
+/**
+ * Scan a project for detection entries. Covers:
+ *   - root package.json, manage.py, pyproject.toml, Cargo.toml
+ *   - root-level standalone files (.html, .tsx, etc.)
+ *   - any top-level subdirectory that contains a package.json
+ *     (e.g. `frontend/`, `client/`, `web/`, `apps/*`, `packages/*`)
+ *   - `apps/*` and `packages/*` one level deeper than top-level
+ *
+ * Ignores common build/output/VCS dirs. Does not throw.
+ */
+export async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
+  const entries: DetectionEntry[] = [];
+  const seen = new Set<string>();
+
+  function push(entry: DetectionEntry): void {
+    if (seen.has(entry.relativePath)) return;
+    seen.add(entry.relativePath);
+    entries.push(entry);
+  }
+
+  try {
+    const rootFiles = fs.readdirSync(cwd, { withFileTypes: true });
+    const rootNames = rootFiles.map((d) => d.name);
+    const hasBunLock = rootNames.includes("bun.lock") || rootNames.includes("bun.lockb");
+
+    // Root package.json
+    if (rootNames.includes("package.json")) {
+      const scripts = tryReadPkgScripts(nodePath.join(cwd, "package.json"));
+      if (scripts !== null) {
+        push({ relativePath: "package.json", scripts, hasBunLock });
       }
     }
 
-    // Scan manage.py / pyproject.toml / Cargo.toml at root
+    // Root-level alternative manifests.
     for (const f of ["manage.py", "pyproject.toml", "Cargo.toml"]) {
-      if (rootFiles.includes(f)) {
-        entries.push({ relativePath: f, scripts: {}, hasBunLock: false });
+      if (rootNames.includes(f)) {
+        push({ relativePath: f, scripts: {}, hasBunLock: false });
       }
     }
 
-    // Standalone file previews at the repo root (markdown excluded — use files explorer instead).
-    for (const f of rootFiles) {
+    // Standalone file previews at the repo root.
+    for (const f of rootNames) {
       const lower = f.toLowerCase();
       if (
         lower.endsWith(".html") ||
@@ -73,46 +132,82 @@ async function scanProjectEntries(cwd: string): Promise<DetectionEntry[]> {
         lower.endsWith(".jsx") ||
         lower.endsWith(".docx")
       ) {
-        entries.push({
-          relativePath: f,
-          scripts: {},
-          hasBunLock: false,
-        });
+        push({ relativePath: f, scripts: {}, hasBunLock: false });
       }
     }
 
-    // Scan apps/* sub-directories
-    const appsDir = nodePath.join(cwd, "apps");
-    if (fs.existsSync(appsDir)) {
-      const appDirs = fs
-        .readdirSync(appsDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name);
+    // Walk top-level directories. For each non-ignored subdirectory, pick up
+    // its `package.json` (if any) and descend one more level so monorepo
+    // layouts like `apps/*/package.json` and `packages/*/package.json`
+    // continue to work — plus any unconventional layout where the React app
+    // lives under `frontend/`, `client/`, `src/web/`, etc.
+    for (const entry of rootFiles) {
+      if (!entry.isDirectory()) continue;
+      if (shouldSkipDirName(entry.name)) continue;
 
-      for (const appDir of appDirs) {
-        const pkgPath = nodePath.join(appsDir, appDir, "package.json");
-        if (fs.existsSync(pkgPath)) {
-          try {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-              scripts?: Record<string, string>;
-            };
-            entries.push({
-              relativePath: `apps/${appDir}/package.json`,
-              scripts: pkg.scripts ?? {},
-              hasBunLock,
-            });
-          } catch {
-            /* ignore */
-          }
+      const topAbs = nodePath.join(cwd, entry.name);
+
+      // Direct package.json inside this top-level dir.
+      const topPkg = nodePath.join(topAbs, "package.json");
+      if (fs.existsSync(topPkg)) {
+        const scripts = tryReadPkgScripts(topPkg);
+        if (scripts !== null) {
+          push({
+            relativePath: `${entry.name}/package.json`,
+            scripts,
+            hasBunLock,
+          });
         }
-        // Detect mobile: look for *.xcodeproj
-        const subFiles = fs.readdirSync(nodePath.join(appsDir, appDir));
-        if (subFiles.some((f) => f.endsWith(".xcodeproj"))) {
-          entries.push({
-            relativePath: `apps/${appDir}/mobile`,
+      }
+
+      // Detect Xcode projects (mobile) at this level.
+      try {
+        const sub = fs.readdirSync(topAbs);
+        if (sub.some((f) => f.endsWith(".xcodeproj"))) {
+          push({
+            relativePath: `${entry.name}/mobile`,
             scripts: {},
             hasBunLock,
           });
+        }
+      } catch {
+        /* not readable — skip */
+      }
+
+      // One level deeper (e.g. apps/web/package.json, packages/ui/package.json,
+      // frontend/next-app/package.json).
+      let nested: fs.Dirent[] = [];
+      try {
+        nested = fs.readdirSync(topAbs, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const nestedEntry of nested) {
+        if (!nestedEntry.isDirectory()) continue;
+        if (shouldSkipDirName(nestedEntry.name)) continue;
+        const nestedAbs = nodePath.join(topAbs, nestedEntry.name);
+        const nestedPkg = nodePath.join(nestedAbs, "package.json");
+        if (fs.existsSync(nestedPkg)) {
+          const scripts = tryReadPkgScripts(nestedPkg);
+          if (scripts !== null) {
+            push({
+              relativePath: `${entry.name}/${nestedEntry.name}/package.json`,
+              scripts,
+              hasBunLock,
+            });
+          }
+        }
+        try {
+          const nestedFiles = fs.readdirSync(nestedAbs);
+          if (nestedFiles.some((f) => f.endsWith(".xcodeproj"))) {
+            push({
+              relativePath: `${entry.name}/${nestedEntry.name}/mobile`,
+              scripts: {},
+              hasBunLock,
+            });
+          }
+        } catch {
+          /* ignore */
         }
       }
     }
@@ -256,8 +351,12 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         ".js": "text/javascript; charset=utf-8",
         ".mjs": "text/javascript; charset=utf-8",
         ".json": "application/json; charset=utf-8",
-        ".md": "text/html; charset=utf-8",
-        ".mdx": "text/html; charset=utf-8",
+        // Markdown is served as plain text/markdown so a previewed HTML page
+        // linking to README.md gets the raw source instead of having the
+        // browser try to parse markdown as HTML and render garbage. Standalone
+        // markdown previews are no longer wired through this server.
+        ".md": "text/markdown; charset=utf-8",
+        ".mdx": "text/markdown; charset=utf-8",
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
@@ -425,11 +524,17 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         }
 
         // Stop any existing process for this key before starting fresh.
-        // Extracted to Effect.sync to keep try/catch out of the generator body.
+        // Critical: detach all stdout/stderr listeners on the old child so a
+        // late-buffered "Local: http://localhost:5173" line doesn't fire
+        // after the new child takes over the key — the listener would then
+        // write the dead port into the new session and the proxy 502s.
         yield* Effect.sync(() => {
           const existing = runningSessions.get(key);
           if (existing) {
             tryKill(existing.process);
+            existing.process.stdout?.removeAllListeners();
+            existing.process.stderr?.removeAllListeners();
+            existing.process.removeAllListeners();
             runningSessions.delete(key);
             outputBuffers.delete(key); // discard stale buffer from prior run
           }
@@ -463,16 +568,18 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
 
         runningSessions.set(key, { session, process: child, app });
 
-        // Watch stdout line by line for port detection and log streaming
+        // Watch stdout line by line for port detection and log streaming.
+        // Each callback verifies it's still operating on the same child it
+        // was bound to — otherwise a late-fired listener from a kill+respawn
+        // race would corrupt the new session's state.
         const rl = readline.createInterface({ input: child.stdout! });
         rl.on("line", (line) => {
+          if (runningSessions.get(key)?.process !== child) return;
           emitEvent({ type: "log", appId, projectId: pid, line, stream: "stdout" });
-          // Buffer recent output so we can include it in errorMessage on crash
           const buf = outputBuffers.get(key) ?? [];
           buf.push(line);
-          if (buf.length > 50) buf.shift(); // keep last 50 lines
+          if (buf.length > 50) buf.shift();
           outputBuffers.set(key, buf);
-          // Only detect port once (when port is still null)
           const current = runningSessions.get(key);
           if (current && current.session.port === null) {
             const detectedPort = detectPortFromLine(line);
@@ -482,14 +589,13 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
           }
         });
 
-        // Watch stderr for log streaming
         const rlErr = readline.createInterface({ input: child.stderr! });
         rlErr.on("line", (line) => {
+          if (runningSessions.get(key)?.process !== child) return;
           emitEvent({ type: "log", appId, projectId: pid, line, stream: "stderr" });
-          // Buffer recent stderr — errors almost always surface here
           const buf = outputBuffers.get(key) ?? [];
           buf.push(line);
-          if (buf.length > 50) buf.shift(); // keep last 50 lines
+          if (buf.length > 50) buf.shift();
           outputBuffers.set(key, buf);
         });
 
@@ -513,7 +619,11 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
           if (!stdoutReadlineClosed || !stderrReadlineClosed || childCloseCode === undefined)
             return;
           const current = runningSessions.get(key);
-          if (current && current.session.status !== "error") {
+          // Only act if this child is still the active one for the key — a
+          // kill+respawn between exit events would otherwise drop the fresh
+          // session into "error" status.
+          if (current?.process !== child) return;
+          if (current.session.status !== "error") {
             const buf = outputBuffers.get(key) ?? [];
             const recentOutput = buf
               .slice(-20)
@@ -525,8 +635,11 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
                 ? `${baseMessage}\n\nLast output:\n${recentOutput}`
                 : baseMessage;
             updateSessionStatus(key, { status: "error", errorMessage });
-            outputBuffers.delete(key); // free memory after crash is captured
+            outputBuffers.delete(key);
           }
+          // Drop the dead reference so subsequent getSession() returns null
+          // and getSessions() doesn't accumulate crashed entries forever.
+          runningSessions.delete(key);
         };
 
         child.on("close", (code) => {
@@ -637,7 +750,7 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
           throw new Error("Not a file");
         }
         const items: PreviewFileItem[] = listPreviewFileItemsFromEntries([
-          { relativePath: normalized, hasDevScript: false, hasBunLock: false },
+          { relativePath: normalized, scripts: {}, hasBunLock: false },
         ]);
         const item = items[0];
         if (!item) {
@@ -682,6 +795,16 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         }),
       ),
   };
+
+  // Expose a sync session lookup so the WebSocket upgrade hook (which lives
+  // outside the Effect runtime, attached directly to the Node http.Server)
+  // can find the upstream port for a /preview/<pid>/<appId>/* upgrade.
+  registerPreviewSessionLookup({
+    getSession: (projectId, appId) => {
+      const session = service.getSession(projectId, appId);
+      return session ? { port: session.port } : undefined;
+    },
+  });
 
   return service;
 });

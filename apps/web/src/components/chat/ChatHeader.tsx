@@ -12,6 +12,7 @@ import {
   ExternalLinkIcon,
   FolderOpenIcon,
   MonitorPlayIcon,
+  PaintbrushIcon,
   TerminalSquareIcon,
 } from "lucide-react";
 import { useFilesPanelStore } from "~/filesPanelStore";
@@ -49,6 +50,10 @@ interface ChatHeaderProps {
   previewOpen: boolean;
   hasRunningPreviewApp: boolean;
   onTogglePreview: () => void;
+  /** Design panel: when false the design toggle is rendered but disabled (no designable React app). */
+  designAvailable: boolean;
+  designOpen: boolean;
+  onToggleDesign: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
@@ -143,6 +148,9 @@ export const ChatHeader = memo(function ChatHeader({
   previewOpen,
   hasRunningPreviewApp,
   onTogglePreview,
+  designAvailable,
+  designOpen,
+  onToggleDesign,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -252,6 +260,31 @@ export const ChatHeader = memo(function ChatHeader({
                 : previewOpen
                   ? "Close preview panel"
                   : "Open preview panel"}
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0 px-1.5 @[1180px]/header-actions:px-2"
+                  pressed={designOpen}
+                  onPressedChange={onToggleDesign}
+                  aria-label="Toggle design panel"
+                  variant="outline"
+                  size="xs"
+                  disabled={!designAvailable}
+                >
+                  <PaintbrushIcon className="size-3" />
+                  <span className="hidden text-[10px] @[1180px]/header-actions:inline">Design</span>
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {!designAvailable
+                ? "Design panel needs a React app in this project."
+                : designOpen
+                  ? "Close design panel"
+                  : "Open design panel"}
             </TooltipPopup>
           </Tooltip>
           <Tooltip>

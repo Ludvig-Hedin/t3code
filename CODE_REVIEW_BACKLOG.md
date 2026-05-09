@@ -7,13 +7,13 @@ Auto-fixed items are marked `auto-fixed`.
 
 ## BL-001 · `wasApplied` in `dequeue()` always returned `false` · **auto-fixed**
 
-| Field | Value |
-|-------|-------|
-| Area | `apps/web/src/hooks/useMessageQueue.ts` |
-| Type | Bug |
+| Field  | Value                                                          |
+| ------ | -------------------------------------------------------------- |
+| Area   | `apps/web/src/hooks/useMessageQueue.ts`                        |
+| Type   | Bug                                                            |
 | Impact | User-facing — auto-send message queue silently stopped working |
-| Risk | Low (fix is self-contained) |
-| Status | `auto-fixed` |
+| Risk   | Low (fix is self-contained)                                    |
+| Status | `auto-fixed`                                                   |
 
 **Summary:** `wasApplied` was a closure variable mutated inside a `setQueue(updater)`
 functional updater, then read as the return value immediately after `setQueue()` returned.
@@ -31,13 +31,13 @@ consistent with the synchronous read that already verified an item exists.
 
 ## BL-002 · No file-upload size limit on `/api/transcribe`
 
-| Field | Value |
-|-------|-------|
-| Area | `apps/server/src/http.ts` — `transcriptionRouteLayer` |
-| Type | Bug / Performance |
-| Impact | Internal / infra — unbounded memory use |
-| Risk | Medium |
-| Status | `auto-fixed` |
+| Field  | Value                                                 |
+| ------ | ----------------------------------------------------- |
+| Area   | `apps/server/src/http.ts` — `transcriptionRouteLayer` |
+| Type   | Bug / Performance                                     |
+| Impact | Internal / infra — unbounded memory use               |
+| Risk   | Medium                                                |
+| Status | `auto-fixed`                                          |
 
 **Summary:** The new `POST /api/transcribe` multipart endpoint reads the uploaded file into
 memory (`fileSystem.readFile(body.file.path)`) with no size cap. A client that uploads a
@@ -52,13 +52,13 @@ pattern in the same handler.
 
 ## BL-003 · `allowHtml` in `ChatMarkdown` — audit all call sites
 
-| Field | Value |
-|-------|-------|
-| Area | `apps/web/src/components/ChatMarkdown.tsx` |
-| Type | Security |
-| Impact | User-facing — potential XSS if misused |
-| Risk | Medium |
-| Status | `resolved — safe as-is` |
+| Field  | Value                                      |
+| ------ | ------------------------------------------ |
+| Area   | `apps/web/src/components/ChatMarkdown.tsx` |
+| Type   | Security                                   |
+| Impact | User-facing — potential XSS if misused     |
+| Risk   | Medium                                     |
+| Status | `resolved — safe as-is`                    |
 
 **Summary:** The new `allowHtml` prop enables `rehype-raw`, which renders arbitrary HTML
 embedded in Markdown. The prop comment says "Enable for user-controlled content (e.g. file
@@ -75,13 +75,13 @@ call sites in future reviews.
 
 ## BL-004 · Hard page reload on dead WebSocket connection
 
-| Field | Value |
-|-------|-------|
-| Area | `apps/web/src/wsRpcClient.ts` — `handleDeadConnection` |
-| Type | UX / Design debt |
+| Field  | Value                                                  |
+| ------ | ------------------------------------------------------ |
+| Area   | `apps/web/src/wsRpcClient.ts` — `handleDeadConnection` |
+| Type   | UX / Design debt                                       |
 | Impact | User-facing — unsaved editor content lost on reconnect |
-| Risk | Low |
-| Status | `open` |
+| Risk   | Low                                                    |
+| Status | `open`                                                 |
 
 **Summary:** When the heartbeat declares the WebSocket connection dead, `window.location.reload()`
 is called after a 50 ms delay. This is the simplest possible recovery strategy and avoids
@@ -98,13 +98,13 @@ before falling back to reload.
 
 ## BL-005 · `PROJECT_SEARCH_ENTRIES_MAX_LIMIT` increased 125× (200 → 25,000)
 
-| Field | Value |
-|-------|-------|
-| Area | `packages/contracts/src/project.ts` |
-| Type | Performance |
+| Field  | Value                                                                |
+| ------ | -------------------------------------------------------------------- |
+| Area   | `packages/contracts/src/project.ts`                                  |
+| Type   | Performance                                                          |
 | Impact | User-facing — potential UI freeze / slow render on large result sets |
-| Risk | Medium |
-| Status | `resolved — false alarm` |
+| Risk   | Medium                                                               |
+| Status | `resolved — false alarm`                                             |
 
 **Summary:** `PROJECT_SEARCH_ENTRIES_MAX_LIMIT` was raised from 200 to 25,000 to align with
 the workspace index size. The file-name search panel (`FilesPanelResults`) previously never
@@ -119,13 +119,13 @@ current UI caller. No virtualization needed at this time.
 
 ## BL-006 · `$ensureAtLeastOneComposerLine` missing from some `getComposerLineBlocks` callers
 
-| Field | Value |
-|-------|-------|
-| Area | `apps/web/src/components/ComposerPromptEditor.tsx` |
-| Type | Bug (potential) |
+| Field  | Value                                                 |
+| ------ | ----------------------------------------------------- |
+| Area   | `apps/web/src/components/ComposerPromptEditor.tsx`    |
+| Type   | Bug (potential)                                       |
 | Impact | User-facing — possible silent no-op on empty composer |
-| Risk | Low–Medium |
-| Status | `resolved — safe as-is` |
+| Risk   | Low–Medium                                            |
+| Status | `resolved — safe as-is`                               |
 
 **Summary:** `getComposerLineBlocks()` previously created an empty paragraph as a side
 effect when the editor was empty. This was extracted into `$ensureAtLeastOneComposerLine()`
@@ -142,13 +142,13 @@ empty case is handled safely. No code change needed.
 
 ## BL-007 · TunnelManager status briefly invisible during error→retry
 
-| Field | Value |
-|-------|-------|
-| Area | `apps/desktop/src/tunnelManager.ts` — `enable()` |
-| Type | Bug (edge case) |
-| Impact | Internal — minor UI flicker/gap |
-| Risk | Low |
-| Status | `auto-fixed` |
+| Field  | Value                                            |
+| ------ | ------------------------------------------------ |
+| Area   | `apps/desktop/src/tunnelManager.ts` — `enable()` |
+| Type   | Bug (edge case)                                  |
+| Impact | Internal — minor UI flicker/gap                  |
+| Risk   | Low                                              |
+| Status | `auto-fixed`                                     |
 
 **Summary:** When retrying from `error` state, `_resetState()` is called without emitting a
 new status event. The UI remained stuck showing "error" for the full duration of the
@@ -161,4 +161,4 @@ the user had already clicked retry.
 
 ---
 
-*Last updated: 2026-04-22 by automated review agent (pass 2)*
+_Last updated: 2026-04-22 by automated review agent (pass 2)_

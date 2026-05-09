@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 import ThreadSidebar from "./Sidebar";
+import { ConnectionStatusBanner } from "./ConnectionStatusBanner";
 import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
 import { isElectron, isMobileWebView } from "../env";
 import { useMobileHeartbeat } from "../hooks/useMobileHeartbeat";
@@ -49,6 +50,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
        * automations, skills, plugins, etc. — not just the thread view.
        */}
       <GlobalShortcutsHandler />
+      <ConnectionStatusBanner />
       <Sidebar
         side="left"
         collapsible="offcanvas"

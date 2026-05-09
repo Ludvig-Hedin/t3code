@@ -22,6 +22,7 @@ import {
   DiffIcon,
   EllipsisIcon,
   MonitorPlayIcon,
+  PaintbrushIcon,
   SquareIcon,
   SquarePenIcon,
   TerminalSquareIcon,
@@ -59,6 +60,10 @@ export interface PopoutChatHeaderProps {
   previewOpen: boolean;
   hasRunningPreviewApp: boolean;
   onTogglePreview: () => void;
+  /** Design panel: true when a designable React app exists; when false the design button is shown but disabled. */
+  designAvailable: boolean;
+  designOpen: boolean;
+  onToggleDesign: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
@@ -102,6 +107,9 @@ function SecondaryControls({
   | "previewOpen"
   | "hasRunningPreviewApp"
   | "onTogglePreview"
+  | "designAvailable"
+  | "designOpen"
+  | "onToggleDesign"
   | "onToggleTerminal"
   | "onToggleDiff"
   | "onClose"
@@ -158,6 +166,9 @@ export const PopoutChatHeader = memo(function PopoutChatHeader({
   previewOpen,
   hasRunningPreviewApp,
   onTogglePreview,
+  designAvailable,
+  designOpen,
+  onToggleDesign,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -299,6 +310,32 @@ export const PopoutChatHeader = memo(function PopoutChatHeader({
               : previewOpen
                 ? "Close preview panel"
                 : "Open preview panel"}
+          </TooltipPopup>
+        </Tooltip>
+
+        {/* Design toggle — always visible */}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="shrink-0"
+                pressed={designOpen}
+                onPressedChange={onToggleDesign}
+                aria-label="Toggle design panel"
+                variant="outline"
+                size="xs"
+                disabled={!designAvailable}
+              />
+            }
+          >
+            <PaintbrushIcon className="size-3" />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            {!designAvailable
+              ? "Design panel needs a React app in this project."
+              : designOpen
+                ? "Close design panel"
+                : "Open design panel"}
           </TooltipPopup>
         </Tooltip>
 

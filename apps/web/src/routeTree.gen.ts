@@ -25,10 +25,12 @@ import { Route as SettingsMcpRouteImport } from './routes/settings.mcp'
 import { Route as SettingsGitRouteImport } from './routes/settings.git'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
+import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as SettingsA2aRouteImport } from './routes/settings.a2a'
 import { Route as PopoutThreadIdRouteImport } from './routes/popout.$threadId'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
+import { Route as ChatProjectsProjectIdRouteImport } from './routes/_chat.projects.$projectId'
 
 const SkillsRoute = SkillsRouteImport.update({
   id: '/skills',
@@ -110,6 +112,11 @@ const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   path: '/archived',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsKeybindingsRoute = SettingsKeybindingsRouteImport.update({
+  id: '/keybindings',
+  path: '/keybindings',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   id: '/appearance',
   path: '/appearance',
@@ -130,6 +137,11 @@ const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
   path: '/$threadId',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatProjectsProjectIdRoute = ChatProjectsProjectIdRouteImport.update({
+  id: '/projects/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => ChatRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -144,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/git': typeof SettingsGitRoute
+  '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/mobile': typeof SettingsMobileRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -151,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/settings/prompt-improvement': typeof SettingsPromptImprovementRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
+  '/projects/$projectId': typeof ChatProjectsProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/automations': typeof AutomationsRoute
@@ -164,6 +178,7 @@ export interface FileRoutesByTo {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/git': typeof SettingsGitRoute
+  '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/mobile': typeof SettingsMobileRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -172,6 +187,7 @@ export interface FileRoutesByTo {
   '/settings/providers': typeof SettingsProvidersRoute
   '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
   '/': typeof ChatIndexRoute
+  '/projects/$projectId': typeof ChatProjectsProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -187,6 +203,7 @@ export interface FileRoutesById {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/git': typeof SettingsGitRoute
+  '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/mobile': typeof SettingsMobileRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -195,6 +212,7 @@ export interface FileRoutesById {
   '/settings/providers': typeof SettingsProvidersRoute
   '/terminal-popout/$threadId': typeof TerminalPopoutThreadIdRoute
   '/_chat/': typeof ChatIndexRoute
+  '/_chat/projects/$projectId': typeof ChatProjectsProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -211,6 +229,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/general'
     | '/settings/git'
+    | '/settings/keybindings'
     | '/settings/mcp'
     | '/settings/mobile'
     | '/settings/notifications'
@@ -218,6 +237,7 @@ export interface FileRouteTypes {
     | '/settings/prompt-improvement'
     | '/settings/providers'
     | '/terminal-popout/$threadId'
+    | '/projects/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/automations'
@@ -231,6 +251,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/general'
     | '/settings/git'
+    | '/settings/keybindings'
     | '/settings/mcp'
     | '/settings/mobile'
     | '/settings/notifications'
@@ -239,6 +260,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/terminal-popout/$threadId'
     | '/'
+    | '/projects/$projectId'
   id:
     | '__root__'
     | '/_chat'
@@ -253,6 +275,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/general'
     | '/settings/git'
+    | '/settings/keybindings'
     | '/settings/mcp'
     | '/settings/mobile'
     | '/settings/notifications'
@@ -261,6 +284,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/terminal-popout/$threadId'
     | '/_chat/'
+    | '/_chat/projects/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -394,6 +418,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/keybindings': {
+      id: '/settings/keybindings'
+      path: '/keybindings'
+      fullPath: '/settings/keybindings'
+      preLoaderRoute: typeof SettingsKeybindingsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/a2a': {
       id: '/settings/a2a'
       path: '/a2a'
@@ -415,17 +446,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/projects/$projectId': {
+      id: '/_chat/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ChatProjectsProjectIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
   }
 }
 
 interface ChatRouteChildren {
   ChatThreadIdRoute: typeof ChatThreadIdRoute
   ChatIndexRoute: typeof ChatIndexRoute
+  ChatProjectsProjectIdRoute: typeof ChatProjectsProjectIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
   ChatThreadIdRoute: ChatThreadIdRoute,
   ChatIndexRoute: ChatIndexRoute,
+  ChatProjectsProjectIdRoute: ChatProjectsProjectIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
@@ -433,6 +473,7 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 interface SettingsRouteChildren {
   SettingsA2aRoute: typeof SettingsA2aRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsGitRoute: typeof SettingsGitRoute
@@ -447,6 +488,7 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsA2aRoute: SettingsA2aRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsKeybindingsRoute: SettingsKeybindingsRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsGitRoute: SettingsGitRoute,

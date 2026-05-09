@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { CheckIcon, CopyIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
 import { type ProviderKind } from "@t3tools/contracts";
 import { Badge } from "../../ui/badge";
 import { ClaudeAI, Gemini, OllamaIcon, OpenAI, OpenCodeIcon } from "../../Icons";
 import { useServerProviders } from "../../../rpc/serverState";
+import { readNativeApi } from "../../../nativeApi";
 import { cn } from "~/lib/utils";
 
 type Platform = "macos" | "linux" | "windows";
@@ -111,9 +112,28 @@ function CopyCommandButton({ command }: { command: string }) {
 
 export function ProviderInstallStep() {
   const [platform, setPlatform] = useState<Platform>(detectPlatform);
+  const [recheckBusy, setRecheckBusy] = useState(false);
+  const [recheckedAt, setRecheckedAt] = useState<number | null>(null);
   const serverProviders = useServerProviders();
   const installedIds = new Set(serverProviders.filter((p) => p.installed).map((p) => p.provider));
+  const installedCount = installedIds.size;
   const platforms: Platform[] = ["macos", "linux", "windows"];
+
+  const recheck = async () => {
+    const api = readNativeApi();
+    if (!api) return;
+    setRecheckBusy(true);
+    try {
+      await api.server.refreshProviders();
+      setRecheckedAt(Date.now());
+    } catch {
+      // Server is the source of truth — if the call fails the existing
+      // installed badges stay as-is. Surfacing an error here would mostly be
+      // noise; user can retry.
+    } finally {
+      setRecheckBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -122,6 +142,30 @@ export function ProviderInstallStep() {
         <p className="text-sm text-muted-foreground">
           Bird Code works with multiple AI coding agents. Install the ones you want to use.
         </p>
+      </div>
+
+      {/* Re-check banner */}
+      <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2">
+        <span className="text-xs text-muted-foreground">
+          {installedCount === 0
+            ? "Run a command below, then re-check."
+            : `${installedCount} provider${installedCount === 1 ? "" : "s"} detected on PATH.`}
+          {recheckedAt && (
+            <span className="ml-1.5 text-muted-foreground/60">Last checked just now.</span>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={() => void recheck()}
+          disabled={recheckBusy}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs font-medium transition-colors",
+            "hover:bg-accent disabled:opacity-50",
+          )}
+        >
+          <RefreshCwIcon className={cn("size-3", recheckBusy && "animate-spin")} />
+          Re-check
+        </button>
       </div>
 
       {/* Platform tabs */}

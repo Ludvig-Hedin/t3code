@@ -73,6 +73,26 @@ export function resolveDesktopPairingCode(): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Returns the structured reason the desktop bridge can't produce a pairing
+ * code right now (currently only "wifi-required"), or null if there's a
+ * code or the bridge isn't available. The MobileCompanionPanel uses this
+ * to show a precise hint instead of a generic "no pairing code" empty state.
+ */
+export function resolveDesktopPairingError(): "wifi-required" | null {
+  if (typeof window === "undefined") return null;
+  const result = window.desktopBridge?.getPairingCode?.();
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "ok" in result &&
+    result.ok === false
+  ) {
+    return result.reason;
+  }
+  return null;
+}
+
 function buildPairingPayload(serverURL: string): PairingPayload {
   const desktopAuthToken = window.desktopBridge?.getDesktopAuthToken?.();
   return {
@@ -286,6 +306,10 @@ export function BirdCodeMobileCompanionPanel() {
     if (!serverURL) return "";
     return resolveDesktopPairingCode() ?? buildPairingCode(buildPairingPayload(serverURL));
   }, [serverURL]);
+  // Surface the structured "wifi-required" reason from the desktop bridge so
+  // the empty state can show a precise hint instead of a generic message.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pairingError = useMemo(() => resolveDesktopPairingError(), [tunnelStatus.status]);
 
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
@@ -655,6 +679,14 @@ export function BirdCodeMobileCompanionPanel() {
                   {copied ? "Copied!" : "Copy pairing code"}
                 </Button>
               </div>
+            </div>
+          ) : pairingError === "wifi-required" ? (
+            <div className="m-4 rounded-xl border border-amber-500/20 bg-amber-500/8 p-4 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">Wi-Fi required</p>
+              <p className="mt-1">
+                Bird Code couldn&apos;t find a private network address on this Mac. Connect to Wi-Fi
+                or enable remote access (tunnel) to generate a pairing QR.
+              </p>
             </div>
           ) : (
             <div className="m-4 rounded-xl border border-amber-500/20 bg-amber-500/8 p-4 text-sm text-muted-foreground">

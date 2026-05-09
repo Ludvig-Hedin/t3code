@@ -335,10 +335,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (
-    thread.session?.status === "running" &&
-    thread.latestTurn?.state !== "interrupted"
-  ) {
+  if (thread.session?.status === "running" && thread.latestTurn?.state !== "interrupted") {
     // Neutral gray for "Working" so that when this pill surfaces at the
     // collapsed-project level (shown as a dot) it stays consistent with the
     // gray per-thread spinner. The spinner itself is the primary activity

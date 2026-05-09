@@ -121,3 +121,26 @@ export const resolveApiUrl = (options: {
     pathname: options.pathname,
     searchParams: options.searchParams,
   });
+
+/**
+ * Returns the auth token the server expects for HTTP routes that require it
+ * (setup, mobile-pair, etc.). In Electron the token is supplied via the
+ * desktop bridge IPC; in the iOS WebView it's injected as `__BC_WS_TOKEN__`;
+ * in plain browser launches there's no token (matching the server's
+ * `authToken: undefined` config).
+ */
+export const resolveDesktopAuthToken = (): string | null => {
+  if (typeof window === "undefined") return null;
+  const fromBridge = window.desktopBridge?.getDesktopAuthToken?.();
+  if (typeof fromBridge === "string" && fromBridge.length > 0) return fromBridge;
+  const fromMobile = (window as unknown as Record<string, unknown>).__BC_WS_TOKEN__;
+  if (typeof fromMobile === "string" && fromMobile.length > 0) return fromMobile;
+  return null;
+};
+
+/** Build the headers needed for a setup HTTP request, including bearer auth when available. */
+export const setupAuthHeaders = (extra: Record<string, string> = {}): Record<string, string> => {
+  const token = resolveDesktopAuthToken();
+  if (!token) return extra;
+  return { ...extra, Authorization: `Bearer ${token}` };
+};

@@ -159,7 +159,13 @@ export interface DesktopUpdateCheckResult {
 export interface DesktopBridge {
   getWsUrl: () => string | null;
   getPairingUrl?: () => string | null;
-  getPairingCode?: () => string | null;
+  /**
+   * Returns the encoded pairing payload as a string. When pairing is not
+   * possible — e.g. no Wi-Fi / LAN address available and no tunnel — returns
+   * a structured `{ ok: false, reason }` so the renderer can show a specific
+   * recovery hint instead of a generic "no pairing code" message.
+   */
+  getPairingCode?: () => string | { ok: false; reason: "wifi-required" } | null;
   getDesktopAuthToken?: () => string | null;
   getMobileDevices?: () => DesktopMobileDevicesResult | null;
   revokeMobileDevice?: (input: { deviceId: string }) => Promise<DesktopMobileDevicesResult | null>;

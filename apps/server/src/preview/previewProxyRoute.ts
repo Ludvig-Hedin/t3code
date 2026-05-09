@@ -33,10 +33,39 @@
  * through to the SPA catch-all and load Bird Code inside the iframe.
  */
 import * as nodeHttp from "node:http";
-import { Data, Effect, Layer, Option } from "effect";
+import { Readable } from "node:stream";
+import { Data, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
 import { PreviewServerManager } from "./Services/PreviewServerManager";
+
+/**
+ * Headers we always strip from upstream responses: dev frameworks (Next.js,
+ * Remix) emit `X-Frame-Options: SAMEORIGIN` and CSP `frame-ancestors 'self'`
+ * which the browser uses to block the Bird Code preview iframe with no
+ * useful error. Bird Code's preview is designed to embed these dev servers,
+ * so the policy is irrelevant and harmful here.
+ */
+const STRIPPED_RESPONSE_HEADERS = new Set([
+  "x-frame-options",
+  "content-security-policy",
+  "content-security-policy-report-only",
+]);
+
+/**
+ * Content types whose bodies need text rewriting (URL fixup + script
+ * injection). Anything else is streamed straight through without buffering
+ * so SSE / chunked streams arrive promptly and large binary uploads don't
+ * exhaust memory.
+ */
+function needsBodyRewriting(contentType: string): boolean {
+  return (
+    contentType.includes("text/html") ||
+    contentType.includes("text/css") ||
+    contentType.includes("text/javascript") ||
+    contentType.includes("application/javascript")
+  );
+}
 
 /** Tagged error for upstream proxy connection failures */
 class ProxyError extends Data.TaggedError("PreviewProxyError")<{
@@ -103,29 +132,42 @@ const previewProxyHandler = Effect.gen(function* () {
   // Reconstruct the upstream path including query string
   const upstreamPath = rest + (url.search ?? "");
 
-  // Read the request body (returns empty ArrayBuffer for GET requests).
-  // Using Effect.catch (v4 API) to swallow any body-read errors gracefully.
+  // For request bodies: read fully for non-streaming methods. We accept a
+  // small buffer cost on POST/PUT/PATCH; a future improvement is to forward
+  // the request body as a stream too. SSE / WS upgrades go through the
+  // upgrade hook in server.ts, not this handler.
   const bodyBuffer = yield* request.arrayBuffer.pipe(
     Effect.catch(() => Effect.succeed(new ArrayBuffer(0))),
   );
 
-  // Forward the request to the upstream dev server via node:http.
-  // The error channel is typed as ProxyError so Effect.catch can handle it.
-  const result = yield* Effect.tryPromise({
+  const proxyBase = `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(appId)}`;
+
+  /**
+   * Open the upstream connection. We resolve as soon as response headers
+   * arrive so SSE / chunked streams pass through promptly. The `kind` field
+   * tells the caller whether to drain the body for rewriting or pipe it
+   * straight through.
+   */
+  type OpenResult =
+    | {
+        readonly kind: "buffered";
+        readonly status: number;
+        readonly headers: Record<string, string>;
+        readonly body: Buffer;
+      }
+    | {
+        readonly kind: "stream";
+        readonly status: number;
+        readonly headers: Record<string, string>;
+        readonly stream: Readable;
+      };
+
+  const opened = yield* Effect.tryPromise({
     try: () =>
-      new Promise<{
-        status: number;
-        headers: Record<string, string>;
-        body: Buffer;
-      }>((resolve, reject) => {
+      new Promise<OpenResult>((resolve, reject) => {
         const forwardHeaders = collectHeaders(request.headers);
-
-        // Override host to point to the upstream dev server
         forwardHeaders["host"] = `127.0.0.1:${port}`;
-
-        // Disable compression: we need to inspect and rewrite HTML/JS response
-        // bodies. Local proxying has negligible transfer overhead, so stripping
-        // Accept-Encoding costs nothing and lets us safely read plain text.
+        // Strip Accept-Encoding so upstream sends plain text we can rewrite.
         delete forwardHeaders["accept-encoding"];
 
         const proxyReq = nodeHttp.request(
@@ -137,50 +179,68 @@ const previewProxyHandler = Effect.gen(function* () {
             headers: forwardHeaders,
           },
           (proxyRes) => {
-            const chunks: Buffer[] = [];
-            proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
-            proxyRes.on("end", () => {
-              const responseHeaders: Record<string, string> = {};
-              for (const [k, v] of Object.entries(proxyRes.headers)) {
-                if (v !== undefined) {
-                  // Node's IncomingMessage headers can be string or string[]
-                  responseHeaders[k] = Array.isArray(v) ? v.join(", ") : v;
-                }
-              }
+            const responseHeaders: Record<string, string> = {};
+            for (const [k, v] of Object.entries(proxyRes.headers)) {
+              if (v === undefined) continue;
+              const lower = k.toLowerCase();
+              if (STRIPPED_RESPONSE_HEADERS.has(lower)) continue;
+              responseHeaders[lower] = Array.isArray(v) ? v.join(", ") : v;
+            }
 
-              // Rewrite Location headers that reference the upstream port so
-              // redirects stay within the Bird Code proxy namespace.
-              if (responseHeaders["location"]) {
-                responseHeaders["location"] = responseHeaders["location"].replace(
-                  new RegExp(`http://(?:127\\.0\\.0\\.1|localhost):${port}`, "g"),
-                  `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(appId)}`,
-                );
-              }
+            // Rewrite Location headers so redirects stay within the proxy.
+            if (responseHeaders["location"]) {
+              responseHeaders["location"] = responseHeaders["location"].replace(
+                new RegExp(`http://(?:127\\.0\\.0\\.1|localhost):${port}`, "g"),
+                proxyBase,
+              );
+            }
 
-              resolve({
-                status: proxyRes.statusCode ?? 200,
-                headers: responseHeaders,
-                body: Buffer.concat(chunks),
+            // Sandboxed iframes have opaque origin "null"; force-allow it.
+            responseHeaders["access-control-allow-origin"] = "*";
+            delete responseHeaders["access-control-allow-credentials"];
+
+            const status = proxyRes.statusCode ?? 200;
+            const contentType = responseHeaders["content-type"] ?? "";
+
+            if (needsBodyRewriting(contentType)) {
+              // Drain the body so we can run the rewriter on it.
+              const chunks: Buffer[] = [];
+              proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
+              proxyRes.on("end", () => {
+                resolve({
+                  kind: "buffered",
+                  status,
+                  headers: responseHeaders,
+                  body: Buffer.concat(chunks),
+                });
               });
-            });
-            proxyRes.on("error", reject);
+              proxyRes.on("error", reject);
+            } else {
+              // Stream binary / SSE / chunked passthrough — no buffering.
+              // content-length set by upstream remains correct (or absent
+              // for chunked transfer-encoding).
+              resolve({
+                kind: "stream",
+                status,
+                headers: responseHeaders,
+                stream: proxyRes,
+              });
+            }
           },
         );
 
         proxyReq.on("error", reject);
 
-        // Forward the request body if present (for POST/PUT etc.)
         if (bodyBuffer.byteLength > 0) {
           proxyReq.write(Buffer.from(bodyBuffer));
         }
-
         proxyReq.end();
       }),
-    // Wrap as a tagged error class so Effect.catch can handle it
     catch: (cause) => new ProxyError({ cause }),
   }).pipe(
     Effect.catch(() =>
-      Effect.succeed({
+      Effect.succeed<OpenResult>({
+        kind: "buffered",
         status: 502,
         headers: { "content-type": "application/json" },
         body: Buffer.from(JSON.stringify({ error: "Upstream connection failed" })),
@@ -188,18 +248,22 @@ const previewProxyHandler = Effect.gen(function* () {
     ),
   );
 
-  // -------------------------------------------------------------------------
-  // Post-processing: CORS override + URL rewriting
-  // -------------------------------------------------------------------------
-  const proxyBase = `/preview/${encodeURIComponent(projectId)}/${encodeURIComponent(appId)}`;
-  const responseHeaders: Record<string, string> = { ...result.headers };
-  let responseBody = result.body;
+  if (opened.kind === "stream") {
+    // Pipe upstream → response. Effect's Stream.fromAsyncIterable converts a
+    // Node Readable (which is async iterable) into an Effect Stream.
+    const stream = Stream.fromAsyncIterable(
+      opened.stream as unknown as AsyncIterable<Uint8Array>,
+      (cause) => new ProxyError({ cause }),
+    );
+    return HttpServerResponse.stream(stream, {
+      status: opened.status,
+      headers: opened.headers,
+    });
+  }
 
-  // Override CORS: sandboxed iframes have opaque origin "null", which dev
-  // servers reject. Setting "*" lets the null-origin iframe fetch all assets.
-  responseHeaders["access-control-allow-origin"] = "*";
-  delete responseHeaders["access-control-allow-credentials"];
-
+  // Buffered path — rewrite text bodies before sending.
+  let responseBody = opened.body;
+  const responseHeaders: Record<string, string> = { ...opened.headers };
   const contentType = responseHeaders["content-type"] ?? "";
   const isHtml = contentType.includes("text/html");
   const isCss = contentType.includes("text/css");
@@ -209,29 +273,38 @@ const previewProxyHandler = Effect.gen(function* () {
   if (isHtml || isCss || isJs) {
     let bodyStr = responseBody.toString("utf8");
 
-    // 1. Rewrite absolute http://localhost:{port}/… and http://127.0.0.1:{port}/… URLs.
-    //    Vite and Next.js embed these in their generated HTML/JS for @vite/client,
-    //    HMR overlays, and similar internal endpoints.
-    const devServerPattern = new RegExp(`http://(?:localhost|127\\.0\\.0\\.1):${port}`, "g");
-    bodyStr = bodyStr.replace(devServerPattern, proxyBase);
+    // 1. http://localhost:{port}/… and ws://localhost:{port}/… — rewrite both.
+    //    HMR clients embed `new WebSocket('ws://localhost:5173/…')` literals;
+    //    without rewriting, the iframe connects directly to the dev port and
+    //    HMR breaks for every remote/tunneled client.
+    const devHttpPattern = new RegExp(`http://(?:localhost|127\\.0\\.0\\.1):${port}`, "g");
+    bodyStr = bodyStr.replace(devHttpPattern, proxyBase);
+    const devWsPattern = new RegExp(`ws://(?:localhost|127\\.0\\.0\\.1):${port}`, "g");
+    // The browser will prepend the page's origin when the URL is relative,
+    // and our upgrade hook in server.ts forwards it to the upstream port.
+    bodyStr = bodyStr.replace(devWsPattern, proxyBase);
 
     if (isHtml) {
-      // 2. Rewrite root-relative paths in HTML src/href/action/srcset attributes.
-      //    Dev servers (Vite, Next.js, CRA) emit paths like `src="/@vite/client"` or
-      //    `src="/src/main.tsx"`.  Without rewriting, the browser resolves these
-      //    against the Bird Code server origin, not the proxied dev server — causing
-      //    every asset to 404 and the page to show a white screen.
-      //    We replace leading "/" (but not "//", which is protocol-relative) in
-      //    attribute values so they route through the proxy instead.
+      // 2. Root-relative paths in HTML attributes.
       bodyStr = bodyStr.replace(
-        /((?:src|href|action|srcset)=["'])\/(?!\/)/gi,
+        /((?:src|href|action)=["'])\/(?!\/)/gi,
         `$1${proxyBase}/`,
+      );
+      // srcset takes a comma-separated list of URLs; rewrite each entry.
+      bodyStr = bodyStr.replace(
+        /srcset=(["'])([^"']*)\1/gi,
+        (_match, quote: string, value: string) => {
+          const rewritten = value
+            .split(",")
+            .map((entry) =>
+              entry.replace(/^(\s*)\/(?!\/)/, `$1${proxyBase}/`),
+            )
+            .join(",");
+          return `srcset=${quote}${rewritten}${quote}`;
+        },
       );
 
       // 3. Inject <base> and a console-capture script at the start of <head>.
-      //    The <base> tag fixes any remaining relative paths missed by the regex.
-      //    The console script monkey-patches console.* and window.onerror so the
-      //    Preview Panel can display browser-side logs without needing DevTools.
       const injectHead =
         `<base href="${proxyBase}/">` +
         `<script>(function(){` +
@@ -248,7 +321,7 @@ const previewProxyHandler = Effect.gen(function* () {
         `['log','warn','error','info','debug'].forEach(function(m){` +
         `console[m]=function(){_c[m].apply(console,arguments);send(m,arguments)};});` +
         `window.addEventListener('error',function(e){` +
-        `send('error',[e.message+(e.filename?' ('+e.filename+':'+e.lineno+'%)':'')]);});` +
+        `send('error',[e.message+(e.filename?' ('+e.filename+':'+e.lineno+')':'')]);});` +
         `window.addEventListener('unhandledrejection',function(e){` +
         `send('error',['Unhandled rejection: '+ser(e.reason)]);});` +
         `})()</script>`;
@@ -256,7 +329,6 @@ const previewProxyHandler = Effect.gen(function* () {
       if (/<head>/i.test(bodyStr)) {
         bodyStr = bodyStr.replace(/<head>/i, `<head>${injectHead}`);
       } else if (/<html[^>]*>/i.test(bodyStr)) {
-        // HTML without explicit <head> — wrap injection in a <head> block
         bodyStr = bodyStr.replace(/<html([^>]*)>/i, `<html$1><head>${injectHead}</head>`);
       } else {
         bodyStr = injectHead + bodyStr;
@@ -264,21 +336,21 @@ const previewProxyHandler = Effect.gen(function* () {
     }
 
     if (isCss) {
-      // 4. Rewrite root-relative url('/...') in CSS files (fonts, images, imports).
+      // 4. Root-relative url('/...') in CSS.
       bodyStr = bodyStr.replace(/url\((['"]?)\/(?!\/)/g, `url($1${proxyBase}/`);
     }
 
     const newBody = Buffer.from(bodyStr, "utf8");
-    if (newBody.byteLength !== responseBody.byteLength || newBody.toString() !== responseBody.toString("utf8")) {
-      responseBody = newBody;
-      if (responseHeaders["content-length"]) {
-        responseHeaders["content-length"] = String(responseBody.byteLength);
-      }
-    }
+    responseBody = newBody;
+    // We always recompute content-length on rewrite, since chunked-transfer
+    // upstreams can leave the header absent and the rewritten body length
+    // typically changes regardless.
+    responseHeaders["content-length"] = String(responseBody.byteLength);
+    delete responseHeaders["transfer-encoding"];
   }
 
   return HttpServerResponse.uint8Array(new Uint8Array(responseBody), {
-    status: result.status,
+    status: opened.status,
     headers: responseHeaders,
   });
 });

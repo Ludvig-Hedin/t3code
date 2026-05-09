@@ -5,6 +5,7 @@ import {
   BellIcon,
   CodeIcon,
   GitBranchIcon,
+  KeyboardIcon,
   NetworkIcon,
   PaletteIcon,
   PlugIcon,
@@ -28,6 +29,7 @@ import {
 export type SettingsSectionPath =
   | "/settings/general"
   | "/settings/appearance"
+  | "/settings/keybindings"
   | "/settings/providers"
   | "/settings/git"
   | "/settings/notifications"
@@ -45,6 +47,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 }> = [
   { label: "General", to: "/settings/general", icon: Settings2Icon },
   { label: "Appearance", to: "/settings/appearance", icon: PaletteIcon },
+  { label: "Keyboard shortcuts", to: "/settings/keybindings", icon: KeyboardIcon },
   { label: "Providers", to: "/settings/providers", icon: CodeIcon },
   { label: "Git & Code Review", to: "/settings/git", icon: GitBranchIcon },
   { label: "Notifications", to: "/settings/notifications", icon: BellIcon },

@@ -36,7 +36,9 @@ describe("detectPortFromLine", () => {
 
 describe("buildDetectionCandidates", () => {
   it("returns web candidate for root package.json with dev script", () => {
-    const entries = [{ relativePath: "package.json", hasDevScript: true, hasBunLock: true }];
+    const entries = [
+      { relativePath: "package.json", scripts: { dev: "vite" }, hasBunLock: true },
+    ];
     const candidates = buildDetectionCandidates("/repo", entries);
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.id).toBe("web");
@@ -46,7 +48,11 @@ describe("buildDetectionCandidates", () => {
 
   it("finds apps/web as separate candidate", () => {
     const entries = [
-      { relativePath: "apps/web/package.json", hasDevScript: true, hasBunLock: false },
+      {
+        relativePath: "apps/web/package.json",
+        scripts: { dev: "vite" },
+        hasBunLock: false,
+      },
     ];
     const candidates = buildDetectionCandidates("/repo", entries);
     expect(candidates.some((c) => c.id === "web" && c.cwd === "/repo/apps/web")).toBe(true);
@@ -54,7 +60,11 @@ describe("buildDetectionCandidates", () => {
 
   it("marks server apps as logs type", () => {
     const entries = [
-      { relativePath: "apps/server/package.json", hasDevScript: true, hasBunLock: true },
+      {
+        relativePath: "apps/server/package.json",
+        scripts: { dev: "tsx src/index.ts" },
+        hasBunLock: true,
+      },
     ];
     const candidates = buildDetectionCandidates("/repo", entries);
     const server = candidates.find((c) => c.id === "server");
@@ -62,18 +72,20 @@ describe("buildDetectionCandidates", () => {
   });
 
   it("detects python manage.py", () => {
-    const entries = [{ relativePath: "manage.py", hasDevScript: false, hasBunLock: false }];
+    const entries = [{ relativePath: "manage.py", scripts: {}, hasBunLock: false }];
     const candidates = buildDetectionCandidates("/repo", entries);
     expect(candidates.some((c) => c.command.includes("manage.py"))).toBe(true);
   });
 
   it("detects a standalone html file", () => {
-    const entries = [{ relativePath: "index.html", hasDevScript: false, hasBunLock: false }];
+    const entries = [{ relativePath: "index.html", scripts: {}, hasBunLock: false }];
     const candidates = buildDetectionCandidates("/repo", entries);
     const html = candidates.find((c) => c.id === "html");
+    // Label is now the actual filename so the tab matches what the user sees
+    // in their tree, rather than a generic "HTML".
     expect(html).toMatchObject({
       id: "html",
-      label: "HTML",
+      label: "index.html",
       cwd: "/repo",
       type: "browser",
     });

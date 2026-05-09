@@ -193,6 +193,9 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { PopoutChatHeader } from "./chat/PopoutChatHeader";
 import { PreviewPanel } from "./PreviewPanel";
 import { PreviewFloatingWindow } from "./PreviewFloatingWindow";
+import DesignPanel from "./DesignPanel";
+import { useDesignPanelStore } from "../designPanelStore";
+import { useDesignEligibleApps } from "../hooks/useDesignEligibleApps";
 import { AppPageHeader, AppPageHeaderLeading } from "./AppPageHeader";
 import { isPopoutWindow } from "../env";
 import { openThreadPopout } from "../popoutWindowStore";
@@ -1277,6 +1280,27 @@ export default function ChatView({ threadId }: ChatViewProps) {
   // a disabled button that gives no feedback about why.
   const previewAvailable = activeProject !== undefined;
   const hasRunningPreviewApp = usePreviewStore(selectHasRunningApp(activeProject?.id ?? ""));
+
+  // ── Design panel state ───────────────────────────────────────────────────
+  // The button is gated by whether the project has at least one React-eligible
+  // app. We fetch eligibility here (once per project) so both the toggle and
+  // the panel body share the same cached result via `designPanelStore`.
+  const designOpen = useDesignPanelStore((s) => s.open);
+  const designToggle = useDesignPanelStore((s) => s.toggle);
+  const setDesignCwd = useDesignPanelStore((s) => s.setCwd);
+  const { apps: designEligibleApps } = useDesignEligibleApps(activeProject?.id ?? null);
+  // `apps === null` means detection is in-flight — show as available so the
+  // button isn't briefly disabled; the panel will render its own "detecting"
+  // state if the user opens it before the fetch resolves.
+  const designAvailable =
+    activeProject !== undefined && (designEligibleApps === null || designEligibleApps.length > 0);
+
+  // Keep the design panel store's activeCwd in sync with the active project.
+  // This rehydrates the per-project open state from localStorage so users
+  // return to the panel open/closed as they left it.
+  useEffect(() => {
+    setDesignCwd(activeProject?.cwd ?? null);
+  }, [activeProject?.cwd, setDesignCwd]);
 
   const openPullRequestDialog = useCallback(
     (reference?: string) => {
@@ -4928,6 +4952,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
             previewAvailable={previewAvailable}
             previewOpen={previewOpen}
             hasRunningPreviewApp={hasRunningPreviewApp}
+            designAvailable={designAvailable}
+            designOpen={designOpen}
+            onToggleDesign={designToggle}
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -4975,6 +5002,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
             previewAvailable={previewAvailable}
             previewOpen={previewOpen}
             hasRunningPreviewApp={hasRunningPreviewApp}
+            designAvailable={designAvailable}
+            designOpen={designOpen}
+            onToggleDesign={designToggle}
             onRunProjectScript={(script) => {
               void runProjectScript(script);
             }}
@@ -5802,6 +5832,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 setPreviewDetached(true);
               }}
             />
+          </div>
+        )}
+
+        {/* Inline design panel — shown when design is open and a project is active */}
+        {designOpen && activeProject && (
+          <div className="hidden w-[40%] min-w-[320px] max-w-[640px] shrink-0 border-l border-border md:flex md:flex-col">
+            <DesignPanel mode="inline" />
           </div>
         )}
       </div>

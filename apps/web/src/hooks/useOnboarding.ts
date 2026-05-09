@@ -1,5 +1,5 @@
 /**
- * useOnboarding — localStorage-backed state for the 4-step onboarding sheet.
+ * useOnboarding — localStorage-backed state for the 5-step onboarding sheet.
  *
  * Auto-opens on first launch (no stored state). Persists current step and
  * completion. Listens for storage events so the "Setup Guide" button in
@@ -10,7 +10,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Exported so Settings sidebar button can reference the same key without duplicating it. */
 export const STORAGE_KEY = "birdcode:onboarding";
 
-export type OnboardingStep = 1 | 2 | 3 | 4;
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
+export const TOTAL_ONBOARDING_STEPS = 5;
 
 interface OnboardingState {
   completed: boolean;
@@ -134,7 +135,7 @@ export function useOnboarding() {
 
   const nextStep = useCallback(() => {
     setState((prev) => {
-      if (prev.currentStep >= 4) {
+      if (prev.currentStep >= TOTAL_ONBOARDING_STEPS) {
         return { ...prev, open: false, completed: true };
       }
       return { ...prev, currentStep: (prev.currentStep + 1) as OnboardingStep };

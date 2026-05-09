@@ -1,19 +1,25 @@
 /**
- * OnboardingSheet — 4-step right-side sheet.
+ * OnboardingSheet — 5-step right-side sheet.
  *
  * Auto-opens on first launch (controlled by useOnboarding localStorage state).
  * Can be reopened from Settings via the "Setup Guide" button.
  *
  * Steps:
- *  1. Provider Install
- *  2. Mobile Pairing
- *  3. Git Setup
- *  4. Import Chats
+ *  1. Project Setup     (pick a workspace folder)
+ *  2. Provider Install
+ *  3. Mobile Pairing    (optional)
+ *  4. Git Setup
+ *  5. Import Chats      (optional)
  */
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetPanel, SheetFooter } from "../ui/sheet";
-import { type OnboardingStep, useOnboarding } from "../../hooks/useOnboarding";
+import {
+  type OnboardingStep,
+  TOTAL_ONBOARDING_STEPS,
+  useOnboarding,
+} from "../../hooks/useOnboarding";
+import { ProjectSetupStep } from "./steps/ProjectSetupStep";
 import { ProviderInstallStep } from "./steps/ProviderInstallStep";
 import { MobilePairingStep } from "./steps/MobilePairingStep";
 import { GitSetupStep } from "./steps/GitSetupStep";
@@ -21,13 +27,14 @@ import { ImportChatsFlow } from "./ImportChatsFlow";
 import { cn } from "~/lib/utils";
 
 const STEP_LABELS: Record<OnboardingStep, string> = {
-  1: "Providers",
-  2: "Mobile",
-  3: "Git",
-  4: "Import",
+  1: "Project",
+  2: "Providers",
+  3: "Mobile",
+  4: "Git",
+  5: "Import",
 };
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = TOTAL_ONBOARDING_STEPS;
 
 // ── Step indicator dots ───────────────────────────────────────────────────────
 
@@ -59,12 +66,14 @@ function StepDots({ current, total }: { current: OnboardingStep; total: number }
 function StepContent({ step, onImportDone }: { step: OnboardingStep; onImportDone: () => void }) {
   switch (step) {
     case 1:
-      return <ProviderInstallStep />;
+      return <ProjectSetupStep />;
     case 2:
-      return <MobilePairingStep />;
+      return <ProviderInstallStep />;
     case 3:
-      return <GitSetupStep />;
+      return <MobilePairingStep />;
     case 4:
+      return <GitSetupStep />;
+    case 5:
       return <ImportChatsFlow onDone={onImportDone} />;
   }
 }
@@ -77,7 +86,7 @@ export function OnboardingSheet() {
 
   const isLastStep = currentStep === TOTAL_STEPS;
   // The import step manages its own primary CTA (the import button)
-  const isImportStep = currentStep === 4;
+  const isImportStep = currentStep === 5;
 
   return (
     <Sheet

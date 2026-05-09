@@ -54,7 +54,7 @@ function readRequestAuthToken(
   return null;
 }
 
-function authorizeServerHttpRequest(
+export function authorizeServerHttpRequest(
   request: HttpServerRequest.HttpServerRequest,
   config: { readonly authToken: string | undefined; readonly enableInsecureQueryToken: boolean },
 ) {

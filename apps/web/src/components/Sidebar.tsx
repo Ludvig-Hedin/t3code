@@ -148,6 +148,11 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import {
+  useProjectOverviewStore,
+  type ProjectGroupId,
+  type ProjectThreadGroup,
+} from "../projectOverviewStore";
+import {
   getVisibleSidebarThreadIds,
   getVisibleThreadsForProject,
   resolveAdjacentThreadId,
@@ -1340,6 +1345,14 @@ export default function Sidebar() {
     strict: false,
     select: (params) => (params.threadId ? ThreadId.makeUnsafe(params.threadId) : null),
   });
+  const routeProjectId = useParams({
+    strict: false,
+    select: (params) => (params.projectId ? ProjectId.makeUnsafe(params.projectId) : null),
+  });
+  // Project thread groups (user-defined from ProjectOverview) — used to render
+  // group headers in the sidebar thread list.
+  const projectGroupsByProjectId = useProjectOverviewStore((s) => s.byProjectId);
+  const setThreadGroupInStore = useProjectOverviewStore((s) => s.setThreadGroup);
   const keybindings = useServerKeybindings();
   const [addingProject, setAddingProject] = useState(false);
   const [newCwd, setNewCwd] = useState("");
@@ -1861,6 +1874,17 @@ export default function Sidebar() {
         thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null;
       const isPinnedToSidebar = pinnedToSidebarThreadIds.includes(threadId);
       const isPinnedToProject = pinnedToProjectThreadIds.includes(threadId);
+
+      // Build group-related menu items.
+      const projectGroups: ProjectThreadGroup[] =
+        projectGroupsByProjectId[thread.projectId]?.groups ?? [];
+      const currentGroupId = projectGroups.find((g) => g.threadIds.includes(threadId))?.id ?? null;
+      const groupMenuItems: ContextMenuItemSpec[] = projectGroups.map((g) => ({
+        id: `move-to-group:${g.id}`,
+        label: g.id === currentGroupId ? `Remove from "${g.name}"` : `Move to "${g.name}"`,
+        icon: <FolderIcon />,
+      }));
+
       const clicked = await showContextMenu(
         [
           { id: "rename", label: "Rename thread", icon: <PencilIcon /> },
@@ -1876,6 +1900,7 @@ export default function Sidebar() {
             label: isPinnedToProject ? "Unpin from project" : "Pin to project",
             icon: isPinnedToProject ? <PinOffIcon /> : <PinIcon />,
           },
+          ...groupMenuItems,
           { id: "archive", label: "Archive thread", icon: <ArchiveIcon /> },
           { id: "copy-path", label: "Copy Path", icon: <CopyIcon /> },
           { id: "copy-thread-id", label: "Copy Thread ID", icon: <HashIcon /> },
@@ -1941,6 +1966,12 @@ export default function Sidebar() {
         await attemptArchiveThread(threadId);
         return;
       }
+      if (clicked?.startsWith("move-to-group:")) {
+        const groupId = clicked.slice("move-to-group:".length) as ProjectGroupId;
+        const alreadyInGroup = currentGroupId === groupId;
+        setThreadGroupInStore(thread.projectId, threadId, alreadyInGroup ? null : groupId);
+        return;
+      }
       if (clicked !== "delete") return;
       if (appSettings.confirmThreadDelete) {
         const confirmed = await readNativeApi()?.dialogs.confirm(
@@ -1967,6 +1998,8 @@ export default function Sidebar() {
       pinnedToProjectThreadIds,
       pinnedToSidebarThreadIds,
       projectCwdById,
+      projectGroupsByProjectId,
+      setThreadGroupInStore,
       showContextMenu,
       sidebarThreadsById,
       attemptArchiveThread,
@@ -2574,7 +2607,12 @@ export default function Sidebar() {
           <SidebarMenuButton
             ref={dragHandleProps?.setActivatorNodeRef}
             size="sm"
-            className="gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground cursor-grab active:cursor-grabbing"
+            isActive={routeProjectId === project.id}
+            className={`gap-2 px-2 py-1.5 text-left group-hover/project-header:text-sidebar-accent-foreground cursor-grab active:cursor-grabbing ${
+              routeProjectId === project.id
+                ? "bg-accent/85 text-foreground font-medium hover:bg-accent dark:bg-accent/55 dark:hover:bg-accent/70 group-hover/project-header:bg-accent"
+                : "hover:bg-accent group-hover/project-header:bg-accent"
+            }`}
             {...(dragHandleProps ? dragHandleProps.attributes : {})}
             {...(dragHandleProps ? dragHandleProps.listeners : {})}
             onPointerDownCapture={handleProjectTitlePointerDownCapture}
@@ -2592,8 +2630,9 @@ export default function Sidebar() {
             {!project.expanded && projectStatus ? (
               <span
                 aria-hidden="true"
+                data-project-toggle-chevron="true"
                 title={projectStatus.label}
-                className={`-ml-0.5 relative inline-flex size-3.5 shrink-0 items-center justify-center ${projectStatus.colorClass}`}
+                className={`-ml-0.5 relative inline-flex size-3.5 shrink-0 items-center justify-center rounded hover:bg-foreground/10 ${projectStatus.colorClass}`}
               >
                 <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/project-header:opacity-0">
                   <span
@@ -2605,11 +2644,17 @@ export default function Sidebar() {
                 <ChevronRightIcon className="absolute inset-0 m-auto size-3.5 text-muted-foreground/70 opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100" />
               </span>
             ) : (
-              <ChevronRightIcon
-                className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
-                  project.expanded ? "rotate-90" : ""
-                }`}
-              />
+              <span
+                aria-hidden="true"
+                data-project-toggle-chevron="true"
+                className="-ml-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded hover:bg-foreground/10"
+              >
+                <ChevronRightIcon
+                  className={`size-3.5 text-muted-foreground/70 transition-transform duration-150 ${
+                    project.expanded ? "rotate-90" : ""
+                  }`}
+                />
+              </span>
             )}
             <ProjectFavicon cwd={project.cwd} />
             {renamingProjectId === project.id ? (
@@ -2751,36 +2796,83 @@ export default function Sidebar() {
             </SidebarMenuSubItem>
           ) : null}
           {shouldShowThreadPanel &&
-            renderedThreadIds.map((threadId) => (
-              <SidebarThreadRow
-                key={threadId}
-                threadId={threadId}
-                orderedProjectThreadIds={orderedProjectThreadIds}
-                routeThreadId={routeThreadId}
-                selectedThreadIds={selectedThreadIds}
-                showThreadJumpHints={showThreadJumpHints}
-                jumpLabel={threadJumpLabelById.get(threadId) ?? null}
-                appSettingsConfirmThreadArchive={appSettings.confirmThreadArchive}
-                renamingThreadId={renamingThreadId}
-                renamingTitle={renamingTitle}
-                setRenamingTitle={setRenamingTitle}
-                renamingInputRef={renamingInputRef}
-                renamingCommittedRef={renamingCommittedRef}
-                confirmingArchiveThreadId={confirmingArchiveThreadId}
-                setConfirmingArchiveThreadId={setConfirmingArchiveThreadId}
-                confirmArchiveButtonRefs={confirmArchiveButtonRefs}
-                handleThreadClick={handleThreadClick}
-                navigateToThread={navigateToThread}
-                handleMultiSelectContextMenu={handleMultiSelectContextMenu}
-                handleThreadContextMenu={handleThreadContextMenu}
-                clearSelection={clearSelection}
-                commitRename={commitRename}
-                cancelRename={cancelRename}
-                attemptArchiveThread={attemptArchiveThread}
-                openPrLink={openPrLink}
-                pr={prByThreadId.get(threadId) ?? null}
-              />
-            ))}
+            (() => {
+              // Partition visible threads by group membership.
+              const groups: ProjectThreadGroup[] =
+                projectGroupsByProjectId[project.id]?.groups ?? [];
+              // Build a lookup: threadId → groupId for fast access.
+              const threadToGroup = new Map<ThreadId, ProjectGroupId>();
+              for (const g of groups) {
+                for (const tid of g.threadIds) {
+                  threadToGroup.set(tid, g.id);
+                }
+              }
+              const renderedSet = new Set(renderedThreadIds);
+              const ungroupedIds = renderedThreadIds.filter((id) => !threadToGroup.has(id));
+              // Only show groups that have at least one visible thread.
+              const activeGroups = groups.filter((g) =>
+                g.threadIds.some((id) => renderedSet.has(id)),
+              );
+
+              const renderThreadRow = (threadId: ThreadId) => (
+                <SidebarThreadRow
+                  key={threadId}
+                  threadId={threadId}
+                  orderedProjectThreadIds={orderedProjectThreadIds}
+                  routeThreadId={routeThreadId}
+                  selectedThreadIds={selectedThreadIds}
+                  showThreadJumpHints={showThreadJumpHints}
+                  jumpLabel={threadJumpLabelById.get(threadId) ?? null}
+                  appSettingsConfirmThreadArchive={appSettings.confirmThreadArchive}
+                  renamingThreadId={renamingThreadId}
+                  renamingTitle={renamingTitle}
+                  setRenamingTitle={setRenamingTitle}
+                  renamingInputRef={renamingInputRef}
+                  renamingCommittedRef={renamingCommittedRef}
+                  confirmingArchiveThreadId={confirmingArchiveThreadId}
+                  setConfirmingArchiveThreadId={setConfirmingArchiveThreadId}
+                  confirmArchiveButtonRefs={confirmArchiveButtonRefs}
+                  handleThreadClick={handleThreadClick}
+                  navigateToThread={navigateToThread}
+                  handleMultiSelectContextMenu={handleMultiSelectContextMenu}
+                  handleThreadContextMenu={handleThreadContextMenu}
+                  clearSelection={clearSelection}
+                  commitRename={commitRename}
+                  cancelRename={cancelRename}
+                  attemptArchiveThread={attemptArchiveThread}
+                  openPrLink={openPrLink}
+                  pr={prByThreadId.get(threadId) ?? null}
+                />
+              );
+
+              return (
+                <>
+                  {ungroupedIds.map(renderThreadRow)}
+                  {activeGroups.map((group) => {
+                    const groupThreadIdSet = new Set(group.threadIds);
+                    const groupThreadIds = renderedThreadIds.filter((id) => groupThreadIdSet.has(id));
+                    return (
+                      <SidebarMenuSubItem
+                        key={`group-${group.id}`}
+                        className="w-full"
+                        data-thread-selection-safe
+                      >
+                        <div
+                          data-thread-selection-safe
+                          className="mt-0.5 flex w-full items-center gap-1.5 px-2 pb-0.5 pt-1"
+                        >
+                          <FolderIcon className="size-3 shrink-0 text-muted-foreground/50" />
+                          <span className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
+                            {group.name}
+                          </span>
+                        </div>
+                        {groupThreadIds.map(renderThreadRow)}
+                      </SidebarMenuSubItem>
+                    );
+                  })}
+                </>
+              );
+            })()}
 
           {project.expanded && hasHiddenThreads && !isThreadListExpanded && (
             <SidebarMenuSubItem className="w-full">
@@ -2843,9 +2935,14 @@ export default function Sidebar() {
       if (selectedThreadIds.size > 0) {
         clearSelection();
       }
-      toggleProject(projectId);
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('[data-project-toggle-chevron="true"]')) {
+        toggleProject(projectId);
+        return;
+      }
+      void navigate({ to: "/projects/$projectId", params: { projectId } });
     },
-    [clearSelection, selectedThreadIds.size, toggleProject],
+    [clearSelection, navigate, selectedThreadIds.size, toggleProject],
   );
 
   const handleProjectTitleKeyDown = useCallback(
@@ -2855,9 +2952,17 @@ export default function Sidebar() {
       if (dragInProgressRef.current) {
         return;
       }
-      toggleProject(projectId);
+      // Mirror the click handler: when focus is on (or in) the chevron,
+      // toggle expand/collapse rather than navigating. Keyboard-only and
+      // screen-reader users otherwise lose all access to expand/collapse.
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('[data-project-toggle-chevron="true"]')) {
+        toggleProject(projectId);
+        return;
+      }
+      void navigate({ to: "/projects/$projectId", params: { projectId } });
     },
-    [toggleProject],
+    [navigate, toggleProject],
   );
 
   useEffect(() => {

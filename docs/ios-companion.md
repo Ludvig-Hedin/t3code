@@ -31,6 +31,10 @@ This repo now includes a native iPhone-first companion app under `apps/mobile`.
 
 2. Open `apps/mobile/BirdCode.xcodeproj` in Xcode.
 
+   The mobile XcodeGen spec intentionally excludes `apps/mobile/Resources/Info.plist`
+   from target resources. If you add more bundled files under `Resources`, keep the plist
+   excluded or Xcode will fail with a duplicate `Info.plist` build output.
+
 3. Run the desktop/server app first so the mobile app has a session to pair with.
 
 ## Pairing flow

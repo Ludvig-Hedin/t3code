@@ -133,6 +133,17 @@ import {
   PreviewSubscribeInput,
   PreviewUpdateAppInput,
 } from "./preview";
+import {
+  DesignApplyEditInput,
+  DesignApplyEditResult,
+  DesignEligibleAppsInput,
+  DesignEligibleAppsResult,
+  DesignError,
+  DesignPrimeAppInput,
+  DesignPrimeAppResult,
+  DesignResolveOidInput,
+  DesignResolveOidResult,
+} from "./design";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -228,6 +239,12 @@ export const WS_METHODS = {
   previewOpenFile: "preview.openFile",
   previewUpdateApp: "preview.updateApp",
   subscribePreviewEvents: "preview.subscribe",
+
+  // Design panel methods
+  designEligibleApps: "design.eligibleApps",
+  designPrimeApp: "design.primeApp",
+  designResolveOid: "design.resolveOid",
+  designApplyEdit: "design.applyEdit",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -564,6 +581,32 @@ export const WsSubscribePreviewEventsRpc = Rpc.make(WS_METHODS.subscribePreviewE
   stream: true,
 });
 
+// --- Design RPCs ---
+
+export const WsDesignEligibleAppsRpc = Rpc.make(WS_METHODS.designEligibleApps, {
+  payload: DesignEligibleAppsInput,
+  success: DesignEligibleAppsResult,
+  error: DesignError,
+});
+
+export const WsDesignPrimeAppRpc = Rpc.make(WS_METHODS.designPrimeApp, {
+  payload: DesignPrimeAppInput,
+  success: DesignPrimeAppResult,
+  error: DesignError,
+});
+
+export const WsDesignResolveOidRpc = Rpc.make(WS_METHODS.designResolveOid, {
+  payload: DesignResolveOidInput,
+  success: DesignResolveOidResult,
+  error: DesignError,
+});
+
+export const WsDesignApplyEditRpc = Rpc.make(WS_METHODS.designApplyEdit, {
+  payload: DesignApplyEditInput,
+  success: DesignApplyEditResult,
+  error: DesignError,
+});
+
 // ── MCP Server RPCs ─────────────────────────────────────────────────────
 
 export const WsMcpListServersRpc = Rpc.make(WS_METHODS.mcpListServers, {
@@ -732,6 +775,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewOpenFileRpc,
   WsPreviewUpdateAppRpc,
   WsSubscribePreviewEventsRpc,
+  WsDesignEligibleAppsRpc,
+  WsDesignPrimeAppRpc,
+  WsDesignResolveOidRpc,
+  WsDesignApplyEditRpc,
   WsMcpListServersRpc,
   WsMcpAddServerRpc,
   WsMcpUpdateServerRpc,

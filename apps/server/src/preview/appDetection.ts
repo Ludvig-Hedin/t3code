@@ -6,6 +6,33 @@ import type { PreviewFileItem } from "@t3tools/contracts";
 export type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
 export type PreviewType = "browser" | "logs";
 
+/**
+ * Minimal shape of a parsed package.json — only the fields the detector
+ * actually inspects. Keeping it narrow lets callers pass any JSON.parse result
+ * as long as it *may* contain these fields.
+ */
+export interface PackageJsonLike {
+  readonly name?: string;
+  readonly scripts?: Record<string, string>;
+  readonly dependencies?: Record<string, string>;
+  readonly devDependencies?: Record<string, string>;
+  readonly peerDependencies?: Record<string, string>;
+}
+
+/**
+ * Returns true when the package.json declares `react` in its dependencies
+ * (runtime, dev, or peer). Used by the Design panel to gate which apps can
+ * be opened in the visual editor — only React-rendering apps are eligible.
+ */
+export function isReactApp(pkg: PackageJsonLike | null | undefined): boolean {
+  if (!pkg) return false;
+  const dep =
+    pkg.dependencies?.["react"] ??
+    pkg.devDependencies?.["react"] ??
+    pkg.peerDependencies?.["react"];
+  return typeof dep === "string" && dep.length > 0;
+}
+
 export interface DetectionEntry {
   /** Relative path from project root, e.g. "apps/web/package.json" */
   relativePath: string;
@@ -301,8 +328,7 @@ export function buildDetectionCandidates(
     // If there are multiple, suffix with the script name so each gets a unique tab.
     for (const scriptName of runnableScripts) {
       const id = runnableScripts.length === 1 ? baseId : `${baseId}-${scriptName}`;
-      const label =
-        runnableScripts.length === 1 ? baseLabel : `${baseLabel} (${scriptName})`;
+      const label = runnableScripts.length === 1 ? baseLabel : `${baseLabel} (${scriptName})`;
       if (!seenIds.has(id)) {
         seenIds.add(id);
         candidates.push({

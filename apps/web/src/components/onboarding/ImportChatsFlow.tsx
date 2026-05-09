@@ -15,7 +15,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { toastManager } from "../ui/toast";
 import { ClaudeAI, Gemini, OllamaIcon, OpenAI, OpenCodeIcon } from "../Icons";
-import { cn, resolveApiUrl } from "~/lib/utils";
+import { cn, resolveApiUrl, setupAuthHeaders } from "~/lib/utils";
 
 const PROVIDER_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   codex: OpenAI,
@@ -65,7 +65,9 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
     setPhase("scan");
     setScanError(null);
     try {
-      const res = await fetch(resolveApiUrl({ pathname: "/api/setup/import/scan" }));
+      const res = await fetch(resolveApiUrl({ pathname: "/api/setup/import/scan" }), {
+        headers: setupAuthHeaders(),
+      });
       if (!res.ok) throw new Error(`Scan failed (${res.status})`);
       const data = (await res.json()) as { projects: ImportDetectedProject[] };
       setProjects(data.projects);
@@ -112,7 +114,7 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
     try {
       const res = await fetch(resolveApiUrl({ pathname: "/api/setup/import/execute" }), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: setupAuthHeaders({ "content-type": "application/json" }),
         body: JSON.stringify({ selections }),
       });
       if (!res.ok) throw new Error(`Import failed (${res.status})`);

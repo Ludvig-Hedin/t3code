@@ -250,7 +250,12 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
           return badRequest("Invalid pairing payload.");
         }
 
-        if (config.authToken && decoded.desktopAuthToken !== config.authToken) {
+        if (!config.authToken) {
+          return unauthorized(
+            "Pairing disabled: server has no auth token configured. Set --auth-token before exposing /api/mobile/pair.",
+          );
+        }
+        if (decoded.desktopAuthToken !== config.authToken) {
           return unauthorized("Invalid desktop auth token.");
         }
 

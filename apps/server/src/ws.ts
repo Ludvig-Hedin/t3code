@@ -1,3 +1,4 @@
+import * as nodePath from "node:path";
 import { Cause, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
 import {
   CommandId,
@@ -22,6 +23,9 @@ import {
   WS_METHODS,
   WsRpcGroup,
   PreviewError,
+  DesignError,
+  type DesignEligibleApp,
+  type DesignEligibleAppsDiagnostic,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
@@ -60,6 +64,7 @@ import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptR
 import { SkillService } from "./skills";
 import { Mem0Service, type Mem0Memory, type Mem0ServiceShape } from "./memory/Services/Mem0Service";
 import { PreviewServerManager } from "./preview/Services/PreviewServerManager";
+import { DesignService } from "./design/Services/DesignService";
 import { McpService } from "./mcp";
 import { PluginService } from "./plugins";
 import { A2aAgentCardService, A2aTaskService, A2aClientService } from "./a2a";
@@ -181,6 +186,46 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const skillService = yield* SkillService;
     const mem0 = yield* Mem0Service;
     const previewManager = yield* PreviewServerManager;
+    const designService = yield* DesignService;
+
+    /**
+     * Verify the requested `appCwd` lives within the project's workspaceRoot.
+     * Without this check any caller (a stale tab, a renderer compromise) could
+     * point design RPCs at any directory on disk and rewrite source files.
+     */
+    const assertAppCwdInProject = (projectId: string, appCwd: string) =>
+      Effect.gen(function* () {
+        const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+        const project = snapshot.projects?.find((p) => p.id === projectId);
+        const workspaceRoot = project?.workspaceRoot;
+        if (!project || !workspaceRoot) {
+          return yield* Effect.fail(
+            new DesignError({
+              message: `Project not found: ${projectId}`,
+            }),
+          );
+        }
+        const normalizedRoot = nodePath.resolve(workspaceRoot);
+        const normalizedAppCwd = nodePath.resolve(appCwd);
+        const withinRoot =
+          normalizedAppCwd === normalizedRoot ||
+          normalizedAppCwd.startsWith(normalizedRoot + nodePath.sep);
+        if (!withinRoot) {
+          return yield* Effect.fail(
+            new DesignError({
+              message: "appCwd is not within the project workspace",
+            }),
+          );
+        }
+      }).pipe(
+        Effect.mapError((err: unknown) =>
+          err instanceof DesignError
+            ? err
+            : new DesignError({
+                message: err instanceof Error ? err.message : String(err),
+              }),
+        ),
+      );
     const mcpService = yield* McpService;
     const pluginService = yield* PluginService;
     const transcriptionService = yield* TranscriptionService;
@@ -1205,6 +1250,112 @@ const WsRpcLayer = WsRpcGroup.toLayer(
           // streamEvents returns a Stream directly (not Effect<Stream>)
           previewManager.streamEvents(projectId),
           { "rpc.aggregate": "preview" },
+        ),
+
+      // --- Design ---
+      // DesignService methods declare `Effect<T>` (no error channel); defects
+      // are converted to DesignError via catchAllDefect so the RPC contract
+      // can surface a structured error to the client.
+      [WS_METHODS.designEligibleApps]: ({ projectId }) =>
+        observeRpcEffect(
+          WS_METHODS.designEligibleApps,
+          Effect.gen(function* () {
+            const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+            const project = snapshot.projects?.find((p) => p.id === projectId);
+            const cwd = project?.workspaceRoot;
+            if (!project || !cwd) {
+              const detail = !project
+                ? `Project id not found in projection snapshot: ${projectId}`
+                : "Project has no workspace root in snapshot.";
+              return {
+                apps: [] as const satisfies readonly DesignEligibleApp[],
+                diagnostics: [
+                  {
+                    relativePath: ".",
+                    reason: "read-error" as const,
+                    detail,
+                  },
+                ] as const satisfies readonly DesignEligibleAppsDiagnostic[],
+                scannedDirCount: 0,
+              };
+            }
+            const outcome = yield* designService.findEligibleApps(projectId, cwd);
+            return {
+              apps: outcome.apps,
+              diagnostics: outcome.diagnostics,
+              scannedDirCount: outcome.scannedDirCount,
+            };
+          }).pipe(
+            // Narrow the error channel to DesignError: projectionSnapshotQuery
+            // can fail with ProjectionRepositoryError, which the RPC contract
+            // doesn't allow. Surface it as a structured DesignError instead.
+            Effect.mapError((err: unknown) =>
+              err instanceof DesignError
+                ? err
+                : new DesignError({
+                    message: err instanceof Error ? err.message : String(err),
+                  }),
+            ),
+            Effect.catchDefect((defect: unknown) =>
+              Effect.fail(
+                new DesignError({
+                  message: defect instanceof Error ? defect.message : String(defect),
+                }),
+              ),
+            ),
+          ),
+          { "rpc.aggregate": "design" },
+        ),
+
+      // Resolve the project's workspaceRoot from the snapshot and verify the
+      // requested appCwd is within it. Prevents arbitrary file mutation via
+      // a stale or malicious appCwd that escapes the project sandbox.
+      [WS_METHODS.designPrimeApp]: ({ projectId, appCwd }) =>
+        observeRpcEffect(
+          WS_METHODS.designPrimeApp,
+          assertAppCwdInProject(projectId, appCwd).pipe(
+            Effect.flatMap(() => designService.primeApp(projectId, appCwd)),
+            Effect.catchDefect((defect: unknown) =>
+              Effect.fail(
+                new DesignError({
+                  message: defect instanceof Error ? defect.message : String(defect),
+                }),
+              ),
+            ),
+          ),
+          { "rpc.aggregate": "design" },
+        ),
+
+      [WS_METHODS.designResolveOid]: ({ projectId, appCwd, oid }) =>
+        observeRpcEffect(
+          WS_METHODS.designResolveOid,
+          assertAppCwdInProject(projectId, appCwd).pipe(
+            Effect.flatMap(() => designService.resolveOid(projectId, appCwd, oid)),
+            Effect.catchDefect((defect: unknown) =>
+              Effect.fail(
+                new DesignError({
+                  message: defect instanceof Error ? defect.message : String(defect),
+                }),
+              ),
+            ),
+          ),
+          { "rpc.aggregate": "design" },
+        ),
+
+      [WS_METHODS.designApplyEdit]: ({ projectId, appCwd, oid, op }) =>
+        observeRpcEffect(
+          WS_METHODS.designApplyEdit,
+          assertAppCwdInProject(projectId, appCwd).pipe(
+            Effect.flatMap(() => designService.applyEdit(projectId, appCwd, oid, op)),
+            Effect.catchDefect((defect: unknown) =>
+              Effect.fail(
+                new DesignError({
+                  message: defect instanceof Error ? defect.message : String(defect),
+                }),
+              ),
+            ),
+          ),
+          { "rpc.aggregate": "design" },
         ),
 
       // ── MCP server handlers ────────────────────────────────────────────────

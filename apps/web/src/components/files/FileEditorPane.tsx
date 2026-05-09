@@ -126,7 +126,12 @@ const FILE_EDITOR_FONT_THEME = Prec.highest(
   EditorView.theme({
     "&": { fontSize: "11px", fontFamily: MONO_FONT },
     ".cm-scroller": { fontFamily: MONO_FONT, fontSize: "11px", lineHeight: "1.5" },
-    ".cm-content": { fontFamily: MONO_FONT, fontSize: "11px", lineHeight: "1.5", padding: "4px 0 80px" },
+    ".cm-content": {
+      fontFamily: MONO_FONT,
+      fontSize: "11px",
+      lineHeight: "1.5",
+      padding: "4px 0 80px",
+    },
     ".cm-gutters": {
       fontFamily: MONO_FONT,
       fontSize: "10px",
@@ -714,24 +719,36 @@ function applyEditorSelection(view: EditorView, selection: { line: number; colum
 
 // Custom StreamLanguage for .env files (KEY=VALUE pairs with # comments).
 // language-data has no entry for .env so we define it inline.
-interface EnvState { phase: "key" | "value" }
+interface EnvState {
+  phase: "key" | "value";
+}
 const envLanguage = StreamLanguage.define<EnvState>({
   startState: () => ({ phase: "key" }),
   token(stream, state) {
     if (stream.sol()) state.phase = "key";
     if (state.phase === "key") {
-      if (stream.match(/^#/)) { stream.skipToEnd(); return "comment"; }
+      if (stream.match(/^#/)) {
+        stream.skipToEnd();
+        return "comment";
+      }
       if (stream.match(/^export\b/)) return "keyword";
       if (stream.eatSpace()) return null;
       if (stream.match(/^[A-Za-z_][A-Za-z0-9_]*/)) return "def";
-      if (stream.eat("=")) { state.phase = "value"; return "operator"; }
+      if (stream.eat("=")) {
+        state.phase = "value";
+        return "operator";
+      }
     } else {
       if (
         stream.match(/^"(?:[^"\\]|\\.)*"/) ||
         stream.match(/^'(?:[^'\\]|\\.)*'/) ||
         stream.match(/^`(?:[^`\\]|\\.)*`/)
-      ) return "string";
-      if (!stream.eol()) { stream.skipToEnd(); return "string"; }
+      )
+        return "string";
+      if (!stream.eol()) {
+        stream.skipToEnd();
+        return "string";
+      }
     }
     stream.next();
     return null;
@@ -773,7 +790,11 @@ async function resolveLanguageExtension(filePath: string) {
   if (byName) {
     const desc = defaultLanguageData.find((d) => d.name === byName);
     if (desc) {
-      try { return await desc.load(); } catch { return null; }
+      try {
+        return await desc.load();
+      } catch {
+        return null;
+      }
     }
   }
 
