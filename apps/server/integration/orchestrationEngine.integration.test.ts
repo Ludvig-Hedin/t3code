@@ -10,7 +10,6 @@ import {
   MessageId,
   ThreadId,
   ModelSelection,
-  NonA2aProviderKind,
   ProjectId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
@@ -40,7 +39,7 @@ const PROJECT_ID = asProjectId("project-1");
 const THREAD_ID = ThreadId.makeUnsafe("thread-1");
 const FIXTURE_TURN_ID = "fixture-turn";
 const APPROVAL_REQUEST_ID = asApprovalRequestId("req-approval-1");
-type IntegrationProvider = NonA2aProviderKind;
+type IntegrationProvider = Exclude<ModelSelection["provider"], "a2a">;
 
 function nowIso() {
   return new Date().toISOString();

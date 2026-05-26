@@ -250,6 +250,27 @@ function killProcess(child: ReturnType<typeof spawn>): void {
   }
 }
 
+function waitForProcessExit(
+  child: ReturnType<typeof spawn>,
+  timeoutMs: number,
+): Effect.Effect<void> {
+  return Effect.callback<void>((resume) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resume(Effect.void);
+      return;
+    }
+    const onExit = () => {
+      clearTimeout(timer);
+      resume(Effect.void);
+    };
+    const timer = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      resume(Effect.void);
+    }, timeoutMs);
+    child.once("exit", onExit);
+  });
+}
+
 const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function* () {
   // Capture service context so we can fire-and-forget Effect operations
   // from plain Node.js callbacks (readline line events, child process events).
@@ -551,32 +572,18 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         // to release the bound port before we spawn the replacement.
         const existingForKey = runningSessions.get(key);
         if (existingForKey) {
+          const child = existingForKey.process;
           yield* Effect.sync(() => {
-            killProcess(existingForKey.process);
-            existingForKey.process.stdout?.removeAllListeners();
-            existingForKey.process.stderr?.removeAllListeners();
-            existingForKey.process.removeAllListeners(/* keep no listeners */);
+            child.stdout?.removeAllListeners();
+            child.stderr?.removeAllListeners();
+            child.removeAllListeners(/* keep no listeners */);
+            killProcess(child);
           });
           // Wait up to 4s for the child to exit. The 3s SIGKILL fallback inside
           // `killProcess` plus a small grace covers stubborn processes; if the
           // OS still hasn't reaped the PID we move on rather than hang
           // start-app indefinitely.
-          yield* Effect.callback<void>((resume) => {
-            const child = existingForKey.process;
-            if (child.exitCode !== null || child.killed) {
-              resume(Effect.void);
-              return;
-            }
-            const onExit = () => {
-              clearTimeout(timer);
-              resume(Effect.void);
-            };
-            const timer = setTimeout(() => {
-              child.removeListener("exit", onExit);
-              resume(Effect.void);
-            }, 4000);
-            child.once("exit", onExit);
-          });
+          yield* waitForProcessExit(child, 4000);
           yield* Effect.sync(() => {
             runningSessions.delete(key);
             outputBuffers.delete(key); // discard stale buffer from prior run

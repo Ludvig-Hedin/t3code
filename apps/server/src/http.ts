@@ -179,44 +179,33 @@ export const transcriptionRouteLayer = HttpRouter.add(
       return unauthorizedResponse;
     }
 
-    const body = yield* HttpServerRequest.schemaBodyMultipart(TranscriptionUploadBody).pipe(
-      Effect.catch(() =>
-        Effect.succeed(
-          HttpServerResponse.text("Expected multipart form data with a file field.", {
-            status: 400,
-          }),
-        ),
-      ),
+    const bodyResult = yield* HttpServerRequest.schemaBodyMultipart(TranscriptionUploadBody).pipe(
+      Effect.result,
     );
-
-    if (body instanceof HttpServerResponse.HttpServerResponse) {
-      return body;
+    if (bodyResult._tag === "Failure") {
+      return HttpServerResponse.text("Expected multipart form data with a file field.", {
+        status: 400,
+      });
     }
+    const body = bodyResult.success;
 
     // Reject oversized uploads before loading the whole file into memory.
-    const fileInfo = yield* FileSystem.FileSystem.pipe(
-      Effect.flatMap((fs) => fs.stat(body.file.path)),
-      Effect.catch(() => Effect.succeed(null)),
-    );
+    const fileSystem = yield* FileSystem.FileSystem;
+    const fileInfo = yield* fileSystem
+      .stat(body.file.path)
+      .pipe(Effect.catch(() => Effect.succeed(null)));
     if (fileInfo && fileInfo.size > FileSystem.MiB(50)) {
       return HttpServerResponse.text("Audio file too large (50 MiB maximum).", { status: 413 });
     }
 
-    const binary = yield* FileSystem.FileSystem.pipe(
-      Effect.flatMap((fileSystem) => fileSystem.readFile(body.file.path)),
-      Effect.catch(() =>
-        Effect.succeed<Uint8Array | HttpServerResponse.HttpServerResponse>(
-          HttpServerResponse.text("Unable to read uploaded audio.", { status: 400 }),
-        ),
-      ),
-    );
-
-    if (binary instanceof HttpServerResponse.HttpServerResponse) {
-      return binary;
+    const binaryResult = yield* fileSystem.readFile(body.file.path).pipe(Effect.result);
+    if (binaryResult._tag === "Failure") {
+      return HttpServerResponse.text("Unable to read uploaded audio.", { status: 400 });
     }
+    const binary = binaryResult.success;
 
     const startedAt = performance.now();
-    const result = yield* requestWhisperTranscription({
+    return yield* requestWhisperTranscription({
       config: resolveWhisperConfig(),
       upload: {
         binary,
@@ -224,22 +213,22 @@ export const transcriptionRouteLayer = HttpRouter.add(
         fileName: body.file.name || "recording.webm",
       },
     }).pipe(
-      Effect.tapBoth({
-        onFailure: (error) =>
-          Effect.sync(() => {
-            console.info("[voice-transcription] server_http_failed", {
-              code: error.code,
-              durationMs: Math.round(performance.now() - startedAt),
-            });
-          }),
-        onSuccess: () =>
-          Effect.sync(() => {
-            console.info("[voice-transcription] server_http_completed", {
-              durationMs: Math.round(performance.now() - startedAt),
-            });
-          }),
-      }),
-      Effect.match({
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          console.info("[voice-transcription] server_http_failed", {
+            code: error.code,
+            durationMs: Math.round(performance.now() - startedAt),
+          });
+        }),
+      ),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          console.info("[voice-transcription] server_http_completed", {
+            durationMs: Math.round(performance.now() - startedAt),
+          });
+        }),
+      ),
+      Effect.matchEffect({
         onFailure: (error) =>
           HttpServerResponse.json(
             { code: error.code, message: error.message },
@@ -250,8 +239,6 @@ export const transcriptionRouteLayer = HttpRouter.add(
         onSuccess: (result) => HttpServerResponse.json(result, { status: 200 }),
       }),
     );
-
-    return result;
   }),
 );
 

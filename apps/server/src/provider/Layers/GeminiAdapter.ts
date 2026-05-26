@@ -6,6 +6,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ThreadTokenUsageSnapshot,
   ProviderTurnStartResult,
   ProviderUserInputAnswers,
   ThreadId,
@@ -44,7 +45,7 @@ interface GeminiStreamState {
   assistantResponse: string;
   sawStructuredOutput: boolean;
   errorMessage?: string;
-  usage?: Record<string, unknown>;
+  usage?: ThreadTokenUsageSnapshot;
   modelUsage?: Record<string, unknown>;
   toolNames: Map<string, string>;
 }
@@ -87,9 +88,12 @@ function summarizeGeminiDetail(value: unknown): string | undefined {
   }
 }
 
-function buildGeminiUsageSnapshot(
-  stats: Record<string, unknown>,
-): { usage: Record<string, unknown>; modelUsage?: Record<string, unknown> } | undefined {
+function buildGeminiUsageSnapshot(stats: Record<string, unknown>):
+  | {
+      usage: ThreadTokenUsageSnapshot;
+      modelUsage?: Record<string, unknown>;
+    }
+  | undefined {
   const usedTokens = asNonNegativeInt(stats.total_tokens);
   if (usedTokens === undefined) {
     return undefined;
@@ -244,7 +248,9 @@ function processGeminiStreamLine(
         const usageSnapshot = buildGeminiUsageSnapshot(stats);
         if (usageSnapshot) {
           state.usage = usageSnapshot.usage;
-          state.modelUsage = usageSnapshot.modelUsage;
+          if (usageSnapshot.modelUsage !== undefined) {
+            state.modelUsage = usageSnapshot.modelUsage;
+          }
           context.emitEvent(
             makeThreadEvent("thread.token-usage.updated", context.threadId, {
               usage: usageSnapshot.usage,

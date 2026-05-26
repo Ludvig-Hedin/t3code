@@ -36,6 +36,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 // are not lost (e.g. a user prompt persisted as `thread.turn-start-requested`
 // then the server died before dispatching it to the provider).
 const REACTOR_CURSOR_KEY = "provider-command-reactor";
+const SEEN_REACTOR_EVENT_SEQUENCE_MAX = 10_000;
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -163,6 +164,7 @@ const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
   const projectionState = yield* ProjectionStateRepository;
+  const lastAppliedCursorRef = yield* Ref.make(0);
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -795,20 +797,27 @@ const make = Effect.gen(function* () {
   // for replay is provided by the existing `handledTurnStartKeys` cache plus
   // the orchestration command-receipt table.
   const advanceCursor = (sequence: number) =>
-    projectionState
-      .upsert({
-        projector: REACTOR_CURSOR_KEY,
-        lastAppliedSequence: NonNegativeInt.makeUnsafe(sequence),
-        updatedAt: IsoDateTime.makeUnsafe(new Date().toISOString()),
-      })
-      .pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("provider command reactor cursor upsert failed", {
-            sequence,
-            cause: Cause.pretty(cause),
-          }),
-        ),
-      );
+    Effect.gen(function* () {
+      const lastAppliedCursor = yield* Ref.get(lastAppliedCursorRef);
+      if (sequence <= lastAppliedCursor) {
+        return;
+      }
+      yield* projectionState
+        .upsert({
+          projector: REACTOR_CURSOR_KEY,
+          lastAppliedSequence: NonNegativeInt.makeUnsafe(sequence),
+          updatedAt: IsoDateTime.makeUnsafe(new Date().toISOString()),
+        })
+        .pipe(
+          Effect.tap(() => Ref.set(lastAppliedCursorRef, sequence)),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("provider command reactor cursor upsert failed", {
+              sequence,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+        );
+    });
 
   const processDomainEventSafely = (event: ProviderIntentEvent) =>
     processDomainEvent(event).pipe(
@@ -827,17 +836,43 @@ const make = Effect.gen(function* () {
   const worker = yield* makeDrainableWorker(processDomainEventSafely);
 
   const start: ProviderCommandReactorShape["start"] = Effect.fn("start")(function* () {
-    // H5: dedup events arriving from BOTH the historical replay stream and
-    // the live PubSub stream. Live events committed during replay overlap
-    // with `readEvents` output; ref-tracked sequence prevents double-process.
-    const lastEnqueuedRef = yield* Ref.make(0);
+    // H5: read the persisted cursor. Default 0 = replay everything on first run.
+    const cursorOption = yield* projectionState
+      .getByProjector({ projector: REACTOR_CURSOR_KEY })
+      .pipe(Effect.catch(() => Effect.succeed(Option.none<never>())));
+    const fromSequenceExclusive = Option.match(cursorOption, {
+      onNone: () => 0,
+      onSome: (state) => state.lastAppliedSequence,
+    });
+    yield* Ref.set(lastAppliedCursorRef, fromSequenceExclusive);
+
+    // H5: dedupe exact overlap between the historical replay and live PubSub
+    // streams without assuming merged streams arrive in sequence order.
+    const seenSequencesRef = yield* Ref.make(new Set<number>());
 
     const processEvent = Effect.fn("processEvent")(function* (event: OrchestrationEvent) {
-      const lastEnqueued = yield* Ref.get(lastEnqueuedRef);
-      if (event.sequence <= lastEnqueued) {
+      if (event.sequence <= fromSequenceExclusive) {
         return;
       }
-      yield* Ref.set(lastEnqueuedRef, event.sequence);
+
+      const shouldProcess = yield* Ref.modify(seenSequencesRef, (seenSequences) => {
+        if (seenSequences.has(event.sequence)) {
+          return [false, seenSequences] as const;
+        }
+        const nextSeenSequences = new Set(seenSequences);
+        nextSeenSequences.add(event.sequence);
+        while (nextSeenSequences.size > SEEN_REACTOR_EVENT_SEQUENCE_MAX) {
+          const oldestSequence = nextSeenSequences.values().next().value;
+          if (oldestSequence === undefined) {
+            break;
+          }
+          nextSeenSequences.delete(oldestSequence);
+        }
+        return [true, nextSeenSequences] as const;
+      });
+      if (!shouldProcess) {
+        return;
+      }
 
       if (
         event.type === "thread.runtime-mode-set" ||
@@ -858,15 +893,6 @@ const make = Effect.gen(function* () {
         // through the worker.
         yield* advanceCursor(event.sequence);
       }
-    });
-
-    // H5: read the persisted cursor. Default 0 = replay everything on first run.
-    const cursorOption = yield* projectionState
-      .getByProjector({ projector: REACTOR_CURSOR_KEY })
-      .pipe(Effect.catch(() => Effect.succeed(Option.none<never>())));
-    const fromSequenceExclusive = Option.match(cursorOption, {
-      onNone: () => 0,
-      onSome: (state) => state.lastAppliedSequence,
     });
 
     // Subscribe to live + historical replay via merge. `Stream.merge` attaches

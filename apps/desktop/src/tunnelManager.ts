@@ -19,6 +19,12 @@ const TUNNEL_CREATE_TIMEOUT_MS = 60_000; // 1 minute
 /** Maximum ms to wait for the tunnel to become ready after spawning. */
 const TUNNEL_STARTUP_TIMEOUT_MS = 30_000; // 30 seconds
 
+interface CloudflaredPidFile {
+  pid: number;
+  binaryPath: string;
+  startedAt: string;
+}
+
 function getCloudflaredAssetName(): string {
   const arch = process.arch === "arm64" ? "arm64" : "amd64";
   // Cloudflare ships macOS binaries as .tgz archives — no bare executables or
@@ -69,7 +75,12 @@ export class TunnelManager extends EventEmitter {
 
   private writePidFile(pid: number): void {
     try {
-      FS.writeFileSync(this.pidFilePath, String(pid), "utf8");
+      const payload: CloudflaredPidFile = {
+        pid,
+        binaryPath: this.binaryPath,
+        startedAt: new Date().toISOString(),
+      };
+      FS.writeFileSync(this.pidFilePath, JSON.stringify(payload), "utf8");
     } catch (err) {
       console.warn("[tunnelManager] failed to write PID file", err);
     }
@@ -86,38 +97,90 @@ export class TunnelManager extends EventEmitter {
     }
   }
 
-  /**
-   * Reap a stranded cloudflared process from a previous launch. Reads the PID
-   * file written by `_spawnTunnel`; if the PID is alive AND looks like our
-   * cloudflared (best-effort signal-0 check, no false positives possible
-   * because launchd-reparented processes keep their original argv), SIGKILL
-   * it. Always clears the file at the end.
-   */
-  private reapStaleTunnelProcess(): void {
+  private readPidFile(): CloudflaredPidFile | null {
     let raw: string;
     try {
       raw = FS.readFileSync(this.pidFilePath, "utf8");
     } catch {
-      return; // No PID file — nothing to reap.
+      return null;
     }
-    const pid = Number.parseInt(raw.trim(), 10);
-    if (!Number.isFinite(pid) || pid <= 0) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<CloudflaredPidFile>;
+      if (
+        typeof parsed.pid === "number" &&
+        Number.isFinite(parsed.pid) &&
+        parsed.pid > 0 &&
+        typeof parsed.binaryPath === "string" &&
+        parsed.binaryPath.length > 0
+      ) {
+        return {
+          pid: parsed.pid,
+          binaryPath: parsed.binaryPath,
+          startedAt:
+            typeof parsed.startedAt === "string" ? parsed.startedAt : new Date(0).toISOString(),
+        };
+      }
+    } catch {
+      const legacyPid = Number.parseInt(raw.trim(), 10);
+      if (Number.isFinite(legacyPid) && legacyPid > 0) {
+        return {
+          pid: legacyPid,
+          binaryPath: this.binaryPath,
+          startedAt: new Date(0).toISOString(),
+        };
+      }
+    }
+    return null;
+  }
+
+  private pidMatchesCloudflared(pidFile: CloudflaredPidFile): boolean {
+    try {
+      const ps = ChildProcess.spawnSync("ps", ["-p", String(pidFile.pid), "-o", "command="], {
+        encoding: "utf8",
+      });
+      if (ps.status !== 0) {
+        return false;
+      }
+      const command = ps.stdout.trim();
+      if (!command) {
+        return false;
+      }
+      return command === pidFile.binaryPath || command.startsWith(`${pidFile.binaryPath} `);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Reap a stranded cloudflared process from a previous launch. Reads the PID
+   * file written by `_spawnTunnel`; if the PID is alive and still matches the
+   * exact cloudflared binary path we spawned, SIGKILL it. Always clears the
+   * file at the end.
+   */
+  private reapStaleTunnelProcess(): void {
+    const pidFile = this.readPidFile();
+    if (!pidFile) {
       this.clearPidFile();
-      return;
+      return; // No PID file — nothing to reap.
     }
     try {
       // Signal 0 doesn't deliver — just probes whether the PID is alive.
-      process.kill(pid, 0);
-      // Alive — kill it. We can't perfectly verify it's our cloudflared
-      // (PIDs can be recycled), but the file was written by us and the OS
-      // reuses PIDs slowly enough on macOS that a startup-time race is
-      // vanishingly rare. Worst case we kill an unrelated process spawned
-      // since last shutdown.
+      process.kill(pidFile.pid, 0);
+      if (!this.pidMatchesCloudflared(pidFile)) {
+        console.warn("[tunnelManager] stale cloudflared PID no longer matches binary path", {
+          pid: pidFile.pid,
+          binaryPath: pidFile.binaryPath,
+        });
+        return;
+      }
       try {
-        process.kill(pid, "SIGKILL");
-        console.warn("[tunnelManager] reaped stale cloudflared process", { pid });
+        process.kill(pidFile.pid, "SIGKILL");
+        console.warn("[tunnelManager] reaped stale cloudflared process", { pid: pidFile.pid });
       } catch (killErr) {
-        console.warn("[tunnelManager] failed to kill stale cloudflared", { pid, killErr });
+        console.warn("[tunnelManager] failed to kill stale cloudflared", {
+          pid: pidFile.pid,
+          killErr,
+        });
       }
     } catch {
       // PID not alive — fine, just clean up.
