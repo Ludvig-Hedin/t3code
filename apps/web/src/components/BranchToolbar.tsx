@@ -12,7 +12,6 @@ import {
   resolveEffectiveEnvMode,
 } from "./BranchToolbar.logic";
 import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
-import { Button } from "./ui/button";
 import { RateLimitsButton } from "./chat/RateLimitsButton";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { Separator } from "./ui/separator";
@@ -21,6 +20,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 const envModeItems = [
   { value: "local", label: "Local" },
   { value: "worktree", label: "New worktree" },
+] as const;
+
+const runtimeModeItems = [
+  { value: "approval-required", label: "Ask permission" },
+  { value: "full-access", label: "Auto accept" },
+  { value: "custom", label: "Custom" },
 ] as const;
 
 interface BranchToolbarProps {
@@ -184,55 +189,76 @@ export default function BranchToolbar({
         )}
         <RateLimitsButton />
         <Separator orientation="vertical" className="mx-0.5 h-3.5" />
-        {/* Permissions mode button — colour-coded so the current safety level is
-            visible at a glance: rose = full-access (no approvals), neutral = ask
-            permission, amber = custom per-action rules. */}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="xs"
-                className={cn(
-                  "h-auto shrink-0 gap-1 px-2 py-0.5 font-medium",
-                  runtimeMode === "full-access"
-                    ? "text-rose-400/80 hover:text-rose-400"
-                    : runtimeMode === "custom"
-                      ? "text-amber-400/80 hover:text-amber-400"
-                      : "text-muted-foreground/70 hover:text-foreground/80",
-                )}
-                type="button"
-                onClick={() =>
-                  onRuntimeModeChange(
-                    runtimeMode === "full-access" ? "approval-required" : "full-access",
-                  )
-                }
-              />
-            }
-          >
-            {runtimeMode === "full-access" ? (
-              <ShieldOffIcon className="size-3" />
-            ) : runtimeMode === "custom" ? (
-              <ShieldCheckIcon className="size-3" />
-            ) : (
-              <ShieldIcon className="size-3" />
-            )}
-            <span>
+        {/* Permissions mode selector — colour-coded so the current safety level
+            is visible at a glance: rose = full-access (no approvals), neutral =
+            ask permission, amber = custom per-action rules. Uses a Select so
+            the "custom" mode is never silently overwritten by a stray click —
+            switching to "Custom…" preserves any per-action policy and the
+            existing … composer menu surfaces the per-action toggles. */}
+        <Select
+          value={runtimeMode}
+          onValueChange={(value) => {
+            const next = value as RuntimeMode;
+            if (next === runtimeMode) return;
+            onRuntimeModeChange(next);
+          }}
+          items={runtimeModeItems}
+        >
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <SelectTrigger
+                  variant="ghost"
+                  size="xs"
+                  className={cn(
+                    "font-medium",
+                    runtimeMode === "full-access"
+                      ? "text-rose-400/80 hover:text-rose-400"
+                      : runtimeMode === "custom"
+                        ? "text-amber-400/80 hover:text-amber-400"
+                        : "text-muted-foreground/70 hover:text-foreground/80",
+                  )}
+                >
+                  {runtimeMode === "full-access" ? (
+                    <ShieldOffIcon className="size-3" />
+                  ) : runtimeMode === "custom" ? (
+                    <ShieldCheckIcon className="size-3" />
+                  ) : (
+                    <ShieldIcon className="size-3" />
+                  )}
+                  <SelectValue />
+                </SelectTrigger>
+              }
+            />
+            <TooltipPopup side="bottom">
               {runtimeMode === "full-access"
-                ? "Auto accept"
+                ? "Auto accept edits — agent writes files and runs commands without asking."
                 : runtimeMode === "custom"
-                  ? "Custom"
-                  : "Ask permission"}
-            </span>
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">
-            {runtimeMode === "full-access"
-              ? "Auto accept edits — agent writes files and runs commands without asking. Click to switch to Ask permission."
-              : runtimeMode === "custom"
-                ? "Custom permissions — per-action approval rules active. Use the … menu to configure."
-                : "Ask permission — agent requests approval before each action. Click to switch to Auto accept."}
-          </TooltipPopup>
-        </Tooltip>
+                  ? "Custom permissions — per-action approval rules active. Use the … menu to configure."
+                  : "Ask permission — agent requests approval before each action."}
+            </TooltipPopup>
+          </Tooltip>
+          <SelectPopup>
+            <SelectItem value="approval-required">
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldIcon className="size-3" />
+                Ask permission
+              </span>
+            </SelectItem>
+            <SelectItem value="full-access">
+              <span className="inline-flex items-center gap-1.5 text-rose-400/90">
+                <ShieldOffIcon className="size-3" />
+                Auto accept
+              </span>
+            </SelectItem>
+            <SelectItem value="custom">
+              <span className="inline-flex items-center gap-1.5 text-amber-400/90">
+                <ShieldCheckIcon className="size-3" />
+                Custom…
+              </span>
+            </SelectItem>
+          </SelectPopup>
+        </Select>
       </div>
 
       {/* Branch selector — hidden when not in a git repo */}

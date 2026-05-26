@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
 import { type ProviderKind } from "@t3tools/contracts";
 import { Badge } from "../../ui/badge";
@@ -134,6 +134,24 @@ export function ProviderInstallStep() {
       setRecheckBusy(false);
     }
   };
+
+  // Auto-poll provider install status every 3s while the step is mounted and
+  // not all providers are installed yet. Stops once everything is detected so
+  // we don't burn server cycles. The manual "Re-check" button stays useful
+  // when polling is paused.
+  const allInstalled = installedCount === PROVIDERS.length;
+  useEffect(() => {
+    if (allInstalled) return;
+    const interval = setInterval(() => {
+      // Skip this tick if a previous recheck is still in flight to avoid
+      // overlapping requests piling up.
+      if (recheckBusy) return;
+      void recheck();
+    }, 3000);
+    return () => {
+      clearInterval(interval);
+    };
+  }, [allInstalled, recheckBusy]);
 
   return (
     <div className="space-y-5">

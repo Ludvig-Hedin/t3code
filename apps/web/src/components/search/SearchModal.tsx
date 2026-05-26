@@ -666,8 +666,24 @@ export function SearchModal({ open, onOpenChange, projects }: SearchModalProps) 
               Searching files…
             </div>
           ) : results.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-sm">
-              {filesEmptyMessage}
+            <div className="flex flex-col items-center justify-center gap-1 py-12 text-center">
+              <p className="text-[13px] text-muted-foreground/50">{filesEmptyMessage}</p>
+              {filter === "files" && debouncedQuery.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground/40">
+                  Indexed across all linked projects.
+                </p>
+              ) : query ? (
+                <p className="text-[11px] text-muted-foreground/40">
+                  Try a different keyword or switch tabs.
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground/40">
+                  Type to search threads, projects, and files.
+                </p>
+              )}
+              <p className="mt-1 text-[11px] text-muted-foreground/30">
+                Press {shortcutLabel} anywhere to reopen this search.
+              </p>
             </div>
           ) : grouped ? (
             // ── Grouped "All" view ──

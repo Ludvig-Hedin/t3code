@@ -897,6 +897,24 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     });
   }
 
+  /**
+   * Reject all in-flight JSON-RPC requests on a context and clear approval /
+   * user-input maps. Idempotent — safe to call multiple times.
+   *
+   * Used by `stopSession` (graceful) and by the unexpected `child.on("exit")` /
+   * `child.on("error")` handlers (C4) so that a dying codex subprocess never
+   * leaves WS callers waiting on the per-request 20 s timeout.
+   */
+  private drainPendingRequests(context: CodexSessionContext, reason: string): void {
+    for (const pending of context.pending.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error(reason));
+    }
+    context.pending.clear();
+    context.pendingApprovals.clear();
+    context.pendingUserInputs.clear();
+  }
+
   stopSession(threadId: ThreadId): void {
     const context = this.sessions.get(threadId);
     if (!context) {
@@ -905,13 +923,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
     context.stopping = true;
 
-    for (const pending of context.pending.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(new Error("Session stopped before request completed."));
-    }
-    context.pending.clear();
-    context.pendingApprovals.clear();
-    context.pendingUserInputs.clear();
+    this.drainPendingRequests(context, "Session stopped before request completed.");
 
     context.output.close();
 
@@ -976,6 +988,10 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
     context.child.on("error", (error) => {
       const message = error.message || "codex app-server process errored.";
+      // C4: reject any in-flight RPCs before the session goes to "error", so
+      // callers don't sit on the per-request 20s timeout. The exit handler
+      // (which usually fires after error) is also drain-safe.
+      this.drainPendingRequests(context, `codex app-server errored: ${message}`);
       this.updateSession(context, {
         status: "error",
         lastError: message,
@@ -989,6 +1005,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       }
 
       const message = `codex app-server exited (code=${code ?? "null"}, signal=${signal ?? "null"}).`;
+      // C4: reject pending RPCs before deleting the session from the map.
+      // Idempotent if `error` already drained.
+      this.drainPendingRequests(context, `codex app-server exited mid-request: ${message}`);
       this.updateSession(context, {
         status: "closed",
         activeTurnId: undefined,

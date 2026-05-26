@@ -1,5 +1,5 @@
 /**
- * useOnboarding — localStorage-backed state for the 5-step onboarding sheet.
+ * useOnboarding — localStorage-backed state for the 6-step onboarding sheet.
  *
  * Auto-opens on first launch (no stored state). Persists current step and
  * completion. Listens for storage events so the "Setup Guide" button in
@@ -10,8 +10,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Exported so Settings sidebar button can reference the same key without duplicating it. */
 export const STORAGE_KEY = "birdcode:onboarding";
 
-export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
-export const TOTAL_ONBOARDING_STEPS = 5;
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6;
+export const TOTAL_ONBOARDING_STEPS = 6;
 
 interface OnboardingState {
   completed: boolean;
@@ -58,8 +58,15 @@ function persistState(state: OnboardingState): void {
 export function useOnboarding() {
   const [state, setState] = useState<OnboardingState>(() => {
     const { state: loaded, wasStored } = loadState();
-    // Auto-open on the very first visit (nothing stored yet)
-    return { ...loaded, open: !wasStored && !loaded.completed };
+    // H10: previously this guarded auto-open behind `!wasStored`, so any user
+    // who hit X / Esc / outside-click during onboarding had `wasStored: true`
+    // persisted with `completed: false` — and no subsequent launch would
+    // reopen the sheet. The sidebar empty state has no CTA either, leaving
+    // them stranded. Now we auto-open whenever onboarding is incomplete and
+    // rely on `completeOnboarding` (the X / final Done) to set `completed:
+    // true`, which becomes the only way to silence the sheet on launch.
+    void wasStored;
+    return { ...loaded, open: !loaded.completed };
   });
 
   // Tracks the last JSON we persisted so the sync effect can skip no-op writes

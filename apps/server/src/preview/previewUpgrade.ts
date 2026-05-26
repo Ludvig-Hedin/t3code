@@ -86,8 +86,10 @@ export function attachPreviewUpgradeHandler(server: HttpServer): void {
 
     // Strip the /preview/<pid>/<appId> prefix before forwarding.
     const upstreamPath =
-      url.slice(`/preview/${encodeURIComponent(parsed.projectId)}/${encodeURIComponent(parsed.appId)}`.length) ||
-      "/";
+      url.slice(
+        `/preview/${encodeURIComponent(parsed.projectId)}/${encodeURIComponent(parsed.appId)}`
+          .length,
+      ) || "/";
 
     // Lazily import node:net to avoid a hot path at module load.
     void import("node:net").then(({ connect }) => {
@@ -96,16 +98,24 @@ export function attachPreviewUpgradeHandler(server: HttpServer): void {
 
       upstream.on("connect", () => {
         handshakeStarted = true;
-        // Replay the upgrade handshake to upstream. Forward all original
-        // headers so the dev server's WS allowlist (origin, sec-ws-protocol)
-        // sees what the browser sent.
-        const headerLines: string[] = [
-          `${req.method ?? "GET"} ${upstreamPath} HTTP/1.1`,
-        ];
+        // Replay the upgrade handshake to upstream. Most headers pass through
+        // verbatim so the dev server's WS handshake sees a normal browser
+        // request, but `Host` and `Origin` are rewritten to point at the
+        // upstream loopback (H7): Vite 5+ and Next 14+ default to rejecting
+        // WS upgrades whose Origin doesn't match the configured host, so
+        // forwarding the Bird Code shell origin (e.g. http://localhost:1421)
+        // verbatim breaks HMR with "[vite] server connection lost" loops.
+        const upstreamOrigin = `http://127.0.0.1:${session.port}`;
+        const headerLines: string[] = [`${req.method ?? "GET"} ${upstreamPath} HTTP/1.1`];
         for (const [k, v] of Object.entries(req.headers)) {
           if (v === undefined) continue;
-          if (k.toLowerCase() === "host") {
+          const lowerKey = k.toLowerCase();
+          if (lowerKey === "host") {
             headerLines.push(`Host: 127.0.0.1:${session.port}`);
+            continue;
+          }
+          if (lowerKey === "origin" || lowerKey === "sec-websocket-origin") {
+            headerLines.push(`${k}: ${upstreamOrigin}`);
             continue;
           }
           if (Array.isArray(v)) {

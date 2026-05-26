@@ -86,6 +86,13 @@ struct MobileWebView: View {
                   .font(.caption)
                   .foregroundStyle(MobileTheme.muted)
                   .multilineTextAlignment(.center)
+                // M10: when the server URL has permanently changed (tunnel
+                // UUID rotated, desktop reinstalled, IP moved) Retry will
+                // never recover. Tell the user the explicit escape hatch.
+                Text("Server moved? Tap Disconnect and scan a fresh QR code from the desktop's Mobile settings to re-pair.")
+                  .font(.caption)
+                  .foregroundStyle(MobileTheme.muted)
+                  .multilineTextAlignment(.center)
               }
               VStack(spacing: 10) {
                 HStack(spacing: 12) {

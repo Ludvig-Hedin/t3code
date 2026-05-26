@@ -575,18 +575,31 @@ function EventRouter() {
     const fallbackToSnapshotRecovery = async (): Promise<void> => {
       await runSnapshotRecovery("replay-failed");
     };
-    const unsubDomainEvent = api.orchestration.onDomainEvent((event) => {
-      const action = recovery.classifyDomainEvent(event.sequence);
-      if (action === "apply") {
-        pendingDomainEvents.push(event);
-        schedulePendingDomainEventFlush();
-        return;
-      }
-      if (action === "recover") {
+    const unsubDomainEvent = api.orchestration.onDomainEvent(
+      (event) => {
+        const action = recovery.classifyDomainEvent(event.sequence);
+        if (action === "apply") {
+          pendingDomainEvents.push(event);
+          schedulePendingDomainEventFlush();
+          return;
+        }
+        if (action === "recover") {
+          flushPendingDomainEvents();
+          void recoverFromSequenceGap();
+        }
+      },
+      // H6: when the underlying domain-event stream is re-attached (clean
+      // close OR error), ANY event the server published during the gap will
+      // be skipped because the live PubSub subscription is hot. Force a
+      // snapshot-based recovery to catch up — this is conservative but safe;
+      // the reorder buffer in `classifyDomainEvent` would otherwise stall
+      // forever waiting on a sequence the new subscription never replays.
+      (reason) => {
+        console.warn("[orchestration] domain-event stream reconnected", { reason });
         flushPendingDomainEvents();
-        void recoverFromSequenceGap();
-      }
-    });
+        void fallbackToSnapshotRecovery();
+      },
+    );
     const unsubTerminalEvent = api.terminal.onEvent((event) => {
       const thread = useStore.getState().threads.find((entry) => entry.id === event.threadId);
       if (thread && thread.archivedAt !== null) {

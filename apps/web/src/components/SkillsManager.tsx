@@ -2086,8 +2086,20 @@ export function SkillsManager() {
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-border px-4 py-6 text-sm text-muted-foreground">
-              {loading ? "Loading skills..." : "No skills added yet."}
+            <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-border px-4 py-10 text-center">
+              {loading ? (
+                <p className="text-[13px] text-muted-foreground/50">Loading skills…</p>
+              ) : (
+                <>
+                  <p className="text-[13px] text-muted-foreground/50">No skills installed</p>
+                  <p className="text-[11px] text-muted-foreground/40">
+                    Skills extend the agent with reusable workflows and templates.
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground/30">
+                    Browse &ldquo;All skills&rdquo; below and click Add to install one.
+                  </p>
+                </>
+              )}
             </div>
           )}
         </section>
@@ -2152,12 +2164,30 @@ export function SkillsManager() {
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-border px-4 py-6 text-sm text-muted-foreground">
-              {loading
-                ? "Loading..."
-                : searchQuery.trim()
-                  ? `No skills match "${searchQuery}".`
-                  : "No additional skills found."}
+            <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-border px-4 py-10 text-center">
+              {loading ? (
+                <p className="text-[13px] text-muted-foreground/50">Loading…</p>
+              ) : searchQuery.trim() ? (
+                <>
+                  <p className="text-[13px] text-muted-foreground/50">No matching skills</p>
+                  <p className="text-[11px] text-muted-foreground/40">
+                    No skill name or description matches &ldquo;{searchQuery}&rdquo;.
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground/30">
+                    Clear the filter or try a different keyword.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[13px] text-muted-foreground/50">No additional skills</p>
+                  <p className="text-[11px] text-muted-foreground/40">
+                    All known templates and sources are already installed.
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground/30">
+                    Use the importer below to add a custom skill.
+                  </p>
+                </>
+              )}
             </div>
           )}
         </section>

@@ -131,7 +131,21 @@ export interface WsRpcClient {
     readonly getTurnDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getTurnDiff>;
     readonly getFullThreadDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getFullThreadDiff>;
     readonly replayEvents: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.replayEvents>;
-    readonly onDomainEvent: RpcStreamMethod<typeof WS_METHODS.subscribeOrchestrationDomainEvents>;
+    /**
+     * Subscribe to the orchestration domain-event stream. Optionally pass an
+     * `onReconnect` callback to be notified when the underlying WS stream is
+     * re-attached (H6) — the consumer can use that signal to run sequence-gap
+     * recovery instead of silently missing events that arrived during the
+     * down window.
+     */
+    readonly onDomainEvent: RpcMethod<
+      typeof WS_METHODS.subscribeOrchestrationDomainEvents
+    > extends (input: any, options?: any) => Stream.Stream<infer TEvent, any, any>
+      ? (
+          listener: (event: TEvent) => void,
+          onReconnect?: (reason: "completed" | "errored") => void,
+        ) => () => void
+      : never;
   };
   readonly provider: {
     // Streams per-provider rate limit entries. Emits cached snapshot on
@@ -381,10 +395,14 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
         transport
           .request((client) => client[ORCHESTRATION_WS_METHODS.replayEvents](input))
           .then((events) => [...events]),
-      onDomainEvent: (listener) =>
+      onDomainEvent: (listener, onReconnect) =>
         transport.subscribe(
           (client) => client[WS_METHODS.subscribeOrchestrationDomainEvents]({}),
           listener,
+          // H6: surface reconnect events to the orchestration consumer so it
+          // can run gap recovery instead of silently re-attaching and missing
+          // events that arrived during the down window.
+          onReconnect ? { onReconnect } : undefined,
         ),
     },
     provider: {

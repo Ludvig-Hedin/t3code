@@ -4,7 +4,7 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-24"
+updated: "2026-05-10"
 ---
 
 # Build Log
@@ -344,3 +344,64 @@ updated: "2026-04-24"
 - Articles created: (none)
 - Articles updated: (none)
 - Summary: Re-compilation requested. All knowledge from daily/2026-04-20.md was fully extracted across 2 substantive passes. 8 concept articles (react18-setstate-updater-timing-trap, websocket-silent-death-heartbeat, process-output-dual-pattern-matching, code-review-thread-isolation, nodejs-readline-close-race, lazy-file-tree-rpc-expansion, pending-selection-store-coordination, electron-context-menu-react-overlay) and 1 connection article (silent-hang-detection-patterns) cover all sessions. flush-pipeline-failure-modes updated with 2026-04-20 burst failures. No new knowledge to extract. Knowledge base remains at 74 entries (57 concepts + 17 connections).
+
+## [2026-05-09T12:30:00+0000] compile | daily/2026-04-24.md (supplementary)
+
+- Source: daily/2026-04-24.md
+- Articles created: (none)
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (added 2026-04-24 burst failure data — 6 FLUSH_ERRORs at 18:00–18:02 UTC)
+- Summary: Supplementary compilation pass on daily/2026-04-24.md. The daily log was already fully compiled across 3 prior passes (19:11, 19:20, and 19:46), which extracted 4 concept articles (tanstack-router-active-route-params, project-feature-expansion-pattern, design-scanner-detection-resilience, diagnostic-empty-states) and updated 2 existing articles. This pass adds the 6 FLUSH_ERROR entries at 18:00–18:02 UTC to flush-pipeline-failure-modes, continuing the documented pattern of burst failures during high session activity. The 2026-04-24 burst (6 failures in ~2 minutes) aligns with prior clusters on 2026-04-17, 2026-04-18, and 2026-04-20, further validating the need for exponential backoff, circuit breaker, and failure-state tracking improvements. Knowledge base remains at 84 entries (66 concepts + 18 connections).
+
+## [2026-05-09T16:00:00+0000] compile | daily/2026-04-24.md (no-op, confirmed)
+
+- Source: daily/2026-04-24.md
+- Status: SKIPPED — already fully compiled across 4 prior passes (19:11:00, 19:20:00, 19:46:00, and supplementary at 12:30:00)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested via continued session. Verified against index.md and log.md. All knowledge from daily/2026-04-24.md was fully extracted across 4 compilation passes. Coverage includes 4 concept articles: [[concepts/tanstack-router-active-route-params]] (Route.useParams() for active state highlighting), [[concepts/project-feature-expansion-pattern]] (batching 3-7 related features for coherent implementation), [[concepts/design-scanner-detection-resilience]] (broad directory traversal with multi-criteria validation), [[concepts/diagnostic-empty-states]] (surfacing why detection failed with scan counts and rejection reasons). 2 articles updated in substantive passes: [[concepts/project-overview-dashboard-pattern]] (five new features) and [[concepts/project-feature-expansion-pattern]] (UI patterns and Zustand store). The 5 FLUSH_ERROR entries at 18:00-18:02 UTC were added to [[concepts/flush-pipeline-failure-modes]] in the supplementary pass. No new knowledge to extract. Knowledge base remains at 84 entries (66 concepts + 18 connections).
+
+## [2026-05-09T12:00:00+0000] compile | daily/2026-04-23.md (no-op, confirmed)
+
+- Source: daily/2026-04-23.md
+- Status: SKIPPED — already fully compiled on 2026-04-24T02:30:00+0000
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. Verified against index.md and log.md. All knowledge from daily/2026-04-23.md was fully extracted in one substantive pass on 2026-04-24. Coverage includes 4 concept articles: [[concepts/design-panel-integration-pattern]] (full-stack visual editing with server RPC, client UI, OID stamper/resolver runtime bridge, inspector with live style updates, structural editing ops; critical lesson on reusing Preview infrastructure), [[concepts/websocket-resilience-defense-layers]] (four-layer defense pattern: unbounded orchestration timeouts, forgiving heartbeat 3×20s, exponential backoff 250ms→5s, force replay after reconnect), [[concepts/project-overview-dashboard-pattern]] (landing page with groups/todos/markdown notes, localStorage via Zustand, dual-purpose sidebar), [[concepts/cross-provider-session-import]] (parse .jsonl from Claude Code and Codex, extract real titles from first non-boilerplate user message, group by workspace cwd). Connection article [[connections/visual-editing-requires-infrastructure-alignment]] links Design panel dependency on Preview infrastructure. Other sessions covered: chat message padding, v0.1.1 release tag, bug audit. 16 FLUSH_ERROR entries noted but no new flush pipeline patterns beyond what's documented. No new knowledge to extract. Knowledge base remains at 84 entries (66 concepts + 18 connections).
+
+## [2026-05-09T17:00:00+0000] compile | daily/2026-04-25.md (no-op)
+
+- Source: daily/2026-04-25.md
+- Status: SKIPPED — no extractable knowledge content
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Daily log 2026-04-25.md contains one session (00:35) where user requested converting full-screen modals to side panels for better multitasking. Session ended with "Decisions Made: None yet — waiting for user clarification" and open action items (which modals count as "tasks", panel side, dismiss behavior, mobile sheet handling). No implementation, architectural decisions, debugging insights, or patterns to extract. Knowledge base remains at 84 entries (66 concepts + 18 connections).
+
+## [2026-05-09T21:00:00+0000] compile | daily/2026-05-09.md
+
+- Source: daily/2026-05-09.md
+- Articles created: [[concepts/qr-pairing-security-antipattern]], [[concepts/websocket-subscribe-race-pattern]], [[concepts/cross-platform-fs-watch-limitations]], [[concepts/process-cleanup-on-restart]]
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (added 2026-05-09 isolated failure at 17:49 UTC)
+- Summary: Daily log 2026-05-09 documented 4 substantive sessions covering UX fixes, code review, and comprehensive security audit. Key concepts extracted: (1) QR pairing security antipattern — master auth token in QR payload allows any photograph to gain full admin access; correct pattern uses short-lived pairing nonce exchanged for per-device scoped token. (2) WebSocket subscribe race pattern — must subscribe to PubSub BEFORE requesting historical replay to avoid event gaps; use Effect.acquireRelease for ordering guarantee. (3) Cross-platform fs.watch limitations — recursive watching only works on macOS/Windows; Linux requires manual subdirectory walking with individual watchers. (4) Process cleanup on restart — must await actual process exit before deleting from session maps to prevent EADDRINUSE on port reuse. Other lessons documented but not extracted as standalone articles: path traversal security checks (compare raw vs resolved paths), React click/double-click conflict (setTimeout suppression with per-element timers), branded TypeScript IDs (never use empty string as sentinel), Python async stream errors (dict errors bypass except blocks). Session (15:19) covered onboarding flow fixes including TOTAL_ONBOARDING_STEPS constant pattern and Zustand imperative setters for non-React call sites. Session (20:34) applied 14 code review findings across 11 files. Session (20:34) security audit by 5 parallel agents identified 27 bugs ranked by user impact, with top priorities being QR pairing redesign (C1+C2), WS subscribe race fix (C3), and checkpoint/revert data integrity (C5+H3). One isolated FLUSH_ERROR at 17:49 UTC continues the documented transient failure pattern. Knowledge base updated to 88 entries (70 concepts + 18 connections).
+
+## [2026-05-09T22:30:00+0000] compile | daily/2026-05-09.md (supplementary)
+
+- Source: daily/2026-05-09.md
+- Articles created: [[concepts/fs-watch-recursive-platform-limitation]], [[concepts/zustand-imperative-setter-pattern]], [[concepts/path-traversal-validation-bug]]
+- Articles updated: [[concepts/flush-pipeline-failure-modes]] (added 2026-05-09 isolated failure section and source citation)
+- Index fixes: Corrected slug reference from cross-platform-fs-watch-limitations → fs-watch-recursive-platform-limitation; added zustand-imperative-setter-pattern and path-traversal-validation-bug entries
+- Summary: Supplementary compilation pass on daily/2026-05-09.md following prior pass at 21:00. Created 3 additional concept articles that were documented in lessons learned but not yet extracted: (1) fs-watch-recursive-platform-limitation — Node.js fs.watch({recursive:true}) only works on macOS/Windows; Linux requires walking subdirs and attaching individual watchers; decision to implement manual walk rather than adding chokidar dependency to minimize diff scope. (2) zustand-imperative-setter-pattern — expose imperative setters like setConnectionStatus() for non-React call sites (WS transport); enables state sync between async transport events and React UI; implemented for connection status banner visibility. (3) path-traversal-validation-bug — comparing resolve(input) === resolve(input) is tautological and validates nothing; must compare raw input vs resolved path to detect ../traversal attempts. Updated flush-pipeline-failure-modes with detailed section on the 2026-05-09 isolated failure at 17:49 UTC. Reconciled index.md slug references and updated flush entry date to 2026-05-09. Knowledge base updated to 89 entries (71 concepts + 18 connections).
+
+## [2026-05-10T00:00:00+0000] compile | daily/2026-05-09.md (no-op, confirmed)
+
+- Source: daily/2026-05-09.md
+- Status: SKIPPED — already fully compiled across 2 prior passes (21:00:00 and 22:30:00)
+- Articles created: (none)
+- Articles updated: (none)
+- Summary: Re-compilation requested. Verified against index.md and log.md. All knowledge from daily/2026-05-09.md was fully extracted across 2 substantive passes. Coverage includes 7 concept articles: [[concepts/qr-pairing-security-antipattern]] (master token in QR = full admin access; use short-lived nonce → per-device token exchange), [[concepts/websocket-subscribe-race-pattern]] (subscribe to PubSub BEFORE historical replay using Effect.acquireRelease), [[concepts/fs-watch-recursive-platform-limitation]] (recursive only on macOS/Windows; Linux needs manual subdir walking), [[concepts/zustand-imperative-setter-pattern]] (expose setters for non-React call sites like WS transport), [[concepts/path-traversal-validation-bug]] (resolve(input) === resolve(input) is tautological; compare raw vs resolved), [[concepts/process-cleanup-on-restart]] (await process exit before map deletion to prevent EADDRINUSE). Updated [[concepts/flush-pipeline-failure-modes]] with 2026-05-09 isolated failure at 17:49 UTC (4 additional FLUSH_ERRORs at 19:29-19:30 UTC also noted in daily log). Sessions covered: (15:19) onboarding UX fixes with Zustand imperative setters; (20:34) 14 code review findings applied including path traversal and fs.watch fixes; (20:34) security audit by 5 parallel agents with 27 bugs ranked by impact. No new knowledge to extract. Knowledge base remains at 89 entries (71 concepts + 18 connections).
+
+## [2026-05-10T12:00:00+0000] compile | daily/2026-05-10.md
+
+- Source: daily/2026-05-10.md
+- Articles created: [[concepts/multi-agent-holistic-verification-pattern]], [[concepts/empty-state-canonical-pattern]], [[concepts/turbo-cache-staleness-multi-agent]], [[concepts/component-extraction-codebase-health]], [[concepts/wave-based-bugfix-organization]], [[concepts/orchestration-terminal-failure-states]]
+- Articles updated: (none)
+- Summary: Daily log 2026-05-10 documented 3 sessions covering a large-scale bugfix sweep (21 fixes in 4 waves) and a multi-agent UX overhaul (6 parallel agents in Phase 1, followed by Phases 2-3). Key concepts extracted: (1) Multi-agent holistic verification pattern — run cumulative lint/fmt/typecheck between parallel agent phases because individual agent success reports are insufficient; turbo cache staleness compounds the problem. (2) Empty state canonical pattern — 3-part visual hierarchy (heading/reason/action hint) with progressively muted text colors (text-muted-foreground/{50,40,30}); applied across Sidebar, SkillsManager, SearchModal, ChatView. (3) Turbo cache staleness in multi-agent workflows — parallel agents writing to same files create race conditions in cache key computation; always run `--force` verification after phases complete. (4) Component extraction for codebase health — decompose large components incrementally; ChatView (5916 lines) had EmptyDraftThreadView extracted (-178 lines); full decomposition deferred as multi-day effort. (5) Wave-based bugfix organization — dependency-ordered waves (Server → Preview/proxy → Web → Desktop/iOS) with validation-then-fix pattern; 21 surgical fixes completed across 4 waves. (6) Orchestration terminal failure states — handle both "error" and "interrupted" with distinct semantics; PID file + reap-on-next-launch pattern for daemon zombie cleanup (cloudflared H9 fix). Other lessons documented: type specialization over broadening for WS reconnect signals; Swift diagnostics are env-only not real build failures; 22 TS errors are pre-existing baseline. Sessions also documented deferred items: S3 (3+2 onboarding needs product call), S4 (full ChatView decomposition), S6 (workflow library needs backing store spec). Knowledge base updated to 95 entries (77 concepts + 18 connections).

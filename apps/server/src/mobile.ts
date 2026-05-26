@@ -112,6 +112,10 @@ function unauthorized(message: string) {
   return HttpServerResponse.text(message, { status: 401 });
 }
 
+function forbidden(message: string) {
+  return HttpServerResponse.text(message, { status: 403 });
+}
+
 function badRequest(message: string) {
   return HttpServerResponse.text(message, { status: 400 });
 }
@@ -461,6 +465,7 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
         }
 
         if (config.authToken && token === config.authToken) {
+          // Desktop admin token: may revoke any device.
           yield* revokeDeviceById(decoded.deviceId);
         } else {
           const currentDevice = yield* authorizeRequestDevice(token);
@@ -468,6 +473,12 @@ export const mobileCompanionRouteLayer = Layer.unwrap(
             return unauthorized("Unknown or revoked device token.");
           }
           actingDevice = currentDevice.value;
+          // H2: a paired device may revoke ONLY itself. Cross-device revocation
+          // requires the desktop admin token; otherwise any compromised
+          // device-token could lock other paired devices out of /api/mobile/*.
+          if (decoded.deviceId !== actingDevice.deviceId) {
+            return forbidden("Devices may only revoke themselves.");
+          }
           yield* revokeDeviceById(decoded.deviceId);
         }
 

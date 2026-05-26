@@ -385,7 +385,11 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
     [persistThreadBranchSync],
   );
 
-  const { data: gitStatus = null, error: gitStatusError } = useQuery(gitStatusQueryOptions(gitCwd));
+  const {
+    data: gitStatus = null,
+    error: gitStatusError,
+    isFetching: isGitStatusFetching,
+  } = useQuery(gitStatusQueryOptions(gitCwd));
   // Default to true while loading so we don't flash init controls.
   const isRepo = gitStatus?.isRepo ?? true;
   const hasOriginRemote = gitStatus?.hasOriginRemote ?? false;
@@ -415,6 +419,14 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
     if (isGitActionRunning) {
       return;
     }
+    // M3: don't override the active thread branch from `gitStatus` while a
+    // refetch is in flight — the cached value can still be the pre-mutation
+    // branch for a short window after a commit/push, which previously made
+    // the toolbar label flicker back to `main` for ~1s. Wait for the new
+    // status to land before re-syncing.
+    if (isGitStatusFetching) {
+      return;
+    }
 
     const branchUpdate = resolveLiveThreadBranchUpdate({
       threadBranch: activeServerThread?.branch ?? null,
@@ -429,6 +441,7 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
     activeServerThread?.branch,
     gitStatusForActions,
     isGitActionRunning,
+    isGitStatusFetching,
     persistThreadBranchSync,
   ]);
 
@@ -483,24 +496,47 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
       return;
     }
 
-    if (
-      sentinel !== "__waiting__" &&
-      latestTurnForReview?.turnId === sentinel &&
-      latestTurnForReview.state === "completed"
-    ) {
-      const toastId = reviewToastIdRef.current;
-      if (toastId) {
-        toastManager.close(toastId);
-        reviewToastIdRef.current = null;
+    if (sentinel !== "__waiting__" && latestTurnForReview?.turnId === sentinel) {
+      // H4: handle ALL terminal states for the review turn, not just
+      // "completed". Previously a cancelled / errored review left
+      // `resumePushCallbackRef` set forever and the "Running code review
+      // before push…" toast hung indefinitely with no way for the user to
+      // recover the pending push.
+      if (latestTurnForReview.state === "completed") {
+        const toastId = reviewToastIdRef.current;
+        if (toastId) {
+          toastManager.close(toastId);
+          reviewToastIdRef.current = null;
+        }
+        const resume = resumePushCallbackRef.current;
+        reviewTurnIdForPushRef.current = null;
+        resumePushCallbackRef.current = null;
+        // The callback holds a closure over runGitActionWithToast (useEffectEvent);
+        // calling it here avoids a direct dep on runGitActionWithToast in this effect.
+        resume?.();
+      } else if (
+        latestTurnForReview.state === "error" ||
+        latestTurnForReview.state === "interrupted"
+      ) {
+        const toastId = reviewToastIdRef.current;
+        if (toastId) {
+          toastManager.close(toastId);
+          reviewToastIdRef.current = null;
+        }
+        reviewTurnIdForPushRef.current = null;
+        resumePushCallbackRef.current = null;
+        toastManager.add({
+          type: "error",
+          title:
+            latestTurnForReview.state === "interrupted"
+              ? "Code review cancelled. Push aborted."
+              : "Code review failed. Push aborted.",
+          description: "Run the push again when you're ready.",
+          data: threadToastData,
+        });
       }
-      const resume = resumePushCallbackRef.current;
-      reviewTurnIdForPushRef.current = null;
-      resumePushCallbackRef.current = null;
-      // The callback holds a closure over runGitActionWithToast (useEffectEvent);
-      // calling it here avoids a direct dep on runGitActionWithToast in this effect.
-      resume?.();
     }
-  }, [latestTurnForReview]);
+  }, [latestTurnForReview, threadToastData]);
 
   const openExistingPr = useCallback(async () => {
     const api = readNativeApi();

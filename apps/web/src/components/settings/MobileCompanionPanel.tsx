@@ -82,12 +82,7 @@ export function resolveDesktopPairingCode(): string | null {
 export function resolveDesktopPairingError(): "wifi-required" | null {
   if (typeof window === "undefined") return null;
   const result = window.desktopBridge?.getPairingCode?.();
-  if (
-    typeof result === "object" &&
-    result !== null &&
-    "ok" in result &&
-    result.ok === false
-  ) {
+  if (typeof result === "object" && result !== null && "ok" in result && result.ok === false) {
     return result.reason;
   }
   return null;

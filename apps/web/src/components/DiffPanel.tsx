@@ -37,6 +37,7 @@ import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./Dif
 import { ChangedFilesTree } from "./chat/ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./chat/DiffStatLabel";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { summarizeTurnDiffStats } from "../lib/turnDiffTree";
 import type { Thread } from "../types";
 
@@ -602,25 +603,47 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
             }
           }}
         >
-          <Toggle aria-label="Stacked diff view" value="stacked">
-            <Rows3Icon className="size-3" />
-          </Toggle>
-          <Toggle aria-label="Split diff view" value="split">
-            <Columns2Icon className="size-3" />
-          </Toggle>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle aria-label="Stacked view" value="stacked">
+                  <Rows3Icon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="top">Stacked view</TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle aria-label="Side-by-side view" value="split">
+                  <Columns2Icon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="top">Side-by-side view</TooltipPopup>
+          </Tooltip>
         </ToggleGroup>
-        <Toggle
-          aria-label={diffWordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
-          title={diffWordWrap ? "Disable line wrapping" : "Enable line wrapping"}
-          variant="outline"
-          size="xs"
-          pressed={diffWordWrap}
-          onPressedChange={(pressed) => {
-            setDiffWordWrap(Boolean(pressed));
-          }}
-        >
-          <TextWrapIcon className="size-3" />
-        </Toggle>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                aria-label={diffWordWrap ? "Disable line wrapping" : "Wrap long lines"}
+                variant="outline"
+                size="xs"
+                pressed={diffWordWrap}
+                onPressedChange={(pressed) => {
+                  setDiffWordWrap(Boolean(pressed));
+                }}
+              >
+                <TextWrapIcon className="size-3" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="top">
+            {diffWordWrap ? "Disable line wrapping" : "Wrap long lines"}
+          </TooltipPopup>
+        </Tooltip>
       </div>
     </>
   );
@@ -657,25 +680,47 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
             }
           }}
         >
-          <Toggle aria-label="Stacked diff view" value="stacked">
-            <Rows3Icon className="size-3" />
-          </Toggle>
-          <Toggle aria-label="Split diff view" value="split">
-            <Columns2Icon className="size-3" />
-          </Toggle>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle aria-label="Stacked view" value="stacked">
+                  <Rows3Icon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="top">Stacked view</TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle aria-label="Side-by-side view" value="split">
+                  <Columns2Icon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="top">Side-by-side view</TooltipPopup>
+          </Tooltip>
         </ToggleGroup>
-        <Toggle
-          aria-label={diffWordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
-          title={diffWordWrap ? "Disable line wrapping" : "Enable line wrapping"}
-          variant="outline"
-          size="xs"
-          pressed={diffWordWrap}
-          onPressedChange={(pressed) => {
-            setDiffWordWrap(Boolean(pressed));
-          }}
-        >
-          <TextWrapIcon className="size-3" />
-        </Toggle>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                aria-label={diffWordWrap ? "Disable line wrapping" : "Wrap long lines"}
+                variant="outline"
+                size="xs"
+                pressed={diffWordWrap}
+                onPressedChange={(pressed) => {
+                  setDiffWordWrap(Boolean(pressed));
+                }}
+              >
+                <TextWrapIcon className="size-3" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="top">
+            {diffWordWrap ? "Disable line wrapping" : "Wrap long lines"}
+          </TooltipPopup>
+        </Tooltip>
       </div>
     </>
   );

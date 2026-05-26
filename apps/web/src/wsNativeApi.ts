@@ -114,7 +114,10 @@ export function createWsNativeApi(): NativeApi {
         rpcClient.orchestration
           .replayEvents({ fromSequenceExclusive })
           .then((events) => [...events]),
-      onDomainEvent: (callback) => rpcClient.orchestration.onDomainEvent(callback),
+      // H6: forward the optional `onReconnect` signal so consumers (e.g.
+      // __root.tsx) can run gap recovery on reconnect.
+      onDomainEvent: (callback, onReconnect) =>
+        rpcClient.orchestration.onDomainEvent(callback, onReconnect),
     },
   };
 

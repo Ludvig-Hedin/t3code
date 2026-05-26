@@ -4,7 +4,7 @@ sources:
   - memory-compiler/daily/
   - memory-compiler/scripts/compile.py
 created: "2026-04-09"
-updated: "2026-04-24"
+updated: "2026-05-10"
 ---
 
 # Knowledge Base Index
@@ -70,7 +70,7 @@ updated: "2026-04-24"
 | [[concepts/null-undefined-type-coercion-bugs]]                   | Null-to-undefined conversions silently break downstream filters, selectors, and equality checks in TypeScript                              | daily/2026-04-12.md | 2026-04-13 |
 | [[connections/silent-type-changes-cascade-failures]]             | Invisible type/reference changes (null→undefined, array methods) cascade into severe runtime failures many layers downstream               | daily/2026-04-12.md | 2026-04-13 |
 | [[connections/silent-rendering-bugs-from-conditional-pipelines]] | Provider picker ordering and wizard step filtering share a root pattern: silent UI bugs from conditional pipeline ordering                 | daily/2026-04-13.md | 2026-04-13 |
-| [[concepts/flush-pipeline-failure-modes]]                        | Flush.py failed ~20 times consecutively; reveals missing backoff, circuit breaker, and opaque error handling in Stage 2                    | daily/2026-04-17.md | 2026-04-18 |
+| [[concepts/flush-pipeline-failure-modes]]                        | Flush.py failed ~20 times consecutively; reveals missing backoff, circuit breaker, and opaque error handling in Stage 2                    | daily/2026-04-17.md | 2026-05-09 |
 | [[concepts/standalone-to-workspace-package-refactoring]]         | Convert standalone CLI tools to workspace packages: programmatic API, tsx runtime, phased migration with TypeCheck gates                   | daily/2026-04-18.md | 2026-04-18 |
 | [[concepts/ai-context-content-prioritization]]                   | Priority order for AI system prompts: project identity → coding standards → architecture → current state → file structure                  | daily/2026-04-18.md | 2026-04-18 |
 | [[concepts/feature-parity-verification-pattern]]                 | Run old and new implementations side-by-side on same input to verify migration correctness; multiple comparison rounds needed              | daily/2026-04-18.md | 2026-04-18 |
@@ -100,4 +100,15 @@ updated: "2026-04-24"
 | [[concepts/project-feature-expansion-pattern]]                   | Implement multiple related features together for faster development and better coherence                                                   | daily/2026-04-24.md | 2026-04-24 |
 | [[concepts/design-scanner-detection-resilience]]                 | Broad directory traversal across frontend/, client/, web/, packages/\* with diagnostic rejection reasons                                   | daily/2026-04-24.md | 2026-04-24 |
 | [[concepts/diagnostic-empty-states]]                             | Surface why detection failed: search scope, rejection reasons, next steps instead of silent "0 results"                                    | daily/2026-04-24.md | 2026-04-24 |
+| [[concepts/qr-pairing-security-antipattern]]                     | Master auth token in QR = any photo = full admin access; use short-lived pairing nonce → per-device token exchange                         | daily/2026-05-09.md | 2026-05-09 |
+| [[concepts/websocket-subscribe-race-pattern]]                    | Must subscribe to PubSub BEFORE historical replay to avoid event gaps; use Effect.acquireRelease for ordering                              | daily/2026-05-09.md | 2026-05-09 |
+| [[concepts/fs-watch-recursive-platform-limitation]]              | fs.watch({recursive: true}) only works on macOS/Windows; Linux requires manual subdirectory walking                                        | daily/2026-05-09.md | 2026-05-09 |
+| [[concepts/zustand-imperative-setter-pattern]]                   | Expose imperative setters for non-React call sites (WS transport); enables state sync between async events and UI                          | daily/2026-05-09.md | 2026-05-09 |
+| [[concepts/path-traversal-validation-bug]]                       | resolve(input) === resolve(input) is always true; compare raw vs resolved to detect ../traversal                                           | daily/2026-05-09.md | 2026-05-09 |
 | [[connections/visual-editing-requires-infrastructure-alignment]] | Design panel depends on Preview infrastructure; reuse scanProjectEntries to prevent ID mismatches and blank iframes                        | daily/2026-04-23.md | 2026-04-23 |
+| [[concepts/multi-agent-holistic-verification-pattern]]           | Run holistic lint/fmt/typecheck between parallel agent phases; individual agent success is insufficient                                    | daily/2026-05-10.md | 2026-05-10 |
+| [[concepts/empty-state-canonical-pattern]]                       | 3-part empty state hierarchy: heading + reason + action hint with text-muted-foreground/{50,40,30} colors                                  | daily/2026-05-10.md | 2026-05-10 |
+| [[concepts/turbo-cache-staleness-multi-agent]]                   | Turbo cache can report stale results when parallel agents touch same files; always run cumulative verification                             | daily/2026-05-10.md | 2026-05-10 |
+| [[concepts/component-extraction-codebase-health]]                | Decompose large components incrementally; extract self-contained sections to reduce cognitive load                                          | daily/2026-05-10.md | 2026-05-10 |
+| [[concepts/wave-based-bugfix-organization]]                      | Organize large bugfix sweeps into dependency-ordered waves: Server → Infrastructure → Client → Platform                                    | daily/2026-05-10.md | 2026-05-10 |
+| [[concepts/orchestration-terminal-failure-states]]               | Handle both "error" and "interrupted" terminal states with distinct semantics; PID file pattern for daemon cleanup                          | daily/2026-05-10.md | 2026-05-10 |

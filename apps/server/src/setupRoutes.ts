@@ -654,43 +654,63 @@ export const importExecuteRouteLayer = Layer.unwrap(
           const projectPathStat = yield* Effect.tryPromise(() =>
             nodeFs.stat(resolvedProjectPath),
           ).pipe(Effect.result);
-          if (
-            projectPathStat._tag === "Failure" ||
-            !projectPathStat.success.isDirectory()
-          ) {
-            errors.push(
-              `Skipped "${selection.projectName}": project path is not a directory.`,
-            );
+          if (projectPathStat._tag === "Failure" || !projectPathStat.success.isDirectory()) {
+            errors.push(`Skipped "${selection.projectName}": project path is not a directory.`);
             continue;
           }
 
-          const projectId = ProjectId.makeUnsafe(crypto.randomUUID());
           const createdAt = new Date().toISOString();
           const title = TrimmedNonEmptyString.makeUnsafe(
             selection.projectName.slice(0, 200) || "Imported Project",
           );
           const workspaceRoot = TrimmedNonEmptyString.makeUnsafe(resolvedProjectPath);
 
-          // ── Create project (cast directly — workspaceRoot is already resolved) ──
-          const projectCommand: OrchestrationCommand = {
-            type: "project.create",
-            commandId: CommandId.makeUnsafe(`import:project:${crypto.randomUUID()}`),
-            projectId,
-            title,
-            workspaceRoot,
-            createdAt,
-          };
-
-          const projectResult = yield* engine.dispatch(projectCommand).pipe(
-            Effect.catch((err) => {
-              errors.push(`Dispatch project "${selection.projectName}": ${String(err)}`);
-              return Effect.succeed({ sequence: -1 });
-            }),
+          // C6: dedupe project by workspaceRoot. Re-running import previously
+          // generated fresh UUIDs every time, doubling the sidebar on every
+          // run. Look up an existing non-deleted project first and reuse it.
+          const readModelBeforeProject = yield* engine.getReadModel();
+          const existingProject = readModelBeforeProject.projects.find(
+            (entry) => entry.workspaceRoot === resolvedProjectPath && entry.deletedAt === null,
           );
-          if (projectResult.sequence === -1) {
-            continue;
+
+          let projectId: ProjectId;
+          if (existingProject) {
+            projectId = existingProject.id;
+            // No project.create dispatch — already exists.
+          } else {
+            projectId = ProjectId.makeUnsafe(crypto.randomUUID());
+            const projectCommand: OrchestrationCommand = {
+              type: "project.create",
+              commandId: CommandId.makeUnsafe(`import:project:${crypto.randomUUID()}`),
+              projectId,
+              title,
+              workspaceRoot,
+              createdAt,
+            };
+
+            const projectResult = yield* engine.dispatch(projectCommand).pipe(
+              Effect.catch((err) => {
+                errors.push(`Dispatch project "${selection.projectName}": ${String(err)}`);
+                return Effect.succeed({ sequence: -1 });
+              }),
+            );
+            if (projectResult.sequence === -1) {
+              continue;
+            }
+            importedProjectCount++;
           }
-          importedProjectCount++;
+
+          // C6: pre-load existing thread titles for this project so we can
+          // skip imports that would duplicate. Imperfect — import payloads
+          // don't carry a stable (provider, sessionId) identity in the read
+          // model — but title-based dedupe blocks the disaster case where a
+          // re-run doubles every imported thread.
+          const readModelAfterProject = yield* engine.getReadModel();
+          const existingTitlesForProject = new Set(
+            readModelAfterProject.threads
+              .filter((entry) => entry.projectId === projectId && entry.deletedAt === null)
+              .map((entry) => entry.title.trim().toLowerCase()),
+          );
 
           // ── Discover threads for this project ─────────────────────────────
           // For smart providers (codex, claudeAgent) this returns real sessions
@@ -745,6 +765,13 @@ export const importExecuteRouteLayer = Layer.unwrap(
           }
 
           for (const { title: rawTitle } of threadsToCreate) {
+            // C6: skip threads whose title already exists for this project
+            // (case-insensitive, trimmed) — prevents re-imports from doubling.
+            const titleKey = rawTitle.trim().toLowerCase();
+            if (existingTitlesForProject.has(titleKey)) {
+              continue;
+            }
+
             const threadId = ThreadId.makeUnsafe(crypto.randomUUID());
             const threadTitle = TrimmedNonEmptyString.makeUnsafe(rawTitle);
 
@@ -774,6 +801,7 @@ export const importExecuteRouteLayer = Layer.unwrap(
             );
             if (threadResult.sequence !== -1) {
               importedThreadCount++;
+              existingTitlesForProject.add(titleKey);
             }
           }
         }

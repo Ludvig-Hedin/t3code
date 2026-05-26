@@ -23,6 +23,10 @@ export function ProjectSetupStep() {
   const [pathInput, setPathInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // H11: surface a non-error notice when the typed path matches a project
+  // that already exists. Without this the input simply cleared and the user
+  // had no signal that anything happened.
+  const [notice, setNotice] = useState<string | null>(null);
 
   const createFromPath = useCallback(
     async (cwd: string) => {
@@ -36,8 +40,9 @@ export function ProjectSetupStep() {
 
       setBusy(true);
       setError(null);
+      setNotice(null);
       try {
-        await createProjectFromPath({
+        const result = await createProjectFromPath({
           cwd: trimmed,
           projects,
           defaultThreadEnvMode: settings.defaultThreadEnvMode,
@@ -54,6 +59,18 @@ export function ProjectSetupStep() {
           },
         });
         setPathInput("");
+        // H11: when the path resolves to an already-registered project,
+        // `createProjectFromPath` returns `kind: "existing"` without invoking
+        // the `handleNewThread` callback above. Open a fresh thread on that
+        // project here so the click does something visible — and surface a
+        // small notice so the user knows the path was a duplicate, not a
+        // silent failure.
+        if (result.kind === "existing") {
+          setNotice("Project already added — opening it.");
+          await handleNewThread(result.projectId, {
+            envMode: settings.defaultThreadEnvMode,
+          }).catch(() => undefined);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to add project.");
       } finally {
@@ -149,7 +166,10 @@ export function ProjectSetupStep() {
         )}
 
         <form onSubmit={submitPath} className="space-y-2">
-          <label htmlFor="project-path-input" className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label
+            htmlFor="project-path-input"
+            className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+          >
             {hasFolderPicker ? "Or paste an absolute path" : "Absolute path"}
           </label>
           <div className="flex gap-2">
@@ -175,6 +195,11 @@ export function ProjectSetupStep() {
         {error && (
           <div className="rounded-md border border-destructive/30 bg-destructive/8 px-3 py-2 text-xs text-destructive">
             {error}
+          </div>
+        )}
+        {!error && notice && (
+          <div className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            {notice}
           </div>
         )}
       </div>

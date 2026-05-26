@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { ChevronDownIcon, ChevronLeftIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronLeftIcon, LayersIcon } from "lucide-react";
 import type { EnterKeyBehavior } from "@t3tools/contracts/settings";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -109,38 +109,32 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   if (isRunning) {
     // Build the send shortcut label for the queue tooltip
-    const queueShortcutLabel =
-      enterKeyBehavior === "newline"
-        ? isMac
-          ? "Queue message (⌘↵)"
-          : "Queue message (Ctrl+Enter)"
-        : "Queue message (↵)";
+    const queueShortcutHint = enterKeyBehavior === "newline" ? (isMac ? "⌘↵" : "Ctrl+Enter") : "↵";
+    const queueTooltipLabel = `Queue message — sends after current turn (${queueShortcutHint})`;
+    const queueAriaLabel = `Queue message after current turn (${queueShortcutHint})`;
+    const stopTooltipLabel = "Stop — keep partial output";
 
     return (
       <div className="flex items-center gap-1.5">
-        {/* Queue/send button — visible when composer has content, queues the message */}
+        {/* Queue button — visible when composer has content, queues the message for after the current turn */}
         {hasSendableContent && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   type="submit"
-                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-foreground/90 text-background transition-all duration-150 hover:bg-foreground hover:scale-105 sm:h-7 sm:w-7"
-                  aria-label={queueShortcutLabel}
+                  className={cn(
+                    "flex cursor-pointer items-center justify-center rounded-full bg-foreground/90 text-background transition-all duration-150 hover:bg-foreground hover:scale-105",
+                    compact ? "h-8 w-8 sm:h-7 sm:w-7" : "h-8 gap-1.5 px-3 sm:h-7",
+                  )}
+                  aria-label={queueAriaLabel}
                 />
               }
             >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <path
-                  d="M6 10V2M6 2L2.5 5.5M6 2L9.5 5.5"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <LayersIcon className="size-3.5" aria-hidden="true" />
+              {!compact && <span className="text-xs font-medium">Queue</span>}
             </TooltipTrigger>
-            <TooltipPopup side="top">{queueShortcutLabel}</TooltipPopup>
+            <TooltipPopup side="top">{queueTooltipLabel}</TooltipPopup>
           </Tooltip>
         )}
         {/* Stop button */}
@@ -151,7 +145,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 type="button"
                 className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
                 onClick={onInterrupt}
-                aria-label="Stop generation"
+                aria-label={stopTooltipLabel}
               />
             }
           >
@@ -159,7 +153,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
               <rect x="2" y="2" width="8" height="8" rx="1.5" />
             </svg>
           </TooltipTrigger>
-          <TooltipPopup side="top">Stop generation</TooltipPopup>
+          <TooltipPopup side="top">{stopTooltipLabel}</TooltipPopup>
         </Tooltip>
       </div>
     );

@@ -4,6 +4,7 @@ import {
   ArrowLeftIcon,
   BellIcon,
   CodeIcon,
+  CompassIcon,
   GitBranchIcon,
   KeyboardIcon,
   NetworkIcon,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { useOnboarding } from "../../hooks/useOnboarding";
 import {
   SidebarContent,
   SidebarFooter,
@@ -61,6 +63,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
+  const { openOnboarding } = useOnboarding();
 
   return (
     <>
@@ -101,6 +104,17 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       <SidebarSeparator />
       <SidebarFooter className="p-2">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="gap-2 px-2 py-2 text-xs text-foreground/80 hover:bg-accent hover:text-foreground"
+              onClick={openOnboarding}
+              aria-label="Open Setup Guide"
+            >
+              <CompassIcon className="size-4 shrink-0 text-foreground/80" />
+              <span>Setup Guide</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="sm"

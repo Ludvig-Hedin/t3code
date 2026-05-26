@@ -1,15 +1,16 @@
 /**
- * OnboardingSheet — 5-step right-side sheet.
+ * OnboardingSheet — 6-step right-side sheet.
  *
  * Auto-opens on first launch (controlled by useOnboarding localStorage state).
  * Can be reopened from Settings via the "Setup Guide" button.
  *
  * Steps:
- *  1. Project Setup     (pick a workspace folder)
- *  2. Provider Install
- *  3. Mobile Pairing    (optional)
- *  4. Git Setup
- *  5. Import Chats      (optional)
+ *  1. Tour              (overview of what Bird Code can do)
+ *  2. Project Setup     (pick a workspace folder)
+ *  3. Provider Install
+ *  4. Mobile Pairing    (optional)
+ *  5. Git Setup
+ *  6. Import Chats      (optional)
  */
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
@@ -19,6 +20,7 @@ import {
   TOTAL_ONBOARDING_STEPS,
   useOnboarding,
 } from "../../hooks/useOnboarding";
+import { FeatureTourStep } from "./steps/FeatureTourStep";
 import { ProjectSetupStep } from "./steps/ProjectSetupStep";
 import { ProviderInstallStep } from "./steps/ProviderInstallStep";
 import { MobilePairingStep } from "./steps/MobilePairingStep";
@@ -27,11 +29,12 @@ import { ImportChatsFlow } from "./ImportChatsFlow";
 import { cn } from "~/lib/utils";
 
 const STEP_LABELS: Record<OnboardingStep, string> = {
-  1: "Project",
-  2: "Providers",
-  3: "Mobile",
-  4: "Git",
-  5: "Import",
+  1: "Tour",
+  2: "Project",
+  3: "Providers",
+  4: "Mobile",
+  5: "Git",
+  6: "Import",
 };
 
 const TOTAL_STEPS = TOTAL_ONBOARDING_STEPS;
@@ -39,6 +42,7 @@ const TOTAL_STEPS = TOTAL_ONBOARDING_STEPS;
 // ── Step indicator dots ───────────────────────────────────────────────────────
 
 function StepDots({ current, total }: { current: OnboardingStep; total: number }) {
+  const { goToStep } = useOnboarding();
   return (
     <div className="flex items-center gap-1.5" aria-label={`Step ${current} of ${total}`}>
       {Array.from({ length: total }, (_, i) => {
@@ -46,13 +50,17 @@ function StepDots({ current, total }: { current: OnboardingStep; total: number }
         const isActive = step === current;
         const isDone = step < current;
         return (
-          <div
+          <button
             key={step}
+            type="button"
+            onClick={() => goToStep(step)}
+            aria-label={`Go to step ${step}`}
+            aria-current={isActive ? "step" : undefined}
             className={cn(
-              "rounded-full transition-all duration-200",
+              "rounded-full transition-all duration-200 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/30",
               isActive && "w-5 h-2 bg-foreground",
-              isDone && "w-2 h-2 bg-foreground/40",
-              !isActive && !isDone && "w-2 h-2 bg-muted-foreground/20",
+              isDone && "w-2 h-2 bg-foreground/40 hover:bg-foreground/60",
+              !isActive && !isDone && "w-2 h-2 bg-muted-foreground/20 hover:bg-muted-foreground/40",
             )}
           />
         );
@@ -66,14 +74,16 @@ function StepDots({ current, total }: { current: OnboardingStep; total: number }
 function StepContent({ step, onImportDone }: { step: OnboardingStep; onImportDone: () => void }) {
   switch (step) {
     case 1:
-      return <ProjectSetupStep />;
+      return <FeatureTourStep />;
     case 2:
-      return <ProviderInstallStep />;
+      return <ProjectSetupStep />;
     case 3:
-      return <MobilePairingStep />;
+      return <ProviderInstallStep />;
     case 4:
-      return <GitSetupStep />;
+      return <MobilePairingStep />;
     case 5:
+      return <GitSetupStep />;
+    case 6:
       return <ImportChatsFlow onDone={onImportDone} />;
   }
 }
@@ -86,7 +96,7 @@ export function OnboardingSheet() {
 
   const isLastStep = currentStep === TOTAL_STEPS;
   // The import step manages its own primary CTA (the import button)
-  const isImportStep = currentStep === 5;
+  const isImportStep = currentStep === 6;
 
   return (
     <Sheet
@@ -145,19 +155,25 @@ export function OnboardingSheet() {
                 Back
               </Button>
             )}
-            <Button size="sm" onClick={isLastStep ? completeOnboarding : nextStep}>
-              {isLastStep ? (
-                <>
-                  <CheckIcon className="size-3.5 mr-1" />
-                  Done
-                </>
-              ) : (
-                <>
-                  Next
-                  <ArrowRightIcon className="size-3.5 ml-1" />
-                </>
-              )}
-            </Button>
+            {/* M9: the import step owns its own primary CTAs ("Import N
+                threads" while selecting, "Done" on the success screen). Hide
+                the footer primary so the user doesn't see two stacked Done
+                buttons after a successful import. */}
+            {!isImportStep && (
+              <Button size="sm" onClick={isLastStep ? completeOnboarding : nextStep}>
+                {isLastStep ? (
+                  <>
+                    <CheckIcon className="size-3.5 mr-1" />
+                    Done
+                  </>
+                ) : (
+                  <>
+                    Next
+                    <ArrowRightIcon className="size-3.5 ml-1" />
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </SheetFooter>
       </SheetContent>

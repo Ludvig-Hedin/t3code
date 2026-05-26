@@ -10,6 +10,7 @@ import {
   FolderOpenIcon,
   GitPullRequestIcon,
   HashIcon,
+  HelpCircleIcon,
   LayoutGridIcon,
   LoaderCircleIcon,
   MailIcon,
@@ -27,6 +28,7 @@ import {
   TerminalIcon,
   Trash2Icon,
   TriangleAlertIcon,
+  XIcon,
   ZapIcon,
 } from "lucide-react";
 import { ProjectFavicon } from "./ProjectFavicon";
@@ -366,6 +368,88 @@ function prStatusIndicator(pr: ThreadPr): PrStatusIndicator | null {
     };
   }
   return null;
+}
+
+// --- StatusLegendButton: discreet "?" trigger that explains the colored dots/icons in the sidebar ---
+
+interface StatusLegendItem {
+  label: string;
+  swatch: ReactNode;
+}
+
+function StatusLegendButton() {
+  // Swatch styles mirror the production indicators so the legend stays in sync visually:
+  //   - PR open / merged / closed → prStatusIndicator()
+  //   - Terminal running          → terminalStatusFromRunningIds()
+  //   - Agent working             → ThreadWorkingSpinner()
+  //   - Unread completion         → ThreadUnreadCompletionDot()
+  const items: StatusLegendItem[] = [
+    {
+      label: "PR open",
+      swatch: <span className="size-2 rounded-full bg-emerald-600 dark:bg-emerald-300/90" />,
+    },
+    {
+      label: "PR merged",
+      swatch: <span className="size-2 rounded-full bg-violet-600 dark:bg-violet-300/90" />,
+    },
+    {
+      label: "PR closed",
+      swatch: <span className="size-2 rounded-full bg-zinc-500 dark:bg-zinc-400/80" />,
+    },
+    {
+      label: "Terminal running",
+      swatch: (
+        <span className="relative inline-flex size-2 items-center justify-center">
+          <span className="absolute inline-flex size-2 animate-ping rounded-full bg-teal-600/60 dark:bg-teal-300/50" />
+          <span className="relative size-2 rounded-full bg-teal-600 dark:bg-teal-300/90" />
+        </span>
+      ),
+    },
+    {
+      label: "Agent working",
+      swatch: <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground/80" />,
+    },
+    {
+      label: "Unread completion",
+      swatch: <span className="size-2 rounded-full bg-sky-500 dark:bg-sky-300/90" />,
+    },
+  ];
+
+  return (
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              aria-label="Status indicators legend"
+              className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <HelpCircleIcon className="size-3.5" />
+            </PopoverTrigger>
+          }
+        />
+        <TooltipPopup side="top">Status indicators legend</TooltipPopup>
+      </Tooltip>
+      <PopoverPopup align="start" side="top" className="min-w-48">
+        <div className="px-2 pb-1 pt-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+          Status indicators
+        </div>
+        <ul className="flex flex-col gap-0.5">
+          {items.map((item) => (
+            <li
+              key={item.label}
+              className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground"
+            >
+              <span className="inline-flex w-3.5 shrink-0 items-center justify-center">
+                {item.swatch}
+              </span>
+              <span>{item.label}</span>
+            </li>
+          ))}
+        </ul>
+      </PopoverPopup>
+    </Popover>
+  );
 }
 
 function renderOverflowButton(label: string) {
@@ -2294,6 +2378,24 @@ export default function Sidebar() {
     filterState.activityBuckets !== null ||
     organizeMode !== "by_project";
 
+  // Narrower variant used by the inline "Reset filters" affordance shown above the
+  // project list — only true when an actual filter (not just the organize mode) is set,
+  // since flipping organize mode never hides the user's threads.
+  const hasAnyActiveFilter =
+    (filterState.projectIds !== null && filterState.projectIds.size > 0) ||
+    (filterState.providerKinds !== null && filterState.providerKinds.size > 0) ||
+    (filterState.dateBuckets !== null && filterState.dateBuckets.size > 0) ||
+    (filterState.activityBuckets !== null && filterState.activityBuckets.size > 0);
+
+  const resetSidebarFilters = useCallback(() => {
+    setFilterState({
+      projectIds: null,
+      providerKinds: null,
+      dateBuckets: null,
+      activityBuckets: null,
+    });
+  }, []);
+
   // Compute set of filtered thread IDs for the by_project view (null = no filter)
   const filteredThreadIdSet = useMemo<Set<ThreadId> | null>(() => {
     const { projectIds, providerKinds, dateBuckets, activityBuckets } = filterState;
@@ -2789,9 +2891,15 @@ export default function Sidebar() {
             <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
               <div
                 data-thread-selection-safe
-                className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[10px] text-muted-foreground/60"
+                className="flex w-full translate-x-0 flex-col gap-0.5 px-2 py-1.5 text-left"
               >
-                <span>No threads yet</span>
+                <span className="text-[11px] text-muted-foreground/50">No threads yet</span>
+                <span className="text-[10px] text-muted-foreground/40">
+                  This project has no conversations.
+                </span>
+                <span className="text-[10px] text-muted-foreground/30">
+                  Click the pencil icon above to start one.
+                </span>
               </div>
             </SidebarMenuSubItem>
           ) : null}
@@ -2850,7 +2958,9 @@ export default function Sidebar() {
                   {ungroupedIds.map(renderThreadRow)}
                   {activeGroups.map((group) => {
                     const groupThreadIdSet = new Set(group.threadIds);
-                    const groupThreadIds = renderedThreadIds.filter((id) => groupThreadIdSet.has(id));
+                    const groupThreadIds = renderedThreadIds.filter((id) =>
+                      groupThreadIdSet.has(id),
+                    );
                     return (
                       <SidebarMenuSubItem
                         key={`group-${group.id}`}
@@ -3415,6 +3525,24 @@ export default function Sidebar() {
                 </div>
               )}
 
+              {/* Reset-filters pill — only when an actual thread filter is active.
+                  Surfaced inline above the list so users who accidentally hide their
+                  own threads have an obvious recovery path. */}
+              {hasAnyActiveFilter && (
+                <div className="mb-1 px-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="h-6 w-full justify-start gap-1.5 px-2 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+                    onClick={resetSidebarFilters}
+                  >
+                    <XIcon className="size-3" />
+                    Reset filters
+                  </Button>
+                </div>
+              )}
+
               {organizeMode !== "by_project" ? (
                 /* Non-by_project views: flat/grouped thread list */
                 <SidebarOrganizedView
@@ -3634,6 +3762,11 @@ export default function Sidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
+            {/* Status indicator legend — discreet "?" trigger so users can decode the
+                colored dots and spinners used in the thread list. */}
+            <div className="mt-1 flex items-center justify-end px-1">
+              <StatusLegendButton />
+            </div>
           </SidebarFooter>
         </>
       )}

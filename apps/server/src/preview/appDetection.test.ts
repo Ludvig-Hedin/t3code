@@ -36,9 +36,7 @@ describe("detectPortFromLine", () => {
 
 describe("buildDetectionCandidates", () => {
   it("returns web candidate for root package.json with dev script", () => {
-    const entries = [
-      { relativePath: "package.json", scripts: { dev: "vite" }, hasBunLock: true },
-    ];
+    const entries = [{ relativePath: "package.json", scripts: { dev: "vite" }, hasBunLock: true }];
     const candidates = buildDetectionCandidates("/repo", entries);
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.id).toBe("web");

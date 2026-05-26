@@ -56,6 +56,75 @@ export class TunnelManager extends EventEmitter {
     return Path.join(this.userDataPath, "bin", "cloudflared");
   }
 
+  /**
+   * H9: PID file written when cloudflared is spawned. Used on next startup to
+   * reap zombies if Electron was force-killed (SIGKILL / power loss / panic)
+   * — without this, cloudflared is reparented to launchd and stays bound to
+   * the dead backend port forever, defeating the next start with confusing
+   * "Tunnel did not become ready" errors.
+   */
+  private get pidFilePath(): string {
+    return Path.join(this.userDataPath, "cloudflared.pid");
+  }
+
+  private writePidFile(pid: number): void {
+    try {
+      FS.writeFileSync(this.pidFilePath, String(pid), "utf8");
+    } catch (err) {
+      console.warn("[tunnelManager] failed to write PID file", err);
+    }
+  }
+
+  private clearPidFile(): void {
+    try {
+      FS.unlinkSync(this.pidFilePath);
+    } catch (err: unknown) {
+      // ENOENT is fine — already gone.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.warn("[tunnelManager] failed to clear PID file", err);
+      }
+    }
+  }
+
+  /**
+   * Reap a stranded cloudflared process from a previous launch. Reads the PID
+   * file written by `_spawnTunnel`; if the PID is alive AND looks like our
+   * cloudflared (best-effort signal-0 check, no false positives possible
+   * because launchd-reparented processes keep their original argv), SIGKILL
+   * it. Always clears the file at the end.
+   */
+  private reapStaleTunnelProcess(): void {
+    let raw: string;
+    try {
+      raw = FS.readFileSync(this.pidFilePath, "utf8");
+    } catch {
+      return; // No PID file — nothing to reap.
+    }
+    const pid = Number.parseInt(raw.trim(), 10);
+    if (!Number.isFinite(pid) || pid <= 0) {
+      this.clearPidFile();
+      return;
+    }
+    try {
+      // Signal 0 doesn't deliver — just probes whether the PID is alive.
+      process.kill(pid, 0);
+      // Alive — kill it. We can't perfectly verify it's our cloudflared
+      // (PIDs can be recycled), but the file was written by us and the OS
+      // reuses PIDs slowly enough on macOS that a startup-time race is
+      // vanishingly rare. Worst case we kill an unrelated process spawned
+      // since last shutdown.
+      try {
+        process.kill(pid, "SIGKILL");
+        console.warn("[tunnelManager] reaped stale cloudflared process", { pid });
+      } catch (killErr) {
+        console.warn("[tunnelManager] failed to kill stale cloudflared", { pid, killErr });
+      }
+    } catch {
+      // PID not alive — fine, just clean up.
+    }
+    this.clearPidFile();
+  }
+
   private setStatus(status: TunnelStatus): void {
     this._status = status;
     this.emit("status", status);
@@ -427,6 +496,13 @@ export class TunnelManager extends EventEmitter {
     if (this.tunnelProcess) {
       this.stop();
     }
+    // H9: reap a stranded cloudflared from a previous Electron crash (the
+    // child gets reparented to launchd on macOS / kept alive on Linux when
+    // the parent dies via SIGKILL or a panic). Without this, the next
+    // `_spawnTunnel` races for the tunnel registration with a zombie still
+    // proxying to the dead backend port → "Tunnel did not become ready"
+    // with no user remedy short of a manual `pkill cloudflared`.
+    this.reapStaleTunnelProcess();
     if (!this.settings.tunnelName || !this.settings.tunnelUrl) {
       throw new Error("Tunnel not created yet — call ensureTunnel() first.");
     }
@@ -461,6 +537,9 @@ export class TunnelManager extends EventEmitter {
       this.tunnelProcess.kill("SIGTERM");
       this.tunnelProcess = null;
     }
+    // H9: clean up the PID file on graceful shutdown so the next start
+    // doesn't think there's a zombie to reap.
+    this.clearPidFile();
     this.restartAttempts = 0;
   }
 
@@ -478,9 +557,17 @@ export class TunnelManager extends EventEmitter {
         `http://localhost:${this.backendPort}`,
         tunnelName,
       ],
+      // H9: stdio piped so we can listen for readiness lines. We deliberately
+      // do NOT set `detached: true` — cloudflared should die with Electron
+      // under normal SIGTERM/SIGINT exits. The PID file (written below) is
+      // the safety net for the abnormal-exit case where the OS reparents the
+      // child to launchd / init: on next launch we read the PID and reap.
       { stdio: ["ignore", "pipe", "pipe"] },
     );
     this.tunnelProcess = proc;
+    if (typeof proc.pid === "number") {
+      this.writePidFile(proc.pid);
+    }
 
     let ready = false;
 

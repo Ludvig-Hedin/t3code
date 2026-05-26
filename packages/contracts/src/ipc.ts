@@ -272,6 +272,17 @@ export interface NativeApi {
       input: OrchestrationGetFullThreadDiffInput,
     ) => Promise<OrchestrationGetFullThreadDiffResult>;
     replayEvents: (fromSequenceExclusive: number) => Promise<OrchestrationEvent[]>;
-    onDomainEvent: (callback: (event: OrchestrationEvent) => void) => () => void;
+    /**
+     * Subscribe to the orchestration domain-event stream.
+     *
+     * H6: optional `onReconnect` callback fires when the underlying transport
+     * stream is re-attached (after a clean WS close OR an error). Consumers
+     * can use it to drive sequence-gap recovery instead of silently missing
+     * events that were emitted while the stream was down.
+     */
+    onDomainEvent: (
+      callback: (event: OrchestrationEvent) => void,
+      onReconnect?: (reason: "completed" | "errored") => void,
+    ) => () => void;
   };
 }

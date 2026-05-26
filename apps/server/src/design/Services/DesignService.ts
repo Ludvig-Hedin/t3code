@@ -78,10 +78,7 @@ export interface DesignServiceShape {
    * Builds an in-memory `oid → location` index keyed by `${projectId}:${appCwd}`
    * so two projects sharing the same physical app dir don't clobber each other.
    */
-  readonly primeApp: (
-    projectId: string,
-    appCwd: string,
-  ) => Effect.Effect<DesignPrimeSummary>;
+  readonly primeApp: (projectId: string, appCwd: string) => Effect.Effect<DesignPrimeSummary>;
   /**
    * Look up an OID previously stamped by `primeApp`. The `state` field
    * distinguishes "app was never primed" from "OID unknown" so callers

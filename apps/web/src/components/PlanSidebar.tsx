@@ -249,10 +249,13 @@ const PlanSidebar = memo(function PlanSidebar({
 
           {/* Empty state */}
           {!activePlan && !planMarkdown ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-[13px] text-muted-foreground/40">No active plan yet.</p>
-              <p className="mt-1 text-[11px] text-muted-foreground/30">
-                Plans will appear here when generated.
+            <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+              <p className="text-[13px] text-muted-foreground/50">No active plan yet.</p>
+              <p className="mt-1 text-[11px] text-muted-foreground/40">
+                Plans appear when the agent breaks work into steps.
+              </p>
+              <p className="mt-2 text-[11px] text-muted-foreground/30">
+                Try the &ldquo;New feature&rdquo; prompt or ask the agent to plan before coding.
               </p>
             </div>
           ) : null}

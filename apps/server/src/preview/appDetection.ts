@@ -317,8 +317,14 @@ export function buildDetectionCandidates(
       baseLabel = known.label;
       baseType = known.type;
     } else {
+      // M7: previously this used `path.basename(dir)` for the id, which made
+      // two unrelated dirs sharing a basename (e.g. `frontend/web/package.json`
+      // and `clients/web/package.json`) collide on the `seenIds` check below
+      // — the second app was silently dropped from the PreviewPanel tabs.
+      // Hyphen-join the full relative dir so siblings are distinguishable
+      // while keeping the human-readable label as the leaf basename.
       const dirName = path.basename(dir);
-      baseId = dirName || "app";
+      baseId = dir.replace(/[\\/]+/g, "-") || "app";
       baseLabel = dirName || "App";
       baseType = "browser";
     }

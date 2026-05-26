@@ -2,6 +2,8 @@ import {
   type ChatAttachment,
   CommandId,
   EventId,
+  IsoDateTime,
+  NonNegativeInt,
   type ModelSelection,
   type OrchestrationEvent,
   ProviderKind,
@@ -11,12 +13,13 @@ import {
   type RuntimeMode,
   type TurnId,
 } from "@t3tools/contracts";
-import { Cache, Cause, Duration, Effect, Equal, Layer, Option, Schema, Stream } from "effect";
+import { Cache, Cause, Duration, Effect, Equal, Layer, Option, Ref, Schema, Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
+import { ProjectionStateRepository } from "../../persistence/Services/ProjectionState.ts";
 import { ProviderAdapterRequestError, ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -26,6 +29,13 @@ import {
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+
+// H5: stable key under which the reactor's last-processed event sequence is
+// persisted in the projection_state table. Replay-on-start ensures intent
+// events that committed before a server crash but never reached the provider
+// are not lost (e.g. a user prompt persisted as `thread.turn-start-requested`
+// then the server died before dispatching it to the provider).
+const REACTOR_CURSOR_KEY = "provider-command-reactor";
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -152,6 +162,7 @@ const make = Effect.gen(function* () {
   const git = yield* GitCore;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+  const projectionState = yield* ProjectionStateRepository;
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -776,8 +787,32 @@ const make = Effect.gen(function* () {
     }
   });
 
+  // H5: persist the reactor cursor after each successfully-processed intent
+  // event so a crashed/restarted server can resume where it left off instead
+  // of silently dropping in-flight `thread.turn-start-requested` events.
+  // The upsert is part of the "process" step and runs only on success — on
+  // failure the cursor stays put, preserving at-least-once semantics. Idempotency
+  // for replay is provided by the existing `handledTurnStartKeys` cache plus
+  // the orchestration command-receipt table.
+  const advanceCursor = (sequence: number) =>
+    projectionState
+      .upsert({
+        projector: REACTOR_CURSOR_KEY,
+        lastAppliedSequence: NonNegativeInt.makeUnsafe(sequence),
+        updatedAt: IsoDateTime.makeUnsafe(new Date().toISOString()),
+      })
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider command reactor cursor upsert failed", {
+            sequence,
+            cause: Cause.pretty(cause),
+          }),
+        ),
+      );
+
   const processDomainEventSafely = (event: ProviderIntentEvent) =>
     processDomainEvent(event).pipe(
+      Effect.tap(() => advanceCursor(event.sequence)),
       Effect.catchCause((cause) => {
         if (Cause.hasInterruptsOnly(cause)) {
           return Effect.failCause(cause);
@@ -792,7 +827,18 @@ const make = Effect.gen(function* () {
   const worker = yield* makeDrainableWorker(processDomainEventSafely);
 
   const start: ProviderCommandReactorShape["start"] = Effect.fn("start")(function* () {
+    // H5: dedup events arriving from BOTH the historical replay stream and
+    // the live PubSub stream. Live events committed during replay overlap
+    // with `readEvents` output; ref-tracked sequence prevents double-process.
+    const lastEnqueuedRef = yield* Ref.make(0);
+
     const processEvent = Effect.fn("processEvent")(function* (event: OrchestrationEvent) {
+      const lastEnqueued = yield* Ref.get(lastEnqueuedRef);
+      if (event.sequence <= lastEnqueued) {
+        return;
+      }
+      yield* Ref.set(lastEnqueuedRef, event.sequence);
+
       if (
         event.type === "thread.runtime-mode-set" ||
         event.type === "thread.turn-start-requested" ||
@@ -803,10 +849,37 @@ const make = Effect.gen(function* () {
       ) {
         return yield* worker.enqueue(event);
       }
+      // M11: drop the cached model selection for threads that are gone /
+      // archived so the in-memory map cannot grow without bound on a
+      // long-running server.
+      if (event.type === "thread.deleted" || event.type === "thread.archived") {
+        threadModelSelections.delete(event.payload.threadId);
+        // Cleanup events advance the cursor immediately — they don't go
+        // through the worker.
+        yield* advanceCursor(event.sequence);
+      }
     });
 
+    // H5: read the persisted cursor. Default 0 = replay everything on first run.
+    const cursorOption = yield* projectionState
+      .getByProjector({ projector: REACTOR_CURSOR_KEY })
+      .pipe(Effect.catch(() => Effect.succeed(Option.none<never>())));
+    const fromSequenceExclusive = Option.match(cursorOption, {
+      onNone: () => 0,
+      onSome: (state) => state.lastAppliedSequence,
+    });
+
+    // Subscribe to live + historical replay via merge. `Stream.merge` attaches
+    // both sources concurrently when run, so live events that commit during
+    // replay are buffered (not dropped) and the dedup ref above handles overlap.
     yield* Effect.forkScoped(
-      Stream.runForEach(orchestrationEngine.streamDomainEvents, processEvent),
+      Stream.runForEach(
+        Stream.merge(
+          orchestrationEngine.readEvents(fromSequenceExclusive),
+          orchestrationEngine.streamDomainEvents,
+        ),
+        processEvent,
+      ),
     );
   });
 

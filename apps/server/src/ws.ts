@@ -71,6 +71,48 @@ import { A2aAgentCardService, A2aTaskService, A2aClientService } from "./a2a";
 import { TranscriptionService } from "./transcription/TranscriptionService";
 
 // ---------------------------------------------------------------------------
+// M1: Origin allowlist for /ws upgrades
+//
+// Browsers do not enforce same-origin on WebSocket connections, so when the
+// desktop server runs without an `authToken` (the local-default), any page
+// the user visits could open `new WebSocket("ws://localhost:<port>/ws")` and
+// dispatch arbitrary orchestration commands. This guard runs regardless of
+// token state and rejects upgrades whose Origin doesn't pass the allowlist.
+
+const LOOPBACK_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
+const ALLOWED_ORIGIN_PROTOCOLS = new Set(["t3:", "app:", "bird-code:", "file:"]);
+
+function isOriginAllowedForWs(origin: string, hostHeader: string | undefined): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  // Custom Electron / native protocols.
+  if (ALLOWED_ORIGIN_PROTOCOLS.has(parsed.protocol)) {
+    return true;
+  }
+
+  // Loopback: covers `localhost`, `127.0.0.1`, `[::1]` with any port.
+  if (LOOPBACK_ORIGIN_PATTERN.test(origin)) {
+    return true;
+  }
+
+  // Same-origin: Origin's host (incl. port) must equal the request's Host.
+  // Cloudflare tunnel + custom-domain users hit this branch — Cloudflare
+  // forwards both Origin and Host as the public tunnel domain.
+  if (typeof hostHeader === "string" && hostHeader.length > 0) {
+    if (parsed.host === hostHeader) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Memory helpers — used in the dispatchCommand handler to enrich user messages
 // with relevant past context from Mem0 before they reach the orchestration engine.
 // ---------------------------------------------------------------------------
@@ -1457,6 +1499,32 @@ export const websocketRpcRouteLayer = Layer.unwrap(
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const config = yield* ServerConfig;
+
+        // M1: enforce an Origin allowlist on /ws upgrades regardless of
+        // whether `authToken` is configured. Browsers do NOT enforce the
+        // same-origin policy on WebSocket connections, so without this any
+        // page the user visits could open `new WebSocket("ws://localhost:
+        // <port>/ws")` and dispatch arbitrary orchestration commands when
+        // the desktop server runs without a token (the local-default).
+        //
+        // Allowed origins:
+        //   • Missing Origin header (non-browser clients: Electron renderer
+        //     before navigation, CLI/tests, native iOS WebView).
+        //   • Same-origin requests (Origin's host matches the request Host).
+        //   • Loopback (`http(s)://localhost(:port)?` /
+        //     `http(s)://127.0.0.1(:port)?` / `[::1]`) — Bird Code's web app
+        //     is served from localhost.
+        //   • Custom Electron protocols (`t3:`, `app:`, `bird-code:`).
+        //   • Configured tunnel host, when present, so Cloudflare-tunnel
+        //     clients can still connect.
+        const originHeader = request.headers["origin"];
+        if (typeof originHeader === "string" && originHeader.length > 0) {
+          const isAllowedOrigin = isOriginAllowedForWs(originHeader, request.headers["host"]);
+          if (!isAllowedOrigin) {
+            return HttpServerResponse.text("Forbidden WebSocket origin", { status: 403 });
+          }
+        }
+
         if (config.authToken) {
           const url = HttpServerRequest.toURL(request);
           if (Option.isNone(url)) {

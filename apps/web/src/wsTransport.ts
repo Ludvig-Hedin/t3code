@@ -10,6 +10,18 @@ import { RpcClient } from "effect/unstable/rpc";
 
 interface SubscribeOptions {
   readonly retryDelay?: Duration.Input;
+  /**
+   * H6: invoked whenever the underlying stream is re-subscribed (either after
+   * a transport error or after the server cleanly ended the stream). The
+   * consumer can use this signal to run sequence-gap recovery — without it,
+   * `Effect.forever` re-attaches silently and any events emitted during the
+   * down window are lost without anyone noticing.
+   *
+   * `reason` is `"completed"` for clean stream completion (suspicious for an
+   * infinite stream — likely a brief WS reconnect) and `"errored"` for an
+   * error path.
+   */
+  readonly onReconnect?: (reason: "completed" | "errored") => void;
 }
 
 interface RequestOptions {
@@ -160,7 +172,9 @@ export class WsTransport {
     }
 
     let active = true;
+    let firstAttachComplete = false;
     const retryDelayMs = options?.retryDelay ?? DEFAULT_SUBSCRIPTION_RETRY_DELAY_MS;
+    const onReconnect = options?.onReconnect;
     const cancel = this.runtime.runCallback(
       Effect.promise(() => this.clientPromise).pipe(
         Effect.flatMap((client) =>
@@ -175,6 +189,22 @@ export class WsTransport {
                 // Swallow listener errors so the stream stays live.
               }
             }),
+          ).pipe(
+            // H6: a successful stream completion is suspicious for what is
+            // supposed to be an infinite subscription — most often it means
+            // the WS dropped cleanly and the underlying RpcClient re-routed.
+            // Notify the consumer so it can run gap recovery; the same
+            // notification fires from the catch path below for error-driven
+            // reconnects.
+            Effect.tap(() =>
+              Effect.sync(() => {
+                if (!active || this.disposed) return;
+                if (firstAttachComplete) {
+                  onReconnect?.("completed");
+                }
+                firstAttachComplete = true;
+              }),
+            ),
           ),
         ),
         Effect.catch((error) => {
@@ -185,6 +215,11 @@ export class WsTransport {
             console.warn("[WsTransport] subscription disconnected, retrying", {
               error: formatErrorMessage(error),
             });
+            // H6: signal error-driven reconnect.
+            if (firstAttachComplete) {
+              onReconnect?.("errored");
+            }
+            firstAttachComplete = true;
           }).pipe(Effect.andThen(Effect.sleep(retryDelayMs)));
         }),
         Effect.forever,

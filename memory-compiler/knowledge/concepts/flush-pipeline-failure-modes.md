@@ -6,8 +6,10 @@ sources:
   - "daily/2026-04-17.md"
   - "daily/2026-04-18.md"
   - "daily/2026-04-20.md"
+  - "daily/2026-04-24.md"
+  - "daily/2026-05-09.md"
 created: 2026-04-17
-updated: 2026-04-20
+updated: 2026-05-09
 ---
 
 # Flush Pipeline Failure Modes and Error Resilience
@@ -100,7 +102,15 @@ The same failure pattern recurred on 2026-04-18 with 2 FLUSH_ERROR entries (at 1
 
 ### Burst Failures on 2026-04-20
 
-A cluster of five FLUSH_ERROR entries was observed: four near-simultaneous failures at **23:00:26 UTC** and one isolated failure at **22:19 UTC**. The error text matched prior runs (opaque “exit code 1” / “Check stderr” style). The **23:00 burst of four simultaneous failures** suggests concurrent hook invocations (e.g., several sessions ending together) all hitting the same failure mode—reinforcing the need for a **circuit breaker** so concurrent flushes do not hammer a broken endpoint independently.
+A cluster of five FLUSH_ERROR entries was observed: four near-simultaneous failures at **23:00:26 UTC** and one isolated failure at **22:19 UTC**. The error text matched prior runs (opaque "exit code 1" / "Check stderr" style). The **23:00 burst of four simultaneous failures** suggests concurrent hook invocations (e.g., several sessions ending together) all hitting the same failure mode—reinforcing the need for a **circuit breaker** so concurrent flushes do not hammer a broken endpoint independently.
+
+### Burst Failures on 2026-04-24
+
+A cluster of six FLUSH_ERROR entries was observed at **18:00–18:02 UTC** — six failures in a 2-minute window, all with the same opaque "exit code 1" / "Check stderr" error text. This continues the established pattern of burst failures during periods of high session activity. The tight temporal clustering (6 failures in ~2 minutes vs. 4 failures in ~1 second on 2026-04-20) suggests slightly more distributed hook invocations, but the underlying issue remains: concurrent flush attempts all fail independently with no coordination, backoff, or circuit-breaking. The 2026-04-24 data further validates the need for the recommended improvements (exponential backoff, circuit breaker, failure-state tracking).
+
+### Isolated Failure on 2026-05-09
+
+A single FLUSH_ERROR entry was observed at **17:49 UTC**. The error text matched prior runs (opaque "exit code 1" / "Check stderr" style) with traceback through `claude_agent_sdk/query.py` and `claude_agent_sdk/_internal/client.py`. Unlike the burst patterns observed on prior dates, this was an isolated failure—the daily log contains only one error entry among otherwise normal session activity. The error occurred during the Memory Flush at 19:49 (local time), suggesting the transient failure mode continues to occur sporadically even outside of high-activity windows. This isolated instance further supports that the root cause is external (API rate limits, network transients, service availability) rather than a code defect in flush.py itself.
 
 ## Related Concepts
 
@@ -116,3 +126,5 @@ A cluster of five FLUSH_ERROR entries was observed: four near-simultaneous failu
 - [[daily/2026-04-17.md]] — Earlier flushes at 19:21, 19:23, 19:30, 19:34, 19:36, 19:45 all returned FLUSH_OK, indicating the failure was a state transition, not a persistent configuration issue
 - [[daily/2026-04-18.md]] — 2 intermittent FLUSH_ERROR entries at 13:37 and 13:52 UTC with identical traceback, interspersed with FLUSH_OK successes — suggests transient rather than persistent failures
 - [[daily/2026-04-20.md]] — 5 FLUSH_ERROR entries: 1 at 22:19 UTC, 4 burst at 23:00:26 UTC (near-simultaneous), all with identical traceback to prior failures
+- [[daily/2026-04-24.md]] — 6 FLUSH_ERROR entries at 18:00–18:02 UTC (burst over 2 minutes), all with identical traceback to prior failures
+- [[daily/2026-05-09.md]] — 1 isolated FLUSH_ERROR entry at 17:49 UTC with identical traceback, occurring outside of burst activity patterns

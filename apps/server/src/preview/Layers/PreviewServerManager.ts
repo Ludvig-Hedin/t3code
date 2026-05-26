@@ -327,154 +327,167 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
     app: PreviewApp,
     payload: NonNullable<ReturnType<typeof parseStandalonePreviewCommand>>,
   ): Effect.Effect<PreviewSession, Error> =>
-    Effect.promise(async () => {
-      const fsPromises = (await import("node:fs/promises")) as typeof import("node:fs/promises");
-      const http = await import("node:http");
-      const path = await import("node:path");
-      const { createStandaloneRenderer } = await import("../StandalonePreviewRenderer");
-      const entryFilePath = path.join(app.cwd, payload.relativePath);
-      const rootRealPath = await fsPromises.realpath(app.cwd);
-      const previewHtml =
-        payload.kind === "html"
-          ? null
-          : await createStandaloneRenderer({
-              filePath: entryFilePath,
-              kind: payload.kind,
-              fs: fsPromises,
-            });
+    // M5: previously this used `Effect.promise` which converts a rejected
+    // promise into a defect, not a typed failure. So when
+    // `createStandaloneRenderer` throws (e.g. `python3` missing for .docx
+    // previews) the WS RPC layer never produced a `status-change: error`
+    // event and the PreviewPanel spinner hung forever. `Effect.tryPromise`
+    // surfaces the rejection as the declared `Error` failure channel which
+    // the caller already maps to a typed PreviewError.
+    Effect.tryPromise({
+      try: async () => {
+        const fsPromises = (await import("node:fs/promises")) as typeof import("node:fs/promises");
+        const http = await import("node:http");
+        const path = await import("node:path");
+        const { createStandaloneRenderer } = await import("../StandalonePreviewRenderer");
+        const entryFilePath = path.join(app.cwd, payload.relativePath);
+        const rootRealPath = await fsPromises.realpath(app.cwd);
+        const previewHtml =
+          payload.kind === "html"
+            ? null
+            : await createStandaloneRenderer({
+                filePath: entryFilePath,
+                kind: payload.kind,
+                fs: fsPromises,
+              });
 
-      const mimeTypes: Record<string, string> = {
-        ".css": "text/css; charset=utf-8",
-        ".csv": "text/csv; charset=utf-8",
-        ".html": "text/html; charset=utf-8",
-        ".htm": "text/html; charset=utf-8",
-        ".js": "text/javascript; charset=utf-8",
-        ".mjs": "text/javascript; charset=utf-8",
-        ".json": "application/json; charset=utf-8",
-        // Markdown is served as plain text/markdown so a previewed HTML page
-        // linking to README.md gets the raw source instead of having the
-        // browser try to parse markdown as HTML and render garbage. Standalone
-        // markdown previews are no longer wired through this server.
-        ".md": "text/markdown; charset=utf-8",
-        ".mdx": "text/markdown; charset=utf-8",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".svg": "image/svg+xml",
-        ".tsx": "text/html; charset=utf-8",
-        ".jsx": "text/html; charset=utf-8",
-        ".txt": "text/plain; charset=utf-8",
-        ".webp": "image/webp",
-      };
+        const mimeTypes: Record<string, string> = {
+          ".css": "text/css; charset=utf-8",
+          ".csv": "text/csv; charset=utf-8",
+          ".html": "text/html; charset=utf-8",
+          ".htm": "text/html; charset=utf-8",
+          ".js": "text/javascript; charset=utf-8",
+          ".mjs": "text/javascript; charset=utf-8",
+          ".json": "application/json; charset=utf-8",
+          // Markdown is served as plain text/markdown so a previewed HTML page
+          // linking to README.md gets the raw source instead of having the
+          // browser try to parse markdown as HTML and render garbage. Standalone
+          // markdown previews are no longer wired through this server.
+          ".md": "text/markdown; charset=utf-8",
+          ".mdx": "text/markdown; charset=utf-8",
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".gif": "image/gif",
+          ".svg": "image/svg+xml",
+          ".tsx": "text/html; charset=utf-8",
+          ".jsx": "text/html; charset=utf-8",
+          ".txt": "text/plain; charset=utf-8",
+          ".webp": "image/webp",
+        };
 
-      const serveFile = async (
-        filePath: string,
-      ): Promise<{
-        body: Buffer;
-        contentType: string;
-      } | null> => {
-        try {
-          const stat = await fsPromises.stat(filePath);
-          if (!stat.isFile()) return null;
-          const extension = path.extname(filePath).toLowerCase();
-          const contentType = mimeTypes[extension] ?? "application/octet-stream";
-          return {
-            body: Buffer.from(await fsPromises.readFile(filePath)),
-            contentType,
-          };
-        } catch {
-          return null;
-        }
-      };
-
-      return await new Promise<PreviewSession>((resolve, reject) => {
-        const server = http.createServer(async (request, res) => {
+        const serveFile = async (
+          filePath: string,
+        ): Promise<{
+          body: Buffer;
+          contentType: string;
+        } | null> => {
           try {
-            const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-            const pathname = decodeURIComponent(requestUrl.pathname);
-            const normalizedPath = pathname === "/" ? payload.relativePath : pathname.slice(1);
-            const fileCandidate = path.resolve(app.cwd, normalizedPath);
-            let resolvedServePath: string | null = null;
+            const stat = await fsPromises.stat(filePath);
+            if (!stat.isFile()) return null;
+            const extension = path.extname(filePath).toLowerCase();
+            const contentType = mimeTypes[extension] ?? "application/octet-stream";
+            return {
+              body: Buffer.from(await fsPromises.readFile(filePath)),
+              contentType,
+            };
+          } catch {
+            return null;
+          }
+        };
+
+        return await new Promise<PreviewSession>((resolve, reject) => {
+          const server = http.createServer(async (request, res) => {
             try {
-              const candidateRealPath = await fsPromises.realpath(fileCandidate);
-              const relativeToRoot = path.relative(rootRealPath, candidateRealPath);
-              const underRoot =
-                relativeToRoot !== "" &&
-                !relativeToRoot.startsWith("..") &&
-                !path.isAbsolute(relativeToRoot);
-              if (underRoot) {
-                resolvedServePath = candidateRealPath;
+              const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+              const pathname = decodeURIComponent(requestUrl.pathname);
+              const normalizedPath = pathname === "/" ? payload.relativePath : pathname.slice(1);
+              const fileCandidate = path.resolve(app.cwd, normalizedPath);
+              let resolvedServePath: string | null = null;
+              try {
+                const candidateRealPath = await fsPromises.realpath(fileCandidate);
+                const relativeToRoot = path.relative(rootRealPath, candidateRealPath);
+                const underRoot =
+                  relativeToRoot !== "" &&
+                  !relativeToRoot.startsWith("..") &&
+                  !path.isAbsolute(relativeToRoot);
+                if (underRoot) {
+                  resolvedServePath = candidateRealPath;
+                }
+              } catch {
+                /* Symlink escape, missing path, or realpath failure — do not serve static files. */
               }
-            } catch {
-              /* Symlink escape, missing path, or realpath failure — do not serve static files. */
-            }
 
-            if (resolvedServePath !== null) {
-              const servedFile = await serveFile(resolvedServePath);
-              if (servedFile) {
+              if (resolvedServePath !== null) {
+                const servedFile = await serveFile(resolvedServePath);
+                if (servedFile) {
+                  res.statusCode = 200;
+                  res.setHeader("content-type", servedFile.contentType);
+                  res.end(servedFile.body);
+                  return;
+                }
+              }
+
+              if (payload.kind === "html") {
+                const fallback = await serveFile(entryFilePath);
+                if (fallback) {
+                  res.statusCode = 200;
+                  res.setHeader("content-type", fallback.contentType);
+                  res.end(fallback.body);
+                  return;
+                }
+              }
+
+              if (previewHtml !== null) {
                 res.statusCode = 200;
-                res.setHeader("content-type", servedFile.contentType);
-                res.end(servedFile.body);
+                res.setHeader("content-type", "text/html; charset=utf-8");
+                res.end(previewHtml);
                 return;
               }
-            }
 
-            if (payload.kind === "html") {
-              const fallback = await serveFile(entryFilePath);
-              if (fallback) {
-                res.statusCode = 200;
-                res.setHeader("content-type", fallback.contentType);
-                res.end(fallback.body);
-                return;
-              }
+              res.statusCode = 404;
+              res.setHeader("content-type", "text/plain; charset=utf-8");
+              res.end("Preview file not found.");
+            } catch (error) {
+              res.statusCode = 500;
+              res.setHeader("content-type", "text/plain; charset=utf-8");
+              res.end(error instanceof Error ? error.message : "Failed to render preview.");
             }
+          });
 
-            if (previewHtml !== null) {
-              res.statusCode = 200;
-              res.setHeader("content-type", "text/html; charset=utf-8");
-              res.end(previewHtml);
+          server.once("error", reject);
+          server.listen(0, "127.0.0.1", () => {
+            const address = server.address();
+            if (!address || typeof address === "string") {
+              reject(new Error("Failed to allocate a preview port."));
               return;
             }
 
-            res.statusCode = 404;
-            res.setHeader("content-type", "text/plain; charset=utf-8");
-            res.end("Preview file not found.");
-          } catch (error) {
-            res.statusCode = 500;
-            res.setHeader("content-type", "text/plain; charset=utf-8");
-            res.end(error instanceof Error ? error.message : "Failed to render preview.");
-          }
-        });
+            const session: PreviewSession = {
+              appId: app.id,
+              projectId: ProjectId.makeUnsafe(projectId),
+              status: "running",
+              port: address.port,
+              pid: process.pid,
+              startedAt: new Date().toISOString(),
+              errorMessage: null,
+            };
 
-        server.once("error", reject);
-        server.listen(0, "127.0.0.1", () => {
-          const address = server.address();
-          if (!address || typeof address === "string") {
-            reject(new Error("Failed to allocate a preview port."));
-            return;
-          }
-
-          const session: PreviewSession = {
-            appId: app.id,
-            projectId: ProjectId.makeUnsafe(projectId),
-            status: "running",
-            port: address.port,
-            pid: process.pid,
-            startedAt: new Date().toISOString(),
-            errorMessage: null,
-          };
-
-          standaloneSessions.set(`${projectId}:${app.id}`, { session, server });
-          emitEvent({
-            type: "status-change",
-            appId: app.id,
-            projectId: session.projectId,
-            session,
+            standaloneSessions.set(`${projectId}:${app.id}`, { session, server });
+            emitEvent({
+              type: "status-change",
+              appId: app.id,
+              projectId: session.projectId,
+              session,
+            });
+            resolve(session);
           });
-          resolve(session);
         });
-      });
+      },
+      catch: (cause) =>
+        cause instanceof Error
+          ? cause
+          : new Error(typeof cause === "string" ? cause : "Standalone preview failed to start."),
     });
 
   const service: PreviewServerManagerShape = {
@@ -528,17 +541,47 @@ const makePreviewServerManager = Effect.fn("makePreviewServerManager")(function*
         // late-buffered "Local: http://localhost:5173" line doesn't fire
         // after the new child takes over the key — the listener would then
         // write the dead port into the new session and the proxy 502s.
-        yield* Effect.sync(() => {
-          const existing = runningSessions.get(key);
-          if (existing) {
-            tryKill(existing.process);
-            existing.process.stdout?.removeAllListeners();
-            existing.process.stderr?.removeAllListeners();
-            existing.process.removeAllListeners();
+        //
+        // H8: previously this used `tryKill` (SIGTERM only). Vite/Next/webpack
+        // dev servers frequently ignore SIGTERM under load and on Windows the
+        // shell-spawned child survives a plain `child.kill`. The result was
+        // EADDRINUSE on the next start. Use `killProcess` (which escalates to
+        // SIGKILL after 3s on POSIX and uses `taskkill /T /F` on Windows) and
+        // await the actual `exit` event with a timeout so the OS has a chance
+        // to release the bound port before we spawn the replacement.
+        const existingForKey = runningSessions.get(key);
+        if (existingForKey) {
+          yield* Effect.sync(() => {
+            killProcess(existingForKey.process);
+            existingForKey.process.stdout?.removeAllListeners();
+            existingForKey.process.stderr?.removeAllListeners();
+            existingForKey.process.removeAllListeners(/* keep no listeners */);
+          });
+          // Wait up to 4s for the child to exit. The 3s SIGKILL fallback inside
+          // `killProcess` plus a small grace covers stubborn processes; if the
+          // OS still hasn't reaped the PID we move on rather than hang
+          // start-app indefinitely.
+          yield* Effect.callback<void>((resume) => {
+            const child = existingForKey.process;
+            if (child.exitCode !== null || child.killed) {
+              resume(Effect.void);
+              return;
+            }
+            const onExit = () => {
+              clearTimeout(timer);
+              resume(Effect.void);
+            };
+            const timer = setTimeout(() => {
+              child.removeListener("exit", onExit);
+              resume(Effect.void);
+            }, 4000);
+            child.once("exit", onExit);
+          });
+          yield* Effect.sync(() => {
             runningSessions.delete(key);
             outputBuffers.delete(key); // discard stale buffer from prior run
-          }
-        });
+          });
+        }
 
         const pid = ProjectId.makeUnsafe(projectId);
 

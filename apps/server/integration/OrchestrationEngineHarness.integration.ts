@@ -30,6 +30,7 @@ import { TextGeneration, type TextGenerationShape } from "../src/git/Services/Te
 import { OrchestrationCommandReceiptRepositoryLive } from "../src/persistence/Layers/OrchestrationCommandReceipts.ts";
 import { OrchestrationEventStoreLive } from "../src/persistence/Layers/OrchestrationEventStore.ts";
 import { ProjectionCheckpointRepositoryLive } from "../src/persistence/Layers/ProjectionCheckpoints.ts";
+import { ProjectionStateRepositoryLive } from "../src/persistence/Layers/ProjectionState.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "../src/persistence/Layers/ProjectionPendingApprovals.ts";
 import { ProviderSessionRuntimeRepositoryLive } from "../src/persistence/Layers/ProviderSessionRuntime.ts";
 import { makeSqlitePersistenceLive } from "../src/persistence/Layers/Sqlite.ts";
@@ -297,6 +298,9 @@ export const makeOrchestrationIntegrationHarness = (
       orchestrationLayer.pipe(Layer.provide(projectionSnapshotQueryLayer)),
       ProjectionCheckpointRepositoryLive,
       ProjectionPendingApprovalRepositoryLive,
+      // H5: reactor reads/writes a cursor row in projection_state to resume
+      // intent-event processing after a restart.
+      ProjectionStateRepositoryLive,
       checkpointStoreLayer,
       providerLayer,
       RuntimeReceiptBusLive,

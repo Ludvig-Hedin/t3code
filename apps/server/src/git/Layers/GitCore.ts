@@ -1332,9 +1332,17 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     "prepareCommitContext",
   )(function* (cwd, filePaths) {
     if (filePaths && filePaths.length > 0) {
-      yield* runGit("GitCore.prepareCommitContext.reset", cwd, ["reset"]).pipe(
-        Effect.catch(() => Effect.void),
-      );
+      // M2: scope the reset to the user-supplied subset. Previously this ran
+      // a bare `git reset` which unstages the ENTIRE index — silently dropping
+      // any files the user had hand-staged in their terminal. Restricting the
+      // reset to `-- <filePaths>` preserves their staged work outside the
+      // dialog selection.
+      yield* runGit("GitCore.prepareCommitContext.reset", cwd, [
+        "reset",
+        "HEAD",
+        "--",
+        ...filePaths,
+      ]).pipe(Effect.catch(() => Effect.void));
       yield* runGit("GitCore.prepareCommitContext.addSelected", cwd, [
         "add",
         "-A",

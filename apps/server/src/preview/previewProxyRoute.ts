@@ -50,6 +50,12 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   "x-frame-options",
   "content-security-policy",
   "content-security-policy-report-only",
+  // M4: we strip Accept-Encoding from the request so upstream sends plain
+  // text. Defensive: also drop any `content-encoding` upstream sends back —
+  // some dev frameworks emit `Content-Encoding: identity` plus a length
+  // header that doesn't match the wire body, and the browser then aborts
+  // assets with `ERR_CONTENT_LENGTH_MISMATCH`.
+  "content-encoding",
 ]);
 
 /**
@@ -217,8 +223,14 @@ const previewProxyHandler = Effect.gen(function* () {
               proxyRes.on("error", reject);
             } else {
               // Stream binary / SSE / chunked passthrough — no buffering.
-              // content-length set by upstream remains correct (or absent
-              // for chunked transfer-encoding).
+              //
+              // M4: drop `transfer-encoding` so the runtime can re-emit the
+              // correct framing for the streamed body (Effect's
+              // `HttpServerResponse.stream` derives chunked encoding by
+              // itself). Keeping both `content-length` and a stale
+              // `transfer-encoding: chunked` from upstream confuses browsers
+              // and can truncate large source maps / stall SSE streams.
+              delete responseHeaders["transfer-encoding"];
               resolve({
                 kind: "stream",
                 status,
@@ -286,19 +298,14 @@ const previewProxyHandler = Effect.gen(function* () {
 
     if (isHtml) {
       // 2. Root-relative paths in HTML attributes.
-      bodyStr = bodyStr.replace(
-        /((?:src|href|action)=["'])\/(?!\/)/gi,
-        `$1${proxyBase}/`,
-      );
+      bodyStr = bodyStr.replace(/((?:src|href|action)=["'])\/(?!\/)/gi, `$1${proxyBase}/`);
       // srcset takes a comma-separated list of URLs; rewrite each entry.
       bodyStr = bodyStr.replace(
         /srcset=(["'])([^"']*)\1/gi,
         (_match, quote: string, value: string) => {
           const rewritten = value
             .split(",")
-            .map((entry) =>
-              entry.replace(/^(\s*)\/(?!\/)/, `$1${proxyBase}/`),
-            )
+            .map((entry) => entry.replace(/^(\s*)\/(?!\/)/, `$1${proxyBase}/`))
             .join(",");
           return `srcset=${quote}${rewritten}${quote}`;
         },

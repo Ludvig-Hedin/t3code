@@ -205,11 +205,20 @@ export function ImportChatsFlow({ onDone }: { onDone?: () => void }) {
         </div>
       )}
 
-      {projects.length === 0 && !scanError ? (
+      {projects.length === 0 ? (
+        // M8: previously this branch was guarded with `!scanError`, so when
+        // the scan failed the user landed in the provider-list branch with an
+        // empty list and a disabled Import button — no retry CTA. Always show
+        // the empty-state card (with the error banner above it from line 202)
+        // so the user can re-run the scan after fixing whatever blocked it.
         <div className="rounded-xl border bg-muted/30 px-4 py-8 text-center">
-          <p className="text-sm font-medium text-foreground">No conversations found</p>
+          <p className="text-sm font-medium text-foreground">
+            {scanError ? "Couldn't scan conversations" : "No conversations found"}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Install a provider and start a session to see conversations here.
+            {scanError
+              ? "Fix the issue above and try again."
+              : "Install a provider and start a session to see conversations here."}
           </p>
           <Button size="xs" variant="outline" className="mt-3" onClick={() => void runScan()}>
             Scan again
